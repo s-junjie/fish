@@ -5,11 +5,10 @@ name: CI
 # Standard hosted runners are unmetered on public repositories, so re-enabling is
 # a matter of restoring the triggers below — no other edit.
 #
-#   on:
-#     pull_request:
-#     push:
-#       branches: [main]
 on:
+  pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:

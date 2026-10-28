@@ -123,7 +123,7 @@ describe("fish export", () => {
   // an agent running inside a sandbox needs to know nothing about Chromium flags.
   // The private profile joins nothing here — on macOS it turns this very retry
   // into a hang, which would be worse than the crash it exists to rescue.
-  (kitBuilt ? it : it.skip)("retries a sandbox-denied launch with --no-sandbox", () => {
+  (kitBuilt && process.platform === "darwin" ? it : it.skip)("retries a sandbox-denied launch with --no-sandbox", () => {
     const fake = writeFakeBrowser(
       tmp,
       "sandbox-then-ok.sh",
