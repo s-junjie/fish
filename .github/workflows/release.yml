@@ -1,0 +1,224 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "release builds package.json's version; promote re-points stable/ at a published version"
+        type: choice
+        options: [release, promote]
+        default: release
+      version:
+        description: "Version to promote (promote mode only), for example 0.1.0"
+        required: false
+        type: string
+      dry_run:
+        description: "Build and verify without deploying or creating a GitHub Release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# One release at a time: a second deploy would rebuild the whole site from the
+# origin it is about to replace.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  ORIGIN: https://dl.themindstudio.cc
+
+jobs:
+  build:
+    if: github.event_name == 'push' || inputs.mode == 'release'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Resolve version
+        id: version
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p 'require("./package.json").version')"
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            if [ "${GITHUB_REF_NAME}" != "v${VERSION}" ]; then
+              echo "::error::tag ${GITHUB_REF_NAME} does not match package.json v${VERSION}"
+              exit 1
+            fi
+          fi
+          echo "value=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "FISH_KIT_URL=${ORIGIN}/kit/fish-agent-kit-${VERSION}.zip" >> "${GITHUB_ENV}"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Tests
+        run: |
+          npm run typecheck
+          npm run test:isolated
+
+      - name: Derive public keys
+        env:
+          FISH_UPDATE_PRIVATE_JWK: ${{ secrets.FISH_UPDATE_PRIVATE_JWK }}
+          FISH_PLUGIN_PRIVATE_KEY: ${{ secrets.FISH_PLUGIN_PRIVATE_KEY }}
+        run: npm run --silent release:keys >> "${GITHUB_ENV}"
+
+      - name: Build release shell
+        env:
+          FISH_PLUGIN_PRIVATE_KEY: ${{ secrets.FISH_PLUGIN_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          export FISH_UPDATE_MANIFEST_URL="${ORIGIN}/stable/manifest.json"
+          npm run build
+
+      - name: Sign the release manifest
+        env:
+          FISH_UPDATE_PRIVATE_JWK: ${{ secrets.FISH_UPDATE_PRIVATE_JWK }}
+        run: |
+          npm run --silent release:manifest -- \
+            --url "${ORIGIN}/shell/${{ steps.version.outputs.value }}/index.html" \
+            --shell dist/index.html \
+            --out dist/manifest.json
+
+      - name: Pack catalog and agent kit
+        run: |
+          npm run release:catalog
+          npm run release:kit
+
+      - name: Assemble the site
+        run: npm run release:assemble -- --origin "${ORIGIN}"
+
+      - name: Verify the assembled site
+        run: |
+          npm run release:verify -- \
+            --dir release-site \
+            --expect-version "${{ steps.version.outputs.value }}"
+
+      - name: Keep the dry-run site
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: fish-release-site
+          path: release-site
+          retention-days: 7
+
+      - name: Deploy to Cloudflare
+        if: github.event_name == 'push' || inputs.dry_run == false
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npm ci --prefix release
+          ./release/node_modules/.bin/wrangler deploy --config release/wrangler.jsonc
+
+      - name: Verify the live origin
+        if: github.event_name == 'push' || inputs.dry_run == false
+        run: |
+          # A fresh custom domain can answer 404/522 for a few seconds after the
+          # upload returns, so retry the same read the client will make.
+          for attempt in 1 2 3 4 5; do
+            if npm run --silent release:verify -- \
+              --base "${ORIGIN}" \
+              --expect-version "${{ steps.version.outputs.value }}"; then
+              exit 0
+            fi
+            echo "attempt ${attempt} failed; retrying in 15s"
+            sleep 15
+          done
+          exit 1
+
+      - name: Publish the GitHub Release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.value }}"
+          mkdir -p release-assets
+          cp "release-site/shell/${VERSION}/index.html" release-assets/fish.fish.html
+          cp "release-site/manifests/${VERSION}.json" release-assets/manifest.json
+          cp "release-site/kit/fish-agent-kit-${VERSION}.zip" release-assets/
+          cp release-site/catalog.json release-assets/
+          cp release-site/sha256sums.txt release-assets/
+          gh release view "v${VERSION}" >/dev/null 2>&1 ||
+            gh release create "v${VERSION}" release-assets/* \
+              --title "FISH v${VERSION}" \
+              --generate-notes
+
+  promote:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'promote'
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+
+      - name: Validate the requested version
+        run: |
+          set -euo pipefail
+          VERSION="${{ inputs.version }}"
+          test -n "${VERSION}" || { echo "::error::version is required in promote mode"; exit 1; }
+          node -e 'process.exit(/^\d+\.\d+\.\d+$/.test(process.argv[1]) ? 0 : 1)' "${VERSION}"
+
+      - name: Assemble the promoted site
+        env:
+          FISH_UPDATE_PUBLIC_KEY: ${{ vars.FISH_UPDATE_PUBLIC_KEY }}
+        run: |
+          npm run release:assemble -- \
+            --promote "${{ inputs.version }}" \
+            --origin "${ORIGIN}"
+
+      - name: Verify the assembled site
+        env:
+          FISH_UPDATE_PUBLIC_KEY: ${{ vars.FISH_UPDATE_PUBLIC_KEY }}
+        run: |
+          npm run release:verify -- \
+            --dir release-site \
+            --expect-version "${{ inputs.version }}"
+
+      - name: Deploy to Cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npm ci --prefix release
+          ./release/node_modules/.bin/wrangler deploy --config release/wrangler.jsonc
+
+      - name: Verify the live origin
+        env:
+          FISH_UPDATE_PUBLIC_KEY: ${{ vars.FISH_UPDATE_PUBLIC_KEY }}
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if npm run --silent release:verify -- \
+              --base "${ORIGIN}" \
+              --expect-version "${{ inputs.version }}"; then
+              exit 0
+            fi
+            echo "attempt ${attempt} failed; retrying in 15s"
+            sleep 15
+          done
+          exit 1

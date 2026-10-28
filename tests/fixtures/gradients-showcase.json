@@ -1,0 +1,132 @@
+{
+  "version": "0.1",
+  "name": "Angular & Diamond Gradients",
+  "canvas": {
+    "width": 860,
+    "height": 480,
+    "background": { "type": "solid", "color": "#1B1B1B" }
+  },
+  "elements": [
+    {
+      "id": "angular-fill",
+      "type": "rect",
+      "x": 60, "y": 60, "width": 200, "height": 200,
+      "borderRadius": 100,
+      "fills": [{
+        "type": "angular-gradient",
+        "from": "#FF5F6D",
+        "to": "#FFC371",
+        "center": { "x": 0.5, "y": 0.5 },
+        "angle": 0,
+        "stops": [
+          { "color": "#FF5F6D", "offset": 0 },
+          { "color": "#FFC371", "offset": 0.5 },
+          { "color": "#FF5F6D", "offset": 1 }
+        ]
+      }]
+    },
+    {
+      "id": "diamond-fill",
+      "type": "rect",
+      "x": 330, "y": 60, "width": 200, "height": 200,
+      "borderRadius": 100,
+      "fills": [{
+        "type": "diamond-gradient",
+        "from": "#00F260",
+        "to": "#0575E6",
+        "center": { "x": 0.5, "y": 0.5 },
+        "rx": 0.5, "ry": 0.5,
+        "angle": 45,
+        "stops": [
+          { "color": "#00F260", "offset": 0 },
+          { "color": "#0575E6", "offset": 1 }
+        ]
+      }]
+    },
+    {
+      "id": "angular-stroke",
+      "type": "rect",
+      "x": 600, "y": 60, "width": 200, "height": 200,
+      "borderRadius": 100,
+      "fills": [{ "type": "solid", "color": "#2A2A2A" }],
+      "stroke": {
+        "paint": {
+          "type": "angular-gradient",
+          "from": "#F7971E",
+          "to": "#FFD200",
+          "center": { "x": 0.5, "y": 0.5 },
+          "angle": 30,
+          "stops": [
+            { "color": "#F7971E", "offset": 0 },
+            { "color": "#FFD200", "offset": 0.5 },
+            { "color": "#F7971E", "offset": 1 }
+          ]
+        },
+        "width": 8,
+        "align": "center"
+      }
+    },
+    {
+      "id": "diamond-stroke",
+      "type": "rect",
+      "x": 60, "y": 280, "width": 200, "height": 200,
+      "borderRadius": 100,
+      "fills": [{ "type": "solid", "color": "#2A2A2A" }],
+      "stroke": {
+        "paint": {
+          "type": "diamond-gradient",
+          "from": "#FF00CC",
+          "to": "#333399",
+          "center": { "x": 0.5, "y": 0.5 },
+          "rx": 0.6, "ry": 0.4,
+          "angle": 0,
+          "stops": [
+            { "color": "#FF00CC", "offset": 0 },
+            { "color": "#333399", "offset": 1 }
+          ]
+        },
+        "width": 6,
+        "align": "center"
+      }
+    },
+    {
+      "id": "angular-text",
+      "type": "text",
+      "x": 330, "y": 280, "width": 200,
+      "content": "ANGULAR",
+      "sizing": { "width": "fill", "height": "fit-content" },
+      "style": { "fontFamily": "system-ui", "fontSize": 36, "fontWeight": 700, "align": "center" },
+      "fills": [{
+        "type": "angular-gradient",
+        "from": "#FFFFFF",
+        "to": "#00C9FF",
+        "center": { "x": 0.5, "y": 0.5 },
+        "angle": 0,
+        "stops": [
+          { "color": "#FFFFFF", "offset": 0 },
+          { "color": "#00C9FF", "offset": 1 }
+        ]
+      }]
+    },
+    {
+      "id": "diamond-text",
+      "type": "text",
+      "x": 600, "y": 280, "width": 200,
+      "content": "DIAMOND",
+      "sizing": { "width": "fill", "height": "fit-content" },
+      "style": { "fontFamily": "system-ui", "fontSize": 36, "fontWeight": 700, "align": "center" },
+      "fills": [{
+        "type": "diamond-gradient",
+        "from": "#FFFFFF",
+        "to": "#FF00CC",
+        "center": { "x": 0.5, "y": 0.5 },
+        "rx": 0.5, "ry": 0.5,
+        "angle": 0,
+        "stops": [
+          { "color": "#FFFFFF", "offset": 0 },
+          { "color": "#FF00CC", "offset": 1 }
+        ]
+      }]
+    }
+  ]
+}

@@ -1,0 +1,111 @@
+{
+  "document": {
+    "id": "0:0",
+    "name": "Figma Sample",
+    "type": "DOCUMENT",
+    "children": [
+      {
+        "id": "0:1",
+        "name": "Page 1",
+        "type": "CANVAS",
+        "backgroundColor": { "r": 0.95, "g": 0.95, "b": 0.95, "a": 1 },
+        "children": [
+          {
+            "id": "1:2",
+            "name": "Card",
+            "type": "FRAME",
+            "absoluteBoundingBox": { "x": 100, "y": 100, "width": 320, "height": 240 },
+            "fills": [ { "type": "SOLID", "color": { "r": 1, "g": 1, "b": 1, "a": 1 }, "visible": true } ],
+            "cornerRadius": 16,
+            "clipsContent": false,
+            "layoutMode": "NONE",
+            "children": [
+              {
+                "id": "2:3",
+                "name": "Title",
+                "type": "TEXT",
+                "absoluteBoundingBox": { "x": 120, "y": 120, "width": 200, "height": 28 },
+                "characters": "Hello FISH",
+                "style": { "fontFamily": "Inter", "fontSize": 22, "fontWeight": 700, "textAlignHorizontal": "LEFT", "lineHeightPx": 28, "letterSpacing": 0 },
+                "fills": [ { "type": "SOLID", "color": { "r": 0.1, "g": 0.1, "b": 0.12, "a": 1 } } ]
+              },
+              {
+                "id": "2:4",
+                "name": "Body",
+                "type": "TEXT",
+                "absoluteBoundingBox": { "x": 120, "y": 156, "width": 280, "height": 60 },
+                "characters": "Imported from Figma.",
+                "style": { "fontFamily": "Inter", "fontSize": 14, "fontWeight": 400, "textAlignHorizontal": "LEFT", "lineHeightPx": 20, "letterSpacing": 0 },
+                "fills": [ { "type": "SOLID", "color": { "r": 0.4, "g": 0.4, "b": 0.45, "a": 1 } } ]
+              },
+              {
+                "id": "2:5",
+                "name": "Button",
+                "type": "RECTANGLE",
+                "absoluteBoundingBox": { "x": 120, "y": 280, "width": 120, "height": 40 },
+                "cornerRadius": 8,
+                "fills": [ { "type": "SOLID", "color": { "r": 0.23, "g": 0.51, "b": 0.96, "a": 1 } } ],
+                "strokes": [ { "type": "SOLID", "color": { "r": 0, "g": 0, "b": 0, "a": 1 } } ],
+                "strokeWeight": 1,
+                "strokeAlign": "INSIDE",
+                "effects": [ { "type": "DROP_SHADOW", "color": { "r": 0, "g": 0, "b": 0, "a": 0.25 }, "offset": { "x": 0, "y": 2 }, "radius": 8, "visible": true } ]
+              },
+              {
+                "id": "2:6",
+                "name": "Avatar",
+                "type": "ELLIPSE",
+                "absoluteBoundingBox": { "x": 320, "y": 120, "width": 64, "height": 64 },
+                "fills": [ { "type": "SOLID", "color": { "r": 0.8, "g": 0.6, "b": 0.3, "a": 1 } } ]
+              },
+              {
+                "id": "2:7",
+                "name": "Divider",
+                "type": "LINE",
+                "absoluteBoundingBox": { "x": 120, "y": 264, "width": 280, "height": 0 },
+                "strokes": [ { "type": "SOLID", "color": { "r": 0.9, "g": 0.9, "b": 0.9, "a": 1 } } ],
+                "strokeWeight": 1
+              },
+              {
+                "id": "2:8",
+                "name": "Icon",
+                "type": "VECTOR",
+                "absoluteBoundingBox": { "x": 360, "y": 280, "width": 24, "height": 24 },
+                "fillGeometry": [ { "path": "M2 12 L12 2 L22 12 L12 22 Z" } ],
+                "fills": [ { "type": "SOLID", "color": { "r": 0.2, "g": 0.2, "b": 0.2, "a": 1 } } ]
+              }
+            ]
+          },
+          {
+            "id": "3:1",
+            "name": "Auto Row",
+            "type": "FRAME",
+            "absoluteBoundingBox": { "x": 100, "y": 380, "width": 320, "height": 60 },
+            "fills": [ { "type": "SOLID", "color": { "r": 0.98, "g": 0.98, "b": 1, "a": 1 } } ],
+            "cornerRadius": 12,
+            "layoutMode": "HORIZONTAL",
+            "itemSpacing": 12,
+            "paddingLeft": 16, "paddingRight": 16, "paddingTop": 12, "paddingBottom": 12,
+            "primaryAxisAlignItems": "SPACE_BETWEEN",
+            "counterAxisAlignItems": "CENTER",
+            "clipsContent": false,
+            "children": [
+              { "id": "3:2", "name": "Left", "type": "TEXT", "absoluteBoundingBox": { "x": 116, "y": 392, "width": 100, "height": 24 }, "characters": "Left", "style": { "fontFamily": "Inter", "fontSize": 16, "fontWeight": 600, "textAlignHorizontal": "LEFT", "lineHeightPx": 24, "letterSpacing": 0 }, "fills": [ { "type": "SOLID", "color": { "r": 0.1, "g": 0.1, "b": 0.1, "a": 1 } } ] },
+              { "id": "3:3", "name": "Right", "type": "TEXT", "absoluteBoundingBox": { "x": 324, "y": 392, "width": 100, "height": 24 }, "characters": "Right", "style": { "fontFamily": "Inter", "fontSize": 16, "fontWeight": 600, "textAlignHorizontal": "RIGHT", "lineHeightPx": 24, "letterSpacing": 0 }, "fills": [ { "type": "SOLID", "color": { "r": 0.1, "g": 0.1, "b": 0.1, "a": 1 } } ] }
+            ]
+          },
+          {
+            "id": "4:1",
+            "name": "GradientBar",
+            "type": "RECTANGLE",
+            "absoluteBoundingBox": { "x": 460, "y": 100, "width": 160, "height": 80 },
+            "cornerRadius": 8,
+            "fills": [ { "type": "GRADIENT_LINEAR", "gradientTransform": [ [1, 0, 0], [0, 1, 0] ], "gradientStops": [ { "position": 0, "color": { "r": 0.23, "g": 0.51, "b": 0.96, "a": 1 } }, { "position": 1, "color": { "r": 0.6, "g": 0.2, "b": 0.8, "a": 1 } } ] } ]
+          }
+        ]
+      }
+    ]
+  },
+  "components": {},
+  "componentSets": {},
+  "styles": {}
+}

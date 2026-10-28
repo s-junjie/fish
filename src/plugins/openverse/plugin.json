@@ -1,0 +1,15 @@
+{
+  "id": "fish.openverse",
+  "name": "Openverse Stock Photos",
+  "description": "Search millions of free creative commons photos",
+  "category": "asset",
+  "icon": "image",
+  "version": "1.0.0",
+  "hostApi": "1",
+  "width": 420,
+  "height": 540,
+  "minWidth": 320,
+  "minHeight": 380,
+  "resize": "both",
+  "attribution": { "name": "Openverse", "url": "https://openverse.org" }
+}

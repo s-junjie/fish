@@ -1,0 +1,341 @@
+{
+  "name": "Offline Kit",
+  "lastModified": "2026-10-10T00:00:00Z",
+  "version": "1",
+  "schemaVersion": 0,
+  "document": {
+    "id": "Kit0:0",
+    "name": "Document",
+    "type": "DOCUMENT",
+    "children": [
+      {
+        "id": "Kit0:1",
+        "name": "Screens",
+        "type": "CANVAS",
+        "backgroundColor": {
+          "r": 0.06,
+          "g": 0.06,
+          "b": 0.06,
+          "a": 1
+        },
+        "children": [
+          {
+            "id": "Kit1:1",
+            "name": "Phone",
+            "type": "FRAME",
+            "absoluteBoundingBox": {
+              "x": 0,
+              "y": 0,
+              "width": 375,
+              "height": 812
+            },
+            "clipsContent": true,
+            "cornerRadius": 28,
+            "fills": [
+              {
+                "type": "SOLID",
+                "color": {
+                  "r": 1,
+                  "g": 1,
+                  "b": 1,
+                  "a": 1.0
+                },
+                "blendMode": "NORMAL"
+              }
+            ],
+            "children": [
+              {
+                "id": "Kit1:2",
+                "name": "StatusBar",
+                "type": "FRAME",
+                "absoluteBoundingBox": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 375,
+                  "height": 44
+                },
+                "children": [
+                  {
+                    "id": "Kit1:3",
+                    "name": "9:41",
+                    "type": "TEXT",
+                    "absoluteBoundingBox": {
+                      "x": 24,
+                      "y": 14,
+                      "width": 34,
+                      "height": 16
+                    },
+                    "characters": "9:41",
+                    "style": {
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": 600,
+                      "lineHeightPx": 16
+                    },
+                    "fills": [
+                      {
+                        "type": "SOLID",
+                        "color": {
+                          "r": 0.1,
+                          "g": 0.1,
+                          "b": 0.1,
+                          "a": 1.0
+                        },
+                        "blendMode": "NORMAL"
+                      }
+                    ]
+                  },
+                  {
+                    "id": "Kit1:4",
+                    "name": "Wifi",
+                    "type": "VECTOR",
+                    "absoluteBoundingBox": {
+                      "x": 320,
+                      "y": 18,
+                      "width": 16,
+                      "height": 12
+                    },
+                    "size": {
+                      "x": 16,
+                      "y": 12
+                    },
+                    "fillGeometry": [
+                      {
+                        "path": "M8 12 L12 8 L16 12 Z"
+                      }
+                    ],
+                    "fills": [
+                      {
+                        "type": "SOLID",
+                        "color": {
+                          "r": 0.1,
+                          "g": 0.1,
+                          "b": 0.1,
+                          "a": 1.0
+                        },
+                        "blendMode": "NORMAL"
+                      }
+                    ]
+                  },
+                  {
+                    "id": "Kit1:5",
+                    "name": "Battery",
+                    "type": "VECTOR",
+                    "absoluteBoundingBox": {
+                      "x": 344,
+                      "y": 18,
+                      "width": 22,
+                      "height": 12
+                    },
+                    "size": {
+                      "x": 22,
+                      "y": 12
+                    },
+                    "strokeGeometry": [
+                      {
+                        "path": "M0 1 H20 V11 H0 Z"
+                      }
+                    ],
+                    "strokes": [
+                      {
+                        "type": "SOLID",
+                        "color": {
+                          "r": 0.1,
+                          "g": 0.1,
+                          "b": 0.1,
+                          "a": 1.0
+                        },
+                        "blendMode": "NORMAL"
+                      }
+                    ],
+                    "strokeWeight": 1.5,
+                    "strokeAlign": "INSIDE"
+                  }
+                ]
+              },
+              {
+                "id": "Kit1:6",
+                "name": "Hero photo",
+                "type": "RECTANGLE",
+                "absoluteBoundingBox": {
+                  "x": 0,
+                  "y": 44,
+                  "width": 375,
+                  "height": 260
+                },
+                "fills": [
+                  {
+                    "type": "IMAGE",
+                    "blendMode": "NORMAL",
+                    "scaleMode": "FILL",
+                    "imageRef": "photo-hero"
+                  }
+                ]
+              },
+              {
+                "id": "Kit1:7",
+                "name": "PromoBadge",
+                "type": "VECTOR",
+                "absoluteBoundingBox": {
+                  "x": 28,
+                  "y": 328,
+                  "width": 33.941125,
+                  "height": 33.941125
+                },
+                "size": {
+                  "x": 24,
+                  "y": 24
+                },
+                "rotation": 45,
+                "fillGeometry": [
+                  {
+                    "path": "M0 0 L24 0 L24 24 L0 24 Z"
+                  }
+                ],
+                "fills": [
+                  {
+                    "type": "SOLID",
+                    "color": {
+                      "r": 0.91,
+                      "g": 0.42,
+                      "b": 0.17,
+                      "a": 1.0
+                    },
+                    "blendMode": "NORMAL"
+                  }
+                ]
+              },
+              {
+                "id": "Kit1:8",
+                "name": "Swatch",
+                "type": "VECTOR",
+                "absoluteBoundingBox": {
+                  "x": 330,
+                  "y": 328,
+                  "width": 24,
+                  "height": 24
+                },
+                "size": {
+                  "x": 24,
+                  "y": 24
+                },
+                "fillGeometry": [
+                  {
+                    "path": "M12 2 L22 12 L12 22 L2 12 Z"
+                  }
+                ],
+                "fills": [
+                  {
+                    "type": "IMAGE",
+                    "blendMode": "NORMAL",
+                    "scaleMode": "FIT",
+                    "imageRef": "swatch-blue"
+                  }
+                ]
+              },
+              {
+                "id": "Kit1:9",
+                "name": "TabBar",
+                "type": "FRAME",
+                "absoluteBoundingBox": {
+                  "x": 0,
+                  "y": 760,
+                  "width": 375,
+                  "height": 52
+                },
+                "layoutMode": "HORIZONTAL",
+                "itemSpacing": 72,
+                "paddingLeft": 48,
+                "paddingRight": 48,
+                "paddingTop": 14,
+                "paddingBottom": 14,
+                "fills": [
+                  {
+                    "type": "SOLID",
+                    "color": {
+                      "r": 0.91,
+                      "g": 0.42,
+                      "b": 0.17,
+                      "a": 1.0
+                    },
+                    "blendMode": "NORMAL"
+                  }
+                ],
+                "children": [
+                  {
+                    "id": "Kit1:10",
+                    "name": "Home",
+                    "type": "VECTOR",
+                    "absoluteBoundingBox": {
+                      "x": 48,
+                      "y": 774,
+                      "width": 24,
+                      "height": 24
+                    },
+                    "size": {
+                      "x": 24,
+                      "y": 24
+                    },
+                    "fillGeometry": [
+                      {
+                        "path": "M2 10 L2 22 L22 22 L22 10 L12 2 Z"
+                      }
+                    ],
+                    "fills": [
+                      {
+                        "type": "SOLID",
+                        "color": {
+                          "r": 1,
+                          "g": 1,
+                          "b": 1,
+                          "a": 1.0
+                        },
+                        "blendMode": "NORMAL"
+                      }
+                    ]
+                  },
+                  {
+                    "id": "Kit1:11",
+                    "name": "Cart",
+                    "type": "VECTOR",
+                    "absoluteBoundingBox": {
+                      "x": 303,
+                      "y": 774,
+                      "width": 24,
+                      "height": 24
+                    },
+                    "size": {
+                      "x": 24,
+                      "y": 24
+                    },
+                    "strokeGeometry": [
+                      {
+                        "path": "M1 2 H5 L9 17 H20 L23 6 H7"
+                      }
+                    ],
+                    "strokes": [
+                      {
+                        "type": "SOLID",
+                        "color": {
+                          "r": 1,
+                          "g": 1,
+                          "b": 1,
+                          "a": 1.0
+                        },
+                        "blendMode": "NORMAL"
+                      }
+                    ],
+                    "strokeWeight": 2,
+                    "strokeCap": "ROUND",
+                    "strokeJoin": "ROUND"
+                  }
+                ],
+                "primaryAxisAlignItems": "SPACE_BETWEEN"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

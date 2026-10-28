@@ -1,0 +1,15 @@
+{
+  "id": "fish.pixabay",
+  "name": "Pixabay Photos",
+  "description": "Search free Pixabay photos with your own API key",
+  "category": "asset",
+  "icon": "image",
+  "version": "1.0.0",
+  "hostApi": "1",
+  "width": 420,
+  "height": 540,
+  "minWidth": 320,
+  "minHeight": 380,
+  "resize": "both",
+  "attribution": { "name": "Pixabay", "url": "https://pixabay.com" }
+}

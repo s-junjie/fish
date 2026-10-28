@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>FISH Capture</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      width: 290px;
+      padding: 16px;
+      background: #121212;
+      color: #E6EDF7;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px;
+      user-select: none;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #262626;
+    }
+    .logo {
+      width: 22px;
+      height: 22px;
+      flex-shrink: 0;
+    }
+    .header-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #F3F4F6;
+      letter-spacing: -0.2px;
+    }
+    .header-sub {
+      font-size: 11px;
+      color: #9CA3AF;
+      margin-left: auto;
+    }
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .btn {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      background: #1F1F1F;
+      border: 1px solid #2E2E2E;
+      border-radius: 6px;
+      color: #E5E7EB;
+      font-size: 12.5px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, transform 0.05s;
+      text-align: left;
+    }
+    .btn:hover:not(:disabled) {
+      background: #2A2A2A;
+      border-color: #3F3F46;
+    }
+    .btn:active:not(:disabled) {
+      transform: scale(0.98);
+    }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .btn-primary {
+      background: rgba(245, 158, 11, 0.12);
+      border-color: rgba(245, 158, 11, 0.4);
+      color: #FBBF24;
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: rgba(245, 158, 11, 0.2);
+      border-color: #F59E0B;
+    }
+    .icon {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+    }
+    .status-box {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      line-height: 1.4;
+    }
+    .status-loading {
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      color: #FBBF24;
+    }
+    .status-success {
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      color: #34D399;
+    }
+    .status-error {
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      color: #F87171;
+    }
+    .spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid currentColor;
+      border-right-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .hint {
+      margin-top: 12px;
+      padding: 8px 10px;
+      background: #181818;
+      border-radius: 4px;
+      font-size: 11px;
+      line-height: 1.5;
+      color: #9CA3AF;
+      border: 1px dashed #2E2E2E;
+    }
+    .kbd {
+      display: inline-block;
+      padding: 1px 4px;
+      background: #262626;
+      border-radius: 3px;
+      color: #D1D5DB;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <svg class="logo" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect width="16" height="16" rx="4.2" fill="#121214"/>
+      <rect x="0.5" y="0.5" width="15" height="15" rx="3.7" stroke="#28282D"/>
+      <rect x="5.4" y="5.4" width="5.2" height="5.2" rx="1.5" fill="#E8A33D"/>
+    </svg>
+    <div class="header-title">FISH Capture</div>
+    <div class="header-sub">v0.1</div>
+  </div>
+
+  <div class="actions">
+    <button id="btn-pick" class="btn btn-primary">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 4.1 12 6"/>
+        <path d="m5.1 8-2.9-.8"/>
+        <path d="m6 12-1.9 2"/>
+        <path d="M7.2 2.2 8 5.1"/>
+        <path d="M9.037 9.69a.498.498 0 0 1 .653-.653l11 4.5a.5.5 0 0 1-.074.949l-4.349 1.041a1 1 0 0 0-.74.739l-1.04 4.35a.5.5 0 0 1-.95.074z"/>
+      </svg>
+      <div>
+        <div>Pick Element</div>
+        <div style="font-size: 10.5px; opacity: 0.75; font-weight: 400;">Hover & click any component</div>
+      </div>
+    </button>
+
+    <button id="btn-page" class="btn">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z"/>
+        <circle cx="12" cy="13" r="3"/>
+      </svg>
+      <div>
+        <div>Capture Full Page</div>
+        <div style="font-size: 10.5px; opacity: 0.75; font-weight: 400;">Copy entire page to clipboard</div>
+      </div>
+    </button>
+  </div>
+
+  <div id="status-box" class="status-box" style="display: none;">
+    <div id="status-spinner" class="spinner"></div>
+    <div id="status-text"></div>
+  </div>
+
+  <div class="hint">
+    After copying, switch to FISH and press <span class="kbd">⌘V</span> / <span class="kbd">Ctrl+V</span> to paste as editable vector layers.
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

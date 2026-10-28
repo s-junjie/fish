@@ -1,0 +1,16 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "fish-dl",
+  "compatibility_date": "2026-10-27",
+  "workers_dev": false,
+  "assets": {
+    "directory": "../release-site",
+    "not_found_handling": "404-page"
+  },
+  "routes": [
+    {
+      "pattern": "dl.themindstudio.cc",
+      "custom_domain": true
+    }
+  ]
+}

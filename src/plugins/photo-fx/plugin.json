@@ -1,0 +1,13 @@
+{
+  "id": "fish.photo-fx",
+  "name": "Photo FX",
+  "description": "Halftone dots, analog film simulation, glitch, mosaic & creative darkroom studio",
+  "category": "plugin",
+  "icon": "aperture",
+  "version": "1.0.0",
+  "hostApi": "1",
+  "width": 320,
+  "height": 580,
+  "minHeight": 420,
+  "resize": "vertical"
+}

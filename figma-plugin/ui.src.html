@@ -1,0 +1,452 @@
+<!doctype html>
+<!--
+  FISH Export — the UI half.
+
+  The sandbox cannot write a file, so this is where the export becomes a download.
+  It is deliberately dumb: it shows a scope, a count and a progress bar, and it
+  never inspects a node. Everything it renders was decided in the sandbox or in the
+  app that will read the file.
+
+  Two ways out, one export: "Export" saves the zip the app reads from disk, and
+  "Copy" puts the same envelope — images inlined, because a clipboard is text —
+  on the system clipboard for a straight paste into FISH. The copy is bounded
+  (`COPY_TEXT_LIMIT`, in bundle.js) and says so when it is over, rather than
+  handing the browser a paste it may silently drop.
+
+  No network. `manifest.json` declares `allowedDomains: ["none"]` and nothing here
+  would be allowed to fetch anyway — the export leaves the editor as a file the
+  user chooses where to put, which is the whole privacy story.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root {
+        color-scheme: light dark;
+        --ink: #1a1a1a;
+        --ink-muted: #6b6b6b;
+        --rule: #e2e2e2;
+        --inset: #f6f6f6;
+        --brand: #0d6efd;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --ink: #ededed;
+          --ink-muted: #9a9a9a;
+          --rule: #333;
+          --inset: #242424;
+          --brand: #4d9bff;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      /* The radio, the checkbox and the progress bar are UA-drawn, so they take
+         their colour from `accent-color` and not from anything below. Left unset
+         they rendered in the browser's default blue — which in FISH is the colour
+         of "this layer is selected", spent on a control that selects nothing. */
+      :root {
+        accent-color: var(--brand);
+      }
+      progress {
+        accent-color: var(--brand);
+      }
+      body {
+        margin: 0;
+        padding: 14px;
+        font: 11px/1.5 ui-sans-serif, -apple-system, "Segoe UI", sans-serif;
+        color: var(--ink);
+      }
+      h1 {
+        margin: 0 0 2px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      p.sub {
+        margin: 0 0 12px;
+        color: var(--ink-muted);
+      }
+      p.status {
+        margin: 6px 0 0;
+        color: var(--ink-muted);
+        font-variant-numeric: tabular-nums;
+      }
+      p.notice {
+        margin: 0 0 10px;
+        padding: 7px 9px;
+        border: 1px solid var(--rule);
+        border-radius: 5px;
+        background: var(--inset);
+        color: var(--ink-muted);
+      }
+      fieldset {
+        border: 1px solid var(--rule);
+        border-radius: 6px;
+        padding: 8px 10px 10px;
+        margin: 0 0 10px;
+      }
+      legend {
+        padding: 0 4px;
+        color: var(--ink-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-size: 9px;
+      }
+      label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 0;
+        cursor: pointer;
+      }
+      .count {
+        color: var(--ink-muted);
+        font-variant-numeric: tabular-nums;
+      }
+      progress {
+        width: 100%;
+        height: 4px;
+        margin: 8px 0 0;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+        align-items: center;
+      }
+      button {
+        font: inherit;
+        padding: 5px 12px;
+        border-radius: 5px;
+        border: 1px solid var(--rule);
+        background: var(--inset);
+        color: var(--ink);
+        cursor: pointer;
+      }
+      button.primary {
+        background: var(--brand);
+        border-color: var(--brand);
+        color: #fff;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .error {
+        color: #c0392b;
+        margin: 8px 0 0;
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- No brand mark here: Figma's plugin modal already draws the listing icon next to the name. -->
+    <h1>FISH Export</h1>
+    <p class="sub">Saves a file you can drag into FISH — or copies it to the clipboard for a straight paste.</p>
+
+    <fieldset>
+      <legend>Scope</legend>
+      <label><input type="radio" name="scope" value="selection" checked /> Current selection <span class="count" id="c-selection"></span></label>
+      <label><input type="radio" name="scope" value="page" /> Current page <span class="count" id="c-page"></span></label>
+      <label><input type="radio" name="scope" value="file" /> Whole file <span class="count" id="c-file"></span></label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Images</legend>
+      <label><input type="checkbox" id="with-images" checked /> Include images</label>
+    </fieldset>
+
+    <p class="notice" id="deck-notice" hidden>
+      This is a Figma Slides deck. Each slide is exported as its own frame, so the
+      deck arrives in FISH ready to present. Slide transitions come across as
+      FISH's own five — Figma's "move in" and "push" land exactly, and the rest
+      arrive as the nearest one with a note in the import report. Speaker notes do
+      not come across yet.
+    </p>
+
+    <progress id="progress" value="0" max="1" hidden></progress>
+    <p class="status" id="status" hidden></p>
+    <p class="error" id="error" hidden></p>
+
+    <div class="row" style="margin-top: 12px">
+      <button id="close">Close</button>
+      <button id="copy" disabled title="Put the export on the clipboard, then paste it into FISH">Copy</button>
+      <button id="export" class="primary" disabled>Export</button>
+    </div>
+
+    <script>
+      // @@FISH_BUNDLE@@
+      const post = (msg) => parent.postMessage({ pluginMessage: msg }, "*");
+      const $ = (id) => document.getElementById(id);
+      let scope = "selection";
+      // One operation at a time, whichever button started it: two exports in
+      // flight would interleave two documents' worth of progress on one bar.
+      let busy = false;
+      // What the in-flight operation is, for the progress line's verb.
+      let mode = "file";
+
+      // The chosen scope IS the export's scope; re-reading it here keeps the
+      // radio row and the request from ever naming different things.
+      for (const radio of document.querySelectorAll('input[name="scope"]')) {
+        radio.addEventListener("change", () => {
+          scope = radio.value;
+        });
+      }
+
+      /** "(5322 layers)" beside an option, or "(empty)" — and never blank. */
+      const plural = (n, unit) => (n === 1 ? `1 ${unit}` : `${n} ${unit}s`);
+
+      const showScopes = (scopes, deck) => {
+        for (const one of scopes) {
+          const el = $(`c-${one.id}`);
+          if (!el) continue;
+          if (one.empty) {
+            el.textContent = "(empty)";
+            continue;
+          }
+          // A scope that spans several Figma pages arrives as several FISH pages,
+          // and "114 layers" does not say that. One page needs no adjective.
+          const size = plural(one.count, one.unit);
+          el.textContent = one.pages > 1 ? `(${size}, ${plural(one.pages, "page")})` : `(${size})`;
+        }
+        // A deck whose scopes are empty is a deck with no slides, and the Export
+        // button should say so rather than failing on the press.
+        const usable = scopes.some((one) => !one.empty);
+        $("export").disabled = !usable || busy;
+        $("copy").disabled = !usable || busy;
+        $("deck-notice").hidden = !deck;
+      };
+
+      $("close").addEventListener("click", () => post({ type: "close" }));
+
+      const start = (what) => {
+        busy = true;
+        mode = what;
+        $("export").disabled = true;
+        $("copy").disabled = true;
+        $("error").hidden = true;
+        $("progress").hidden = false;
+        $("progress").value = 0;
+      };
+
+      $("export").addEventListener("click", () => {
+        start("file");
+        post({ type: "export", scope, images: $("with-images").checked });
+      });
+
+      $("copy").addEventListener("click", () => {
+        start("copy");
+        post({ type: "copy", scope, images: $("with-images").checked });
+      });
+
+      // Re-asking is how the counts stay true after an import changes nothing and
+      // after a designer selects something new, without a button to press.
+      const refresh = () => post({ type: "scopes" });
+      document.addEventListener("selectionchange", refresh);
+
+      window.onmessage = (event) => {
+        const msg = event.data.pluginMessage;
+        if (!msg) return;
+        if (msg.type === "scopes") {
+          showScopes(msg.scopes, msg.deck);
+          return;
+        }
+        if (msg.type === "progress") {
+          $("progress").hidden = false;
+          $("progress").max = msg.total;
+          $("progress").value = msg.done;
+          $("status").hidden = false;
+          $("status").textContent =
+            msg.stage === "components"
+              ? `Finding each instance's original component — ${msg.done} of ${msg.total}`
+              : `Reading images — ${msg.done} of ${msg.total}`;
+          return;
+        }
+        if (msg.type === "archive-begin") {
+          receiver.reset();
+          $("status").hidden = false;
+          return;
+        }
+        if (msg.type === "archive-chunk") {
+          receiver.chunk(msg);
+          paintProgress();
+          return;
+        }
+        if (msg.type === "exported") {
+          finish(msg);
+          return;
+        }
+        if (msg.type === "copied") {
+          finishCopy(msg);
+          return;
+        }
+        if (msg.type === "copy-too-big") {
+          // Named, with the two ways out: fewer images, or the file. A refusal
+          // the designer cannot act on is the failure this sentence prevents.
+          fail(
+            `That is ${mb(msg.size)} — more than the clipboard will take. ` +
+              `Untick "Include images", or use Export to save the file.`
+          );
+          return;
+        }
+        if (msg.type === "failed") {
+          fail(msg.message);
+          refresh();
+          return;
+        }
+      };
+
+      // ---------------------------------------------------------------------
+      // The transport. `receiver` is `createArchiveReceiver` from bundle.js,
+      // which the build inlined above — the same file the sandbox runs. Nothing
+      // about assembling the archive is written twice.
+      // ---------------------------------------------------------------------
+
+      const mb = (n) => `${(n / 1048576).toFixed(1)} MB`;
+      const receiver = createArchiveReceiver(post);
+
+      const paintProgress = () => {
+        const { bytes, total } = receiver.received();
+        $("progress").hidden = false;
+        $("progress").max = total || 1;
+        $("progress").value = bytes;
+        $("status").hidden = false;
+        // The same pieces either way — the zip on its way to a download, or the
+        // copy's text on its way to the clipboard — so only the verb differs.
+        $("status").textContent =
+          mode === "copy"
+            ? `Preparing the copy — ${mb(bytes)} of ${mb(total)}`
+            : `Writing the file — ${mb(bytes)} of ${mb(total)}`;
+      };
+
+      const fail = (message) => {
+        receiver.reset();
+        $("error").textContent = message;
+        $("error").hidden = false;
+        $("progress").hidden = true;
+        $("status").hidden = true;
+        busy = false;
+        $("export").disabled = false;
+        $("copy").disabled = false;
+      };
+
+      function finish(msg) {
+        const parts = receiver.exported(msg);
+
+        // Not an error: the receiver asks for whatever is missing and the sandbox
+        // re-sends from there. Say so, because the bar going backwards looks like
+        // a hang otherwise.
+        if (!parts) {
+          const { bytes, total } = receiver.received();
+          $("status").hidden = false;
+          $("status").textContent = `One part did not arrive — asking again — ${mb(bytes)} of ${mb(total)}`;
+          return;
+        }
+
+        const blob = new Blob(parts, { type: "application/zip" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `fish-figma-export-${stamp()}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        // The object URL keeps the whole archive alive until it is revoked, so a
+        // ten-second timer is the cost of not holding 75MB for the session.
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+
+        $("progress").hidden = true;
+        // Left on screen after the click: it is the receipt, and it is what tells
+        // "the file is in your downloads" apart from "it silently did not".
+        $("status").hidden = false;
+        $("status").textContent = `${mb(msg.size)} · ${plural(msg.parts, "part")} · ${plural(msg.images, "image")} — saved to your downloads`;
+        busy = false;
+        $("export").disabled = false;
+        $("copy").disabled = false;
+        receiver.reset();
+        refresh();
+      }
+
+      /**
+       * The copy, landed on the clipboard.
+       *
+       * The same pieces the file assembles, decoded back into the text they
+       * started as — the transport does not care which packaging is riding on
+       * it, which is the point of there being only one.
+       */
+      function finishCopy(msg) {
+        const parts = receiver.exported(msg);
+
+        // Not an error: the receiver asks for whatever is missing and the sandbox
+        // re-sends from there. Say so, because the bar going backwards looks like
+        // a hang otherwise.
+        if (!parts) {
+          const { bytes, total } = receiver.received();
+          $("status").hidden = false;
+          $("status").textContent = `One part did not arrive — asking again — ${mb(bytes)} of ${mb(total)}`;
+          return;
+        }
+
+        let size = 0;
+        for (const part of parts) size += part.length;
+        const all = new Uint8Array(size);
+        let at = 0;
+        for (const part of parts) {
+          all.set(part, at);
+          at += part.length;
+        }
+        writeClipboard(new TextDecoder().decode(all)).then((ok) => {
+          $("progress").hidden = true;
+          // The receipt, as above: a copy that reports nothing is a copy nobody
+          // can tell from one that did not happen.
+          $("status").hidden = false;
+          $("status").textContent = ok
+            ? `Copied ${mb(msg.size)} · ${plural(msg.images, "image")} — paste it into FISH`
+            : "The clipboard would not take the copy — use Export instead";
+          busy = false;
+          $("export").disabled = false;
+          $("copy").disabled = false;
+          receiver.reset();
+          refresh();
+        });
+      }
+
+      /**
+       * Text onto the system clipboard, by whichever route this iframe allows.
+       *
+       * `writeText` first: the plugin's iframe is served over https, so the async
+       * API is usually there. It is not GUARANTEED — the iframe is null-origin,
+       * and a Permissions-Policy withholding `clipboard-write` is exactly the
+       * kind of thing that only shows up on someone else's machine — so the
+       * textarea fallback is the copy that worked before the async API existed.
+       * Both are tried before anything is said to the user, because "the
+       * clipboard would not take the copy" is a sentence with an action attached
+       * and a silent failure is not.
+       */
+      const writeClipboard = async (text) => {
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+            return true;
+          }
+        } catch {
+          // fall through to the textarea
+        }
+        const area = document.createElement("textarea");
+        area.value = text;
+        area.setAttribute("readonly", "");
+        area.style.position = "fixed";
+        area.style.opacity = "0";
+        document.body.appendChild(area);
+        area.select();
+        const ok = document.execCommand("copy");
+        area.remove();
+        return ok;
+      };
+
+      const stamp = () => new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+    </script>
+  </body>
+</html>

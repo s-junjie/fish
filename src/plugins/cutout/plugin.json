@@ -1,0 +1,12 @@
+{
+  "id": "fish.cutout",
+  "name": "Background Remover",
+  "description": "Client-side AI background cutout (u2netp)",
+  "category": "plugin",
+  "icon": "scissors",
+  "version": "1.0.0",
+  "hostApi": "1",
+  "width": 320,
+  "resize": "none",
+  "attribution": { "name": "U²-Net", "url": "https://github.com/xuebinqin/U-2-Net" }
+}

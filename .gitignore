@@ -1,0 +1,37 @@
+node_modules/
+dist/
+# Plugin bundles are build output. Their identity travels inside each file, in a
+# signed trailer; the shell knows only the public half of this keypair.
+dist-plugins/
+.fish-plugin-key.json
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+
+.playwright-cli/
+
+# Playwright run artifacts. `test-results/` is Playwright's default outputDir and
+# `playwright-report/` its default HTML report; neither is input to anything, and
+# `.last-run.json` in particular is rewritten on every single run.
+test-results/
+playwright-report/
+
+# Release staging: assembled by scripts/assemble-site.mjs and uploaded by CI.
+release-site/
+release-assets/
+release/node_modules/
+.smoke/
+
+# Local scratch for production keys. Never commit; delete after the secrets are set.
+.secrets/
+
+demo/
+scratch/
+
+# Figma import: generated test artifacts (large downloaded JSON + build outputs)
+figma-imports/
+scripts/fixtures/figma-community.json
+scripts/fixtures/figma-node-7641-2142.json
+scripts/fixtures/figma-home.json

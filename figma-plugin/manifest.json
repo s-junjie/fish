@@ -1,0 +1,13 @@
+{
+  "name": "FISH Export",
+  "id": "1200000000000000001",
+  "api": "1.0.0",
+  "editorType": ["figma", "slides"],
+  "main": "plugin.js",
+  "ui": "ui.html",
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": ["none"],
+    "reasoning": "The export is assembled from the document already in the editor's memory and handed to the user as a download. Nothing is uploaded anywhere."
+  }
+}

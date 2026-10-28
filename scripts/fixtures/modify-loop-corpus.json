@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "note": "Fixed critique -> patch corpus for scripts/probe-modify-loop.mjs. Each round is a modify-loop edit an agent that thinks in CSS would write: a critique, the CSS-named patch it produces, and the DSL path the edit must land on for the edit to count as honoured. `divergence: true` marks a CSS feature the engine never honours in EITHER vocabulary, so it is reported apart from the delta. THIS IS A SYNTHETIC PLACEHOLDER: the plan calls for recorded agent outputs; replace it when recordings exist, and keep the hash check.",
+  "base": {
+    "version": "0.1",
+    "canvas": { "width": 480, "height": 320, "background": { "type": "solid", "color": "#FFFFFF" } },
+    "activePageId": "page_1",
+    "pages": [
+      {
+        "id": "page_1",
+        "name": "Page 1",
+        "canvas": { "width": 480, "height": 320, "background": { "type": "solid", "color": "#FFFFFF" } },
+        "children": [
+          {
+            "id": "card",
+            "type": "frame",
+            "name": "Card",
+            "x": 0,
+            "y": 0,
+            "width": 320,
+            "height": 220,
+            "layout": { "mode": "flex", "direction": "column", "gap": 8, "padding": 24, "align": "start" },
+            "fills": [{ "type": "solid", "color": "#F8FAFC" }],
+            "children": [
+              {
+                "id": "title",
+                "type": "text",
+                "name": "Title",
+                "content": "Hello",
+                "x": 24,
+                "y": 24,
+                "width": 200,
+                "height": 28,
+                "style": { "fontSize": 20, "fontWeight": 600, "color": "#0F172A" }
+              },
+              {
+                "id": "body",
+                "type": "rect",
+                "name": "Body",
+                "x": 24,
+                "y": 60,
+                "width": 120,
+                "height": 40,
+                "fills": [{ "type": "solid", "color": "#E2E8F0" }]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "rounds": [
+    { "id": "r1", "critique": "open up the card's rows", "target": "card", "patch": { "gap": 16 }, "intent": [{ "path": "layout.gap", "equals": 16 }] },
+    { "id": "r2", "critique": "centre everything in the card", "target": "card", "patch": { "align-items": "center" }, "intent": [{ "path": "layout.align", "equals": "center" }] },
+    { "id": "r3", "critique": "make the heading bigger", "target": "title", "patch": { "font-size": 28 }, "intent": [{ "path": "style.fontSize", "equals": 28 }] },
+    { "id": "r4", "critique": "let the swatch fill its column", "target": "body", "patch": { "width": "100%" }, "intent": [{ "path": "sizing.width", "equals": "fill" }] },
+    { "id": "r5", "critique": "pin the swatch so it stops flowing", "target": "body", "patch": { "position": "absolute" }, "intent": [{ "path": "layoutPosition", "equals": "absolute" }] },
+    { "id": "r6", "critique": "give the swatch breathing room", "target": "body", "patch": { "margin": 8 }, "intent": [{ "path": "layoutMargin", "equals": 8 }] },
+    { "id": "r7", "critique": "weight the swatch to take twice the slack", "target": "body", "patch": { "flex-grow": 2 }, "intent": [{ "path": "flexGrow", "equals": 2 }] },
+    { "id": "r8", "critique": "measure the swatch content-box", "target": "body", "patch": { "box-sizing": "content-box" }, "divergence": true }
+  ]
+}

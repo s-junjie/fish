@@ -1,0 +1,15 @@
+{
+  "id": "fish.wikimedia",
+  "name": "Wikimedia Commons",
+  "description": "Search free photos from Wikimedia Commons",
+  "category": "asset",
+  "icon": "image",
+  "version": "1.0.0",
+  "hostApi": "1",
+  "width": 420,
+  "height": 540,
+  "minWidth": 320,
+  "minHeight": 380,
+  "resize": "both",
+  "attribution": { "name": "Wikimedia Commons", "url": "https://commons.wikimedia.org" }
+}

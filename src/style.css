@@ -1,0 +1,195 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* The workbench has ONE voice: monospace, inherited by default.
+
+   Two families were specified (see DESIGN.md §Typography) with a division of
+   labour — mono for data, a humanist sans for names and prose. Three things
+   undid it in practice:
+
+     1. Tailwind 3's `fontSize` tuple cannot carry a `fontFamily`, so the family
+        written beside every step in DESIGN.md's frontmatter compiled to
+        nothing. What actually rendered came from inheritance, and Preflight
+        sets `html` to the sans stack.
+     2. Mono therefore survived only where someone hand-wrote `font-mono` —
+        23 places — while the most-used step (`ui`, ~130 sites) fell through to
+        sans. Same row, two accents, decided nowhere.
+     3. The reference layout never had two voices to begin with: it declares
+        `--sans` but assigns it to `body` alone, and 18 of its 19
+        `font-family` declarations are `var(--mono)`. Its `.ui` class — the one
+        12px sans step — is defined and never applied. The only sans text it
+        actually draws is the 13px document title.
+
+   So the default is flipped rather than the menu restored: everything inherits
+   mono, and `font-sans` becomes an explicit, countable opt-in for whatever
+   later proves it needs the humanist voice. Artwork is unaffected — canvas
+   text carries its own `fontFamily` per element (default `system-ui`). */
+@layer base {
+  html {
+    font-family: theme("fontFamily.mono");
+  }
+}
+
+/* A link is live in the two viewing surfaces and inert in the editor, where the
+   same click selects. The cursor is the only place that difference is visible
+   before the click happens. */
+[data-present-overlay] [data-link],
+[data-canvas-only] [data-link] {
+  cursor: pointer;
+}
+
+/* Firefox, and only Firefox.
+ *
+ `scrollbar-width` is a STANDARD property, and Chromium implements it — which
+ means setting it makes Chromium draw its OWN scrollbar and ignore the
+ `::-webkit-scrollbar*` rules below entirely, hover included. Measured before
+ this change: with `scrollbar-width: thin` present, Chromium reported
+ `::-webkit-scrollbar-thumb:hover` as empty and painted the UA's hover, which is
+ far brighter than anything in this file — the "hover is too bright" report.
+ `scrollbar-color` has no hover state at all, so the brightness could not be
+ tuned from here either.
+ *
+ `selector(::-webkit-scrollbar)` is supported by Chromium and not by Firefox, so
+ this block applies exactly where the standard properties are the only ones that
+ work. The price is that Firefox keeps 11px and Chromium gets 6px below; 6px is
+ also what finally makes a panel's left and right padding equal (see
+ HANDOFF §4.3: the reserved gutter is ~11px and no padding can cancel it). */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 16% at rest, 26% on hover: a step you can feel and nothing more. The thumb
+   sits on `panel` (#181818), so 16% reads as #3A3A3A — present when you look for
+   it, invisible when you don't. The earlier 32% hover was brighter than most of
+   the chrome's hairlines and pulled the eye to a 6px strip on hover. */
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.26);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ---------------------------------------------------------------- canvas chrome
+ *
+ * Everything below holds a CONSTANT number of SCREEN pixels while the document
+ * is drawn in document units: the generous hit target around a shape, the 11px
+ * frame label, the component mark beside it. Written as `8 / zoom` in JS they
+ * are correct — and they are also the only zoom-derived values in a node's
+ * markup, so a memoized node could not skip a wheel tick: at 6 % zoom on a
+ * 3120-element page, rebuilding and re-diffing 3,585 elements to write 1,738
+ * `stroke-width` values cost 52 ms a frame and changed nothing else.
+ *
+ * `--fish-zoom` is written once on the root <svg> (see CanvasArea), so the whole
+ * tree re-sizes from one property write and the node markup stops depending on
+ * zoom at all. The write is NOT free — an inherited custom property invalidates
+ * every descendant, 3.7 ms per thousand mounted nodes — so it is written at the
+ * SETTLED zoom rather than every tick, which is invisible because the hit slop
+ * is a transparent stroke; chrome that is painted, not transparent, carries the
+ * live value on its own element. The per-element half of each value — the shape's own
+ * stroke width — stays on the element as `--hit-stroke`, because that only
+ * changes when the element is edited. Chrome geometry that cannot be expressed
+ * as a property (a twisty's path data) lives inside `data-chrome-counter`
+ * instead, which carries the whole chrome at 1/zoom.
+ *
+ * `vector-effect="non-scaling-stroke"` is the obvious alternative and does not
+ * work here: Chrome compensates the SVG viewport transform but not the CSS
+ * `transform: scale()` the canvas puts on its <svg>, so the measured hit width
+ * fell from a constant 4 px to 0.39 px at 10 % zoom.
+ *
+ * Scoped to `[data-canvas-root]` on purpose. The export mirror renders the same
+ * tree offscreen at 1:1 with pointer events off, and the asset thumbnails render
+ * it outside the canvas entirely; neither is hit-tested, and both would otherwise
+ * inherit a zoom variable they have no business reading. */
+[data-canvas-root] [data-hit] {
+  stroke-width: calc(var(--hit-stroke, 0px) + 8px / var(--fish-zoom, 1));
+}
+
+/* A locked layer is a click-through, not a barrier.
+ *
+ * The lock is enforced in the DOM rather than in the mousedown handler, because
+ * the browser is the better hit-tester: it already resolves the exact painted
+ * geometry of whatever sits behind the lock — path interiors, stroke widths,
+ * nested transforms, clip paths, instances — which a JS re-derivation from AABBs
+ * cannot. `findElementAtPoint` is the coarse fallback used for hover and Alt
+ * measurement, and it is not accurate enough to stand in for this.
+ *
+ * The selector reaches EVERY descendant rather than setting `pointer-events: none`
+ * on the locked group alone, because a descendant that declares its own value
+ * wins over an inherited one — the `[data-hit]` paths carry `pointer-events="all"`
+ * and frame titles wear Tailwind's `.pointer-events-auto`. Both outrank a plain
+ * inherited `none`, so targeting only the group left the fill clickable. Marking
+ * the node is enough for the subtree because `locked` is materialized onto every
+ * descendant (lock.ts), but the descendant selector is what actually does it and
+ * keeps working for a child that is painted under a frame.
+ *
+ * `!important` is load-bearing for the same reason and cannot be dropped: these
+ * declarations are competing with both presentation attributes and utility
+ * classes, and specificity alone does not settle it. */
+[data-canvas-root] [data-locked],
+[data-canvas-root] [data-locked] * {
+  pointer-events: none !important;
+}
+
+/* A component set's chrome — mark, title, twisty — is authored in screen pixels
+   inside a group scaled by 1/zoom, so it needs no per-element zoom arithmetic
+   and its path data can stay a literal. `transform-box`/`transform-origin` are
+   left alone: on an SVG <g> the origin is already the element's own coordinate
+   system, which is what the screen-pixel numbers inside assume. */
+[data-canvas-root] [data-chrome-counter] {
+  transform: translate(var(--tx, 0px), var(--ty, 0px)) scale(calc(1 / var(--fish-zoom, 1)));
+}
+
+/* Chrome does NOT report a box that follows the paint for an SVG <text> whose x
+   / y / font-size come from CSS geometry properties: getComputedStyle reads back
+   the right numbers and getBoundingClientRect still returns the untransformed
+   one, which silently corrupts every ancestor's bounds — a frame's group box,
+   and so the point a click test aims at. Inside the counter-scaled group those
+   are ordinary attributes again, in screen pixels, and the box API agrees with
+   the paint. Hence a group rather than properties. */
+
+[data-canvas-root] [data-component-set-outline] {
+  stroke-width: calc(var(--set-outline, 1) * 1px / var(--fish-zoom, 1));
+}
+
+/* A collapsed set is one variant, not a set of them: the dashes were saying
+   "there are more here", so they go with the collapse. */
+[data-canvas-root] [data-component-set-outline]:not([data-collapsed]) {
+  stroke-dasharray: calc(5px / var(--fish-zoom, 1)) calc(4px / var(--fish-zoom, 1));
+}
+
+[data-canvas-root] [data-component-set-outline][data-drag-over] {
+  --set-outline: 2;
+}
+
+[data-canvas-root] [data-instance-placeholder] {
+  stroke-width: calc(1px / var(--fish-zoom, 1));
+  stroke-dasharray: calc(4px / var(--fish-zoom, 1)) calc(4px / var(--fish-zoom, 1));
+}
+
+/* Suppress duplicate backdrop-filter <foreignObject> hosts inside SVG <g mask>
+   groups (whose backdrop blur is already hoisted outside the mask group by
+   renderMaskedBackdrops). Leaving a backdrop-filter foreignObject inside an SVG
+   <mask> group creates a nested backdrop root in Chromium that corrupts
+   compositor tiles at high zoom. */
+[data-masked-group] [data-backdrop-fo] {
+  display: none;
+}

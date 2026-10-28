@@ -1,0 +1,143 @@
+{
+  "id": "morph-deck",
+  "name": "Morph pairing demo",
+  "createdAt": "2026-10-07T00:00:00.000Z",
+  "updatedAt": "2026-10-07T00:00:00.000Z",
+  "canvas": { "width": 1920, "height": 1080, "unit": "px", "background": { "type": "solid", "color": "#FFFFFF" } },
+  "elements": [
+    {
+      "id": "s1",
+      "name": "Slide 1",
+      "type": "frame",
+      "x": 80,
+      "y": 120,
+      "width": 640,
+      "height": 360,
+      "fills": [{ "type": "solid", "color": "#F4F4F5" }],
+      "slide": { "transition": "morph", "durationMs": 800, "easing": "ease-in-out" },
+      "children": [
+        {
+          "id": "s1-headline",
+          "name": "Headline",
+          "type": "text",
+          "x": 48,
+          "y": 130,
+          "width": 420,
+          "height": 52,
+          "content": "Morph",
+          "style": { "fontFamily": "Inter", "fontSize": 40, "color": "#18181B" }
+        },
+        {
+          "id": "s1-card",
+          "name": "Card",
+          "type": "rect",
+          "x": 48,
+          "y": 210,
+          "width": 240,
+          "height": 96,
+          "fills": [{ "type": "solid", "color": "#3B82F6" }]
+        },
+        {
+          "id": "s1-image",
+          "name": "Image",
+          "type": "rect",
+          "x": 320,
+          "y": 210,
+          "width": 240,
+          "height": 96,
+          "fills": [{ "type": "solid", "color": "#F43F5E" }]
+        },
+        {
+          "id": "s1-badge",
+          "name": "Badge",
+          "type": "rect",
+          "x": 400,
+          "y": 320,
+          "width": 180,
+          "height": 24,
+          "fills": [{ "type": "solid", "color": "#E4E4E7" }]
+        },
+        {
+          "id": "s1-panel",
+          "name": "Panel",
+          "type": "frame",
+          "x": 48,
+          "y": 320,
+          "width": 180,
+          "height": 24,
+          "fills": [{ "type": "solid", "color": "#D4D4D8" }],
+          "children": [
+            { "id": "s1-dot", "name": "Dot", "type": "ellipse", "x": 8, "y": 6, "width": 12, "height": 12, "fills": [{ "type": "solid", "color": "#18181B" }] }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "s2",
+      "name": "Slide 2",
+      "type": "frame",
+      "x": 800,
+      "y": 120,
+      "width": 640,
+      "height": 360,
+      "fills": [{ "type": "solid", "color": "#F4F4F5" }],
+      "children": [
+        {
+          "id": "s2-headline",
+          "name": "Headline",
+          "type": "text",
+          "x": 48,
+          "y": 40,
+          "width": 420,
+          "height": 52,
+          "content": "Morph",
+          "style": { "fontFamily": "Inter", "fontSize": 40, "color": "#18181B" }
+        },
+        {
+          "id": "s2-card",
+          "name": "Card",
+          "type": "rect",
+          "x": 150,
+          "y": 130,
+          "width": 420,
+          "height": 180,
+          "fills": [{ "type": "solid", "color": "#3B82F6" }]
+        },
+        {
+          "id": "s2-note",
+          "name": "Note",
+          "type": "rect",
+          "x": 48,
+          "y": 328,
+          "width": 300,
+          "height": 8,
+          "fills": [{ "type": "solid", "color": "#A1A1AA" }]
+        },
+        {
+          "id": "s2-image",
+          "name": "Image",
+          "type": "ellipse",
+          "x": 380,
+          "y": 312,
+          "width": 200,
+          "height": 44,
+          "opacity": 0.55,
+          "fills": [{ "type": "solid", "color": "#F43F5E" }]
+        },
+        {
+          "id": "s2-panel",
+          "name": "Panel",
+          "type": "frame",
+          "x": 496,
+          "y": 130,
+          "width": 96,
+          "height": 180,
+          "fills": [{ "type": "solid", "color": "#D4D4D8" }],
+          "children": [
+            { "id": "s2-dot", "name": "Dot", "type": "ellipse", "x": 40, "y": 84, "width": 12, "height": 12, "fills": [{ "type": "solid", "color": "#18181B" }] }
+          ]
+        }
+      ]
+    }
+  ]
+}

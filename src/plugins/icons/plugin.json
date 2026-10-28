@@ -1,0 +1,17 @@
+{
+  "id": "fish.icons",
+  "name": "Icon Explorer",
+  "description": "Search & insert 24×24 Lucide and Remix vector icons",
+  "category": "asset",
+  "icon": "icons",
+  "version": "1.0.0",
+  "hostApi": "1",
+  "width": 320,
+  "height": 480,
+  "minHeight": 280,
+  "resize": "vertical",
+  "attribution": [
+    { "name": "Lucide", "url": "https://lucide.dev" },
+    { "name": "Remix Icon", "url": "https://remixicon.com" }
+  ]
+}

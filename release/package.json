@@ -1,0 +1,8 @@
+{
+  "name": "fish-release",
+  "private": true,
+  "description": "Deployment-only dependency for the FISH update origin. Not part of the app build.",
+  "devDependencies": {
+    "wrangler": "4.152.0"
+  }
+}
