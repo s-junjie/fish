@@ -106,7 +106,7 @@ const outDir = path.resolve(root, opts.out);
 fs.rmSync(outDir, { recursive: true, force: true });
 fs.mkdirSync(outDir, { recursive: true });
 
-const carried = opts.carryFrom === "off" ? { files: 0, note: "carry disabled" } : await carry(outDir, opts.carryFrom.replace(/\/+$/, ""));
+let carried = { files: 0, note: "carry not run" };
 
 function walk(dir) {
   const files = [];
@@ -161,9 +161,12 @@ function assertSignatureKey() {
 }
 
 if (opts.promote) {
+  if (opts.carryFrom !== "off") {
+    carried = await carry(outDir, opts.carryFrom.replace(/\/+$/, ""));
+  }
   promote(opts.promote);
 } else {
-  release();
+  await release();
 }
 
 function promote(version) {
@@ -190,7 +193,7 @@ function promote(version) {
   finish(version, { mode: "promote" });
 }
 
-function release() {
+async function release() {
   const version = opts.version || pkg.version;
   if (version !== pkg.version) {
     fail(`--version ${version} does not match package.json ${pkg.version} — the package is the single source`);
@@ -230,6 +233,10 @@ function release() {
   writePointer(STABLE_MANIFEST, Buffer.from(manifestText));
   writePointer(STABLE_SHELL, bytes);
 
+  if (opts.carryFrom !== "off") {
+    carried = await carry(outDir, opts.carryFrom.replace(/\/+$/, ""));
+  }
+
   finish(version, { mode: "release", plugins: plugins.length, kitBytes: kitBytes.length });
 }
 
@@ -246,9 +253,10 @@ function finish(version, extra) {
 }
 
 async function carry(dir, from) {
+  const headers = { "User-Agent": "Mozilla/5.0 (compatible; FishReleaseAssembler/0.1.0)" };
   let response;
   try {
-    response = await fetch(`${from}/${SUMS_PATH}`, { cache: "no-store" });
+    response = await fetch(`${from}/${SUMS_PATH}`, { cache: "no-store", headers });
   } catch (error) {
     return { files: 0, note: `origin not reachable (${error.message}) — initial release` };
   }
@@ -273,11 +281,14 @@ async function carry(dir, from) {
       if (fs.existsSync(target)) continue;
       let res;
       for (let attempt = 1; attempt <= 3; attempt++) {
-        res = await fetch(`${from}/${entry.path}`, { cache: "no-store" });
+        res = await fetch(`${from}/${entry.path}`, { cache: "no-store", headers });
         if (res.ok) break;
         if (attempt < 3) await new Promise((r) => setTimeout(r, 1000));
       }
-      if (!res.ok) fail(`carrying ${entry.path}: ${res.status}`);
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => "");
+        fail(`carrying ${entry.path}: ${res.status} ${errBody.slice(0, 200)}`);
+      }
       const bytes = Buffer.from(await res.arrayBuffer());
       if (sha256(bytes) !== entry.hash) fail(`carrying ${entry.path}: hash does not match sha256sums.txt`);
       fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -286,6 +297,6 @@ async function carry(dir, from) {
     }
   }
 
-  await Promise.all(Array.from({ length: Math.min(4, Math.max(1, entries.length)) }, worker));
+  await Promise.all(Array.from({ length: Math.min(2, Math.max(1, entries.length)) }, worker));
   return { files };
 }

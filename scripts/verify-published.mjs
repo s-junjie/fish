@@ -242,7 +242,9 @@ async function verifyOrigin(base) {
   });
 
   await check("_headers is not served", async () => {
-    const response = await fetch(`${base}/${HEADERS_PATH}`);
+    const response = await fetch(`${base}/${HEADERS_PATH}`, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; FishReleaseVerifier/0.1.0)" }
+    });
     expect(response.status === 404, `origin answers ${response.status} for /${HEADERS_PATH}`);
     return "404";
   });
@@ -268,7 +270,10 @@ async function fetchSums(base) {
 }
 
 async function fetchChecked(url, { label, contentType, cache }) {
-  const response = await fetch(url, { cache: "no-store" });
+  const response = await fetch(url, {
+    cache: "no-store",
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; FishReleaseVerifier/0.1.0)" }
+  });
   expect(response.ok, `${label} answered ${response.status}`);
   requireHeader(response, "access-control-allow-origin", (value) => value === "*", label);
   if (contentType) requireHeader(response, "content-type", contentType, label);
