@@ -256,7 +256,11 @@ async function carry(dir, from) {
   if (!response.ok) fail(`${from}/${SUMS_PATH} answered ${response.status}`);
 
   const entries = parseSums(await response.text()).filter(
-    (entry) => entry.path !== SUMS_PATH && entry.path !== HEADERS_PATH && !entry.path.startsWith("stable/")
+    (entry) =>
+      entry.path !== SUMS_PATH &&
+      entry.path !== HEADERS_PATH &&
+      entry.path !== CATALOG_PATH &&
+      !entry.path.startsWith("stable/")
   );
   let files = 0;
   let next = 0;
@@ -267,7 +271,12 @@ async function carry(dir, from) {
       assertSafeRelative(entry.path);
       const target = path.join(dir, entry.path);
       if (fs.existsSync(target)) continue;
-      const res = await fetch(`${from}/${entry.path}`, { cache: "no-store" });
+      let res;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        res = await fetch(`${from}/${entry.path}`, { cache: "no-store" });
+        if (res.ok) break;
+        if (attempt < 3) await new Promise((r) => setTimeout(r, 1000));
+      }
       if (!res.ok) fail(`carrying ${entry.path}: ${res.status}`);
       const bytes = Buffer.from(await res.arrayBuffer());
       if (sha256(bytes) !== entry.hash) fail(`carrying ${entry.path}: hash does not match sha256sums.txt`);

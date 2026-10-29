@@ -134,7 +134,7 @@ jobs:
         run: |
           # A fresh custom domain can answer 404/522 for a few seconds after the
           # upload returns, so retry the same read the client will make.
-          for attempt in 1 2 3 4 5; do
+          for attempt in 1 2 3 4 5 6 7 8; do
             if npm run --silent release:verify -- \
               --base "${ORIGIN}" \
               --expect-version "${{ steps.version.outputs.value }}"; then
