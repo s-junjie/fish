@@ -27,7 +27,13 @@ export type AutosaveStatus =
   | { kind: "local-saving" }
   | { kind: "local-saved"; at: string }
   | { kind: "file-writing" }
-  | { kind: "file-saved"; at: string }
+  /**
+   * `doc` is the document whose content the file now holds — the one captured
+   * when the flush began, not `getDoc()` at the moment this is observed. The
+   * two differ whenever the user kept typing during the write, and reporting
+   * the newer one would let the unload guard call unsaved work saved.
+   */
+  | { kind: "file-saved"; at: string; doc: DesignDocument }
   | { kind: "file-unavailable"; reason: string }
   | { kind: "error"; message: string };
 
@@ -234,11 +240,28 @@ export class AutosaveController {
     await this.flush();
   }
 
+  /**
+   * Whether anything is still owed to the stores: a debounce holding an edit,
+   * or a flush that has not finished. Read by the unload guard, which has to
+   * answer "would closing now lose work" without hashing the document.
+   */
+  hasPendingWork(): boolean {
+    return this.flushing || this.flushQueued || this.idleTimer !== null || this.maxTimer !== null;
+  }
+
   isWritebackEnabled(): boolean {
     return this.writebackEnabled;
   }
 
+  /**
+   * `pagehide` is the last moment this document exists, and the flush it starts
+   * is a chain of awaits the browser may cut off at any point — so it is worth
+   * starting only when there is something to write. A navigation away from a
+   * session that just flushed used to serialize the document a second time for
+   * bytes the store already held.
+   */
   private onUnload = (): void => {
+    if (!this.hasPendingWork()) return;
     void this.flush();
   };
 
@@ -345,7 +368,7 @@ export class AutosaveController {
         const res = await writeBackFile(this.opts.getWritebackDoc?.() ?? doc);
         if (res.ok) {
           if (res.payloadHash) await this.anchorToFile(res.payloadHash);
-          this.emit({ kind: "file-saved", at });
+          this.emit({ kind: "file-saved", at, doc });
         } else {
           this.emit({ kind: "file-unavailable", reason: res.reason ?? "unknown" });
         }
@@ -488,8 +511,13 @@ export class AutosaveController {
       rec.sizeBytes = estimateSize(rec);
       await this.opts.assets.acquire(hashes);
       await this.timeline.put(rec);
-      await applyRetention(this.timeline, this.opts.assets, docKey, this.policy);
-      await this.notifyTimeline(docKey);
+      // One read of the history for the three questions a commit asks of it:
+      // whether the merge window applies, what retention would drop, and what
+      // the panel should show. Each used to re-read the same rows.
+      const withNew = [rec, ...versions];
+      const removed = await applyRetention(this.timeline, this.opts.assets, docKey, this.policy, withNew);
+      const dropped = new Set(removed);
+      this.notifyVersions(withNew.filter((v) => !dropped.has(v.id)));
     } catch (e) {
       this.emit({ kind: "error", message: e instanceof Error ? e.message : String(e) });
     }
@@ -628,11 +656,15 @@ export class AutosaveController {
     return saveDocAsNewFile(doc, name, undefined, { freshFileId: true });
   }
 
+  private notifyVersions(versions: VersionRecord[]): void {
+    this.opts.onTimeline?.(versions.map(toSummary));
+  }
+
   private async notifyTimeline(docKey: string): Promise<void> {
     if (!this.opts.onTimeline) return;
     const versions = await this.timeline?.list(docKey);
     if (!versions) return;
-    this.opts.onTimeline(versions.map(toSummary));
+    this.notifyVersions(versions);
   }
 }
 

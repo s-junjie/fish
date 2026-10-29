@@ -7,6 +7,7 @@ import { componentSwapOptions, swapNestedInstance } from "../../core/interaction
 import {
   findComponentSet,
   findVariantMember,
+  variantHoles,
   variantOptionsFor
 } from "../../core/interactions/component-inventory";
 import { resolveInstanceSelection } from "../../core/interactions/instance-resolve";
@@ -15,6 +16,7 @@ import { InstanceVariantSection } from "./InstanceVariantSection";
 import { Section } from "./SectionHeader";
 import { InstanceMark } from "../ComponentMark";
 import { TokenTag } from "../TokenTag";
+import { overrideLabel } from "./override-label";
 import { t } from "../../i18n";
 import { RotateCcw, ExternalLink } from "lucide-react";
 import { Button } from "../Button";
@@ -32,11 +34,6 @@ interface InstanceChildSectionProps {
 }
 
 /** The tag on an overridden property. Falls back to the stored key when unnamed. */
-function overrideLabel(property: ComponentOverride["property"]): string {
-  const key = `component.overrideLabel.${property}`;
-  const label = t(key);
-  return label === key ? property : label;
-}
 
 export function InstanceChildSection({
   primarySelected,
@@ -51,11 +48,20 @@ export function InstanceChildSection({
 
   const node = primarySelected;
   const overrides = (sel.instance.overrides || []).filter((o) => o.targetId === sel.masterNodeId);
+  const nestedInstance = sel.overridable && node.type === "instance" ? (node as InstanceElement) : null;
 
+  /**
+   * The master this click is ABOUT. A selected nested instance is an instance of
+   * its own master — the button sits on its row — so the target is that master,
+   * not the outer instance's. Leading to the outer card was the whole bug: the
+   * one control that says "go to main" went somewhere else than the definition
+   * the panel was describing.
+   */
   const goToMain = () => {
     // Same page caveat as ComponentSection: a master can live elsewhere.
-    if (onLocateComponent) onLocateComponent(sel.master.id);
-    else setSelectedIds(new Set([sel.master.id]));
+    const targetId = nestedInstance ? nestedInstance.componentId : sel.master.id;
+    if (onLocateComponent) onLocateComponent(targetId);
+    else setSelectedIds(new Set([targetId]));
   };
 
   const resetNode = () => {
@@ -73,9 +79,8 @@ export function InstanceChildSection({
     if (next) onCommitSnapshot(next);
   };
 
-  const nestedInstance = sel.overridable && node.type === "instance" ? (node as InstanceElement) : null;
   const swapOptions = nestedInstance
-    ? componentSwapOptions(docRef.current, t("component.defaultVariantLabel"), node.id)
+    ? componentSwapOptions(docRef.current, node.id)
     : [];
   const swapNested = (nextComponentId: string) => {
     const next = swapNestedInstance(docRef.current, node.id, nextComponentId);
@@ -95,7 +100,8 @@ export function InstanceChildSection({
   const variantRows = (set?.properties ?? []).map((p) => ({
     property: p.property,
     value: currentVariant[p.property] ?? p.values[0] ?? "",
-    options: variantOptionsFor(set!, p.property, currentVariant)
+    options: variantOptionsFor(set!, p.property, currentVariant),
+    holes: variantHoles(set!, p.property, currentVariant)
   }));
   const setVariant = (property: string, value: string) => {
     if (!set) return;
@@ -111,13 +117,13 @@ export function InstanceChildSection({
 
   return (
     <div className="space-y-2 pt-2" data-testid="instance-child-section">
-      <div className="flex items-center justify-between min-w-0">
-        <div className="flex items-center gap-1.5 min-w-0">
+      <div className="flex items-center justify-between gap-1.5 min-w-0">
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
           <InstanceMark size={13} className="shrink-0 text-component" />
-          <span className="text-row text-ink truncate font-medium">
+          <span className="text-row text-ink truncate font-medium min-w-0">
             {sel.instance.name || t("component.instance")}
           </span>
-          <span className="text-meta text-ink-dim truncate">
+          <span className="text-meta text-ink-dim truncate min-w-0">
             · {node.name || node.type}
           </span>
         </div>

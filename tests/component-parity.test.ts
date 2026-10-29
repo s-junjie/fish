@@ -1340,7 +1340,7 @@ describe("a swap never points an instance at its own family", () => {
   });
 
   it("hands the control the refusals as disabled options", () => {
-    const options = componentSwapOptions(doc(), "base", "inst");
+    const options = componentSwapOptions(doc(), "inst");
     const byId = Object.fromEntries(options.map((o) => [o.id, o]));
     expect(byId.shell.disabled).toBe(true);
     expect(byId.shell.refusal).toBe("same-component");
@@ -1348,7 +1348,7 @@ describe("a swap never points an instance at its own family", () => {
     expect(byId.icon_a.disabled).toBe(true);
     expect(byId.unrelated.disabled).toBeUndefined();
     // Without a node, the list is what it always was — every component.
-    expect(componentSwapOptions(doc(), "base").every((o) => !o.disabled)).toBe(true);
+    expect(componentSwapOptions(doc()).every((o) => !o.disabled)).toBe(true);
   });
 });
 

@@ -15,9 +15,9 @@ import { CommentPopover } from "./CommentPopover";
 import { CommentPortal } from "./comment-portal";
 import { CommentComposer } from "../comments/CommentComposer";
 
-const POPOVER_WIDTH = 288;
-/** Half of the 24px pin, so a pin is centred on its point. */
-const PIN_RADIUS = 12;
+const POPOVER_WIDTH = 360;
+/** Pin size in px (w-7 h-7 = 28px). The 2px bottom-left beak corner sits at (0, 28). */
+const PIN_SIZE = 28;
 
 /** Sub-pixel noise must not re-render the whole overlay. */
 function samePx(a: number, b: number): boolean {
@@ -43,6 +43,8 @@ export interface CommentsOverlayProps {
   setActiveThreadId?: (id: string | null) => void;
   /** Live document: the popover reads the suggestion's real property diff. */
   docRef?: { current: DesignDocument };
+  /** Puts an applied copy of the suggestion on the canvas, or takes it off. */
+  onSetPreview?: (doc: DesignDocument | null) => void;
   /** Hide-UI mode (Tab): pins are chrome, and the canvas becomes the artwork. */
   hidden?: boolean;
 }
@@ -71,7 +73,8 @@ export function CommentsOverlay({
   activeThreadId: propsActiveThreadId,
   setActiveThreadId: propsSetActiveThreadId,
   docRef,
-  hidden = false
+  hidden = false,
+  onSetPreview
 }: CommentsOverlayProps) {
   const [internalActiveThreadId, setInternalActiveThreadId] = useState<string | null>(null);
   const [internalDraftTarget, setInternalDraftTarget] = useState<CommentTarget | null>(null);
@@ -307,21 +310,25 @@ export function CommentsOverlay({
         const isDragging = drag?.threadId === thread.id;
         const x = isDragging ? drag.clientX - origin.left : screenPt.x;
         const y = isDragging ? drag.clientY - origin.top : screenPt.y;
-        // Solid amber marks the active editing pin and proposals awaiting a decision;
-        // other live conversations wear the panel chip outlined in amber.
-        const face = isSelected || isSuggested
+        /* Solid brand marks what is in hand — the pin being edited and a proposal
+           awaiting a decision; a resting conversation is the same chip outlined. */
+        const isSolid = !isResolved && (isSelected || isSuggested);
+        const face = isSolid
           ? "bg-brand text-brand-ink"
           : isResolved
-          ? "bg-raised border border-rule text-ink-dim"
-          : "bg-panel border border-brand text-ink";
+          ? "bg-raised text-ink-muted border border-rule"
+          : "bg-surface text-ink border-2 border-brand";
+        const selectedRing = isSelected
+          ? "ring-2 ring-brand ring-offset-1 ring-offset-surface"
+          : "";
 
         return (
           <button
             key={thread.id}
             type="button"
             data-comment-pin={thread.id}
-            style={{ transform: `translate3d(${x - PIN_RADIUS}px, ${y - PIN_RADIUS}px, 0)` }}
-            className={`absolute left-0 top-0 p-0 bg-transparent border-0 ${
+            style={{ transform: `translate3d(${x}px, ${y - PIN_SIZE}px, 0)` }}
+            className={`absolute left-0 top-0 p-0 bg-transparent border-0 select-none ${
               isDragging ? "pointer-events-none cursor-grabbing z-40" : "pointer-events-auto cursor-grab"
             }`}
             aria-label={t("comments.pinLabel", { n: index + 1 })}
@@ -333,21 +340,22 @@ export function CommentsOverlay({
               setActiveThreadId(isSelected ? null : thread.id);
             }}
           >
-            <span
-              className={`w-6 h-6 rounded-full flex items-center justify-center font-mono text-row ${DARK_RING_CLASS} transition-colors ${
-                isSelected ? "ring-2 ring-brand ring-offset-1 ring-offset-surface" : ""
-              } ${face}`}
+            <div
+              style={{ borderRadius: "14px 14px 14px 2px", transformOrigin: `0 ${PIN_SIZE}px` }}
+              className={`w-7 h-7 flex items-center justify-center select-none transition-transform ${DARK_RING_CLASS} ${
+                isSelected ? "scale-110" : ""
+              } ${selectedRing} ${face}`}
             >
               {isSuggested ? (
-                <Sparkles size={12} />
+                <Sparkles size={12} className={isSolid ? "text-brand-ink" : "text-brand"} />
               ) : isResolved ? (
-                <Check size={12} />
+                <Check size={12} className="text-ink-muted" />
               ) : point.isOrphan ? (
-                <AlertCircle size={12} className="text-measure-coral" />
+                <AlertCircle size={12} className={isSolid ? "text-brand-ink" : "text-measure-coral"} />
               ) : (
-                <span>{index + 1}</span>
+                <span className="font-mono text-meta font-medium select-none">{index + 1}</span>
               )}
-            </span>
+            </div>
           </button>
         );
       })}
@@ -364,7 +372,7 @@ export function CommentsOverlay({
               width: `${box.width * viewport.zoom}px`,
               height: `${box.height * viewport.zoom}px`
             }}
-            className="absolute left-0 top-0 border border-brand bg-brand-wash rounded-sm pointer-events-none"
+            className="absolute left-0 top-0 border-2 border-canvas-select rounded-sm pointer-events-none"
           />
         );
       })()}
@@ -374,6 +382,7 @@ export function CommentsOverlay({
           <CommentPopover
             thread={activeThread}
             docRef={docRef}
+            onSetPreview={onSetPreview}
             isOrphan={resolveCommentCanvasPoint(activeThread.target, findElement).isOrphan}
             onReply={onReplyComment}
             onResolve={(id) => {
@@ -397,15 +406,13 @@ export function CommentsOverlay({
           <div
             data-comment-draft-pin="true"
             style={{
-              transform: `translate3d(${draftPoint.x - PIN_RADIUS}px, ${draftPoint.y - PIN_RADIUS}px, 0)`
+              transform: `translate3d(${draftPoint.x}px, ${draftPoint.y - PIN_SIZE}px, 0)`,
+              borderRadius: "14px 14px 14px 2px",
+              transformOrigin: `0 ${PIN_SIZE}px`
             }}
-            className="absolute left-0 top-0 pointer-events-none z-40"
+            className={`absolute left-0 top-0 w-7 h-7 flex items-center justify-center bg-surface text-brand border-2 border-brand ${DARK_RING_CLASS} pointer-events-none z-40 animate-pulse select-none`}
           >
-            <span
-              className={`w-6 h-6 rounded-full flex items-center justify-center ${DARK_RING_CLASS} bg-brand text-brand-ink ring-2 ring-brand animate-pulse`}
-            >
-              <MessageSquare size={12} />
-            </span>
+            <MessageSquare size={12} className="text-brand" />
           </div>
           <CommentPortal anchor={toWindowPoint(draftTarget)} width={POPOVER_WIDTH}>
             <CommentComposer

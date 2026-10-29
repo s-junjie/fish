@@ -25,6 +25,8 @@ import { getActiveNumberMode, getActiveTheme } from "./mode-ops";
 import { styleTables } from "./style-tables";
 import { layoutOf, withLayout } from "../dsl/layout-flat";
 
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
 
 function buildComponentWrapper(el: DesignElement): FrameElement {
   return {
@@ -309,6 +311,77 @@ export function hasAnythingToReset(inst: InstanceElement, master?: ComponentElem
     if ((inst as unknown as Record<string, unknown>)[key] !== undefined) return true;
   }
   return inst.sizing !== undefined && !deepEqual(inst.sizing, master?.sizing);
+}
+
+/**
+ * The instance's own fields that differ from its master — what "this instance is
+ * not just its master" is made of, one entry per thing a user can give back.
+ *
+ * `sizing` is the only entry that cannot be answered by presence: it is copied
+ * from the master at creation, so it counts only when it DIFFERS. `size` and
+ * `instanceScale` are the two that move the box rather than a style, and each is
+ * a separate tag because giving back a hand-resized box is not giving back a
+ * scale.
+ */
+export type InstanceOwnField = "size" | "instanceScale" | (typeof RESET_KEYS)[number];
+
+export function instanceOwnFields(inst: InstanceElement, master?: ComponentElement): InstanceOwnField[] {
+  const out: InstanceOwnField[] = [];
+  if (inst.sizeOverride === true) out.push("size");
+  for (const key of RESET_KEYS) {
+    if (key === "sizing") continue;
+    if ((inst as unknown as Record<string, unknown>)[key] !== undefined) out.push(key);
+  }
+  if (inst.sizing !== undefined && !deepEqual(inst.sizing, master?.sizing)) out.push("sizing");
+  return out;
+}
+
+/**
+ * Gives ONE of those fields back to the master.
+ *
+ * The all-or-nothing Reset is the wrong answer to "keep my copy change but drop
+ * the fill I tried" — the same argument that put per-property tags on an instance
+ * child. Reset stays the one-click escape; this is the scalpel.
+ */
+export function resetInstanceField(
+  doc: DesignDocument,
+  instanceId: string,
+  field: InstanceOwnField
+): DesignDocument | null {
+  const target = findElementById(getActivePage(doc).children, instanceId);
+  if (!target || target.type !== "instance") return null;
+  const inst = target as InstanceElement;
+  const master = findMasterComponent(doc, inst.componentId) ?? undefined;
+  if (!instanceOwnFields(inst, master).includes(field)) return null;
+
+  const nextInst: InstanceElement = { ...inst };
+  if (field === "size") {
+    // The hand-set box goes; a scale the user also applied STAYS, and the box it
+    // produces is master × factor. Clearing both here meant one tag on the panel
+    // undid two different edits.
+    delete nextInst.sizeOverride;
+    if (master) {
+      const scale = instanceScaleOf(inst);
+      nextInst.width = round2(master.width * scale.x);
+      nextInst.height = round2(master.height * scale.y);
+    }
+  } else if (field === "instanceScale") {
+    // The factor goes; a hand-set box is still the user's, so only an instance
+    // that was tracking its master takes the master's size back.
+    delete (nextInst as { instanceScale?: unknown }).instanceScale;
+    if (master && nextInst.sizeOverride !== true) {
+      nextInst.width = master.width;
+      nextInst.height = master.height;
+    }
+  } else {
+    delete (nextInst as unknown as Record<string, unknown>)[field];
+  }
+
+  const next = updateActivePageElements(
+    doc,
+    mapElements(getActivePage(doc).children, (el) => (el.id === instanceId ? nextInst : el))
+  );
+  return { ...next, updatedAt: new Date().toISOString() };
 }
 
 /**

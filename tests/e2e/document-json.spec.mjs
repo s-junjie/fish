@@ -136,15 +136,14 @@ const rows = await page.evaluate(() => {
   return {
     exportRow: pick("[data-title-bar-export-json]"),
     importRow: pick("[data-title-bar-import-json]"),
-    compact: pick("[data-title-bar-copy-compact-json]"),
     history: pick("[data-title-bar-history]")
   };
 });
-check("the menu carries export, import, compact and history", Object.values(rows).every(Boolean), JSON.stringify(rows));
+check("the menu carries export, import and history", Object.values(rows).every(Boolean), JSON.stringify(rows));
 check("each is a 26px menu row", Object.values(rows).every((r) => r && Math.abs(r.height - 26) < 0.5), JSON.stringify(Object.entries(rows).map(([k, r]) => `${k}:${r?.height}`)));
 check("each is the topmost thing at its own centre", Object.values(rows).every((r) => r?.hit));
 
-// The three transport rows are one section; Version History is the last row,
+// The two transport rows are one section; Version History is the last row,
 // alone. Asserted by position because the separation IS the meaning.
 const grouping = await page.evaluate(() => {
   const menu = document.querySelector("[data-title-bar-new-file]")?.closest("div.flex.flex-col");
@@ -156,21 +155,19 @@ const grouping = await page.evaluate(() => {
     save: at("[data-title-bar-save-as]"),
     exportRow: at("[data-title-bar-export-json]"),
     importRow: at("[data-title-bar-import-json]"),
-    compact: at("[data-title-bar-copy-compact-json]"),
     history: at("[data-title-bar-history]"),
     last: rows.length - 1,
     rules
   };
 });
 check(
-  "export, import and compact are one unbroken section, bracketed by rules",
+  "export and import are one unbroken section, bracketed by rules",
   grouping !== null &&
     grouping.save < grouping.exportRow &&
     grouping.exportRow < grouping.importRow &&
-    grouping.importRow < grouping.compact &&
-    !grouping.rules.some((r) => r > grouping.exportRow && r < grouping.compact) &&
+    !grouping.rules.some((r) => r > grouping.exportRow && r < grouping.importRow) &&
     grouping.rules.some((r) => r > grouping.save && r < grouping.exportRow) &&
-    grouping.rules.some((r) => r > grouping.compact && r < grouping.history),
+    grouping.rules.some((r) => r > grouping.importRow && r < grouping.history),
   JSON.stringify(grouping)
 );
 check("Version History is the last row, after the rule", grouping !== null && grouping.history === grouping.last && grouping.history > grouping.rules[grouping.rules.length - 1], JSON.stringify(grouping));
@@ -191,25 +188,6 @@ try {
 check("what it wrote parses as JSON", fullDoc !== null);
 check("it carries this tab's element", fullDoc?.pages?.some((p) => p.children?.some((e) => e.name === "Before")) === true);
 check("and it is pretty-printed, like a #design-doc block", (exported?.written ?? "").includes("\n  "), (exported?.written ?? "").slice(0, 40).replace(/\n/g, "\\n"));
-
-// --------------------------------------------------------------- copy compact
-await page.click("[data-autosave-status]");
-await idle();
-await page.click("[data-title-bar-copy-compact-json]");
-await idle();
-const compact = await readClipboard();
-check("Copy compact JSON puts something on the clipboard", compact.length > 0, `${compact.length} bytes`);
-
-let compactDoc = null;
-try {
-  compactDoc = JSON.parse(compact);
-} catch {
-  compactDoc = null;
-}
-check("the compact form parses as a document too", compactDoc !== null);
-check("it still carries this tab's element — compact is not a summary", compactDoc?.pages?.some((p) => p.children?.some((e) => e.name === "Before")) === true);
-check("it omits a document-level elements array", compactDoc !== null && !("elements" in compactDoc), Object.keys(compactDoc ?? {}).join(","));
-check("and it is materially smaller than the export", compact.length < (exported?.written ?? "").length, `${(exported?.written ?? "").length} → ${compact.length} bytes`);
 
 // --------------------------------------------------------------- the dialog
 // A cancelled picker is not an error and must not open anything.

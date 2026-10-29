@@ -109,9 +109,10 @@ describe("autosave write-back", () => {
       queryPermission: async () => "granted",
       requestPermission: async () => "granted",
       getFile: async () => ({ text: async () => "<html>PREVIOUS</html>" }),
+      // A Blob is what the writer hands the stream; read it like the file would.
       createWritable: async () => ({
-        write: (s: string) => {
-          captured = s;
+        write: async (data: string | Blob) => {
+          captured = typeof data === "string" ? data : await data.text();
         },
         close: async () => undefined
       })

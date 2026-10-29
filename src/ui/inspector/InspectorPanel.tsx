@@ -204,6 +204,14 @@ function InspectorPanelBase({
   // belong to the master, so only the override-capable sections may render.
   const isInstanceChild = Boolean(primarySelected?.__instanceId);
 
+  // A component SET is a dashed frame fitted around its members: it paints no
+  // fill, stroke or shadow, and its box is rewritten by `fitComponentSet` on
+  // every layout pass. Offering those controls made every edit a value the next
+  // pass dropped, which reads as a broken panel rather than as an inapplicable
+  // one. Its own panel is the matrix, plus the spacing between members and the
+  // position of the frame itself.
+  const isComponentSet = primarySelected?.type === "componentSet";
+
   // An instance DISPLAYS its master's fields wherever it does not set its own
   // (fills / strokes / effects / borderRadius). Panels must show what the canvas
   // paints: reading `inst.fills` directly is how the panel came to say "no fill"
@@ -727,7 +735,7 @@ function InspectorPanelBase({
                 selectedElements={selectedElements}
                 doc={doc}
                 docRef={docRef}
-                showSize={!editingPathElement && !isScaleToolActive}
+                showSize={!editingPathElement && !isScaleToolActive && !isComponentSet}
                 multiBounds={multiBounds}
                 onMutate={onMutate}
                 onCommitSnapshot={onCommitSnapshot}
@@ -742,51 +750,59 @@ function InspectorPanelBase({
                 is edited on disappeared exactly inside the component that has
                 corners. A path in edit mode still hides them — a corner belongs
                 to a box, and an edited path is not one. */}
-              <AppearanceSection
-                elements={selectedElements}
-                primarySelected={displaySelected}
-                doc={doc}
-                docRef={docRef}
-                showCorners={!editingPathElement}
-                is4Corners={is4Corners}
-                onToggle4Corners={onToggle4Corners}
-                onMutate={onMutate}
-                onCommitSnapshot={onCommitSnapshot}
-                onDragStart={onDragStart}
-                onDragEnd={onDragEnd}
-              />
+              {!isComponentSet && (
+                <AppearanceSection
+                  elements={selectedElements}
+                  primarySelected={displaySelected}
+                  doc={doc}
+                  docRef={docRef}
+                  showCorners={!editingPathElement}
+                  is4Corners={is4Corners}
+                  onToggle4Corners={onToggle4Corners}
+                  onMutate={onMutate}
+                  onCommitSnapshot={onCommitSnapshot}
+                  onDragStart={onDragStart}
+                  onDragEnd={onDragEnd}
+                />
+              )}
 
-              <FillSection
-                elements={selectedElements}
-                primarySelected={displaySelected}
-                activeSelection={activeTextSelection}
-                docRef={docRef}
-                onMutate={onMutate}
-                onCommitSnapshot={onCommitSnapshot}
-                onDragStart={onDragStart}
-                onDragEnd={onDragEnd}
-                onHint={onHint}
-              />
+              {!isComponentSet && (
+                <FillSection
+                  elements={selectedElements}
+                  primarySelected={displaySelected}
+                  activeSelection={activeTextSelection}
+                  docRef={docRef}
+                  onMutate={onMutate}
+                  onCommitSnapshot={onCommitSnapshot}
+                  onDragStart={onDragStart}
+                  onDragEnd={onDragEnd}
+                  onHint={onHint}
+                />
+              )}
 
-              <StrokeSection
-                elements={selectedElements}
-                primarySelected={displaySelected}
-                docRef={docRef}
-                onMutate={onMutate}
-                onCommitSnapshot={onCommitSnapshot}
-                onDragStart={onDragStart}
-                onDragEnd={onDragEnd}
-              />
+              {!isComponentSet && (
+                <StrokeSection
+                  elements={selectedElements}
+                  primarySelected={displaySelected}
+                  docRef={docRef}
+                  onMutate={onMutate}
+                  onCommitSnapshot={onCommitSnapshot}
+                  onDragStart={onDragStart}
+                  onDragEnd={onDragEnd}
+                />
+              )}
 
-              <EffectsSection
-                elements={selectedElements}
-                primarySelected={displaySelected}
-                docRef={docRef}
-                onMutate={onMutate}
-                onCommitSnapshot={onCommitSnapshot}
-                onDragStart={onDragStart}
-                onDragEnd={onDragEnd}
-              />
+              {!isComponentSet && (
+                <EffectsSection
+                  elements={selectedElements}
+                  primarySelected={displaySelected}
+                  docRef={docRef}
+                  onMutate={onMutate}
+                  onCommitSnapshot={onCommitSnapshot}
+                  onDragStart={onDragStart}
+                  onDragEnd={onDragEnd}
+                />
+              )}
 
               {/* Below Effects. With one leaf layer the Fill section is already
                 showing that layer's colours, and a second copy of the same swatches
@@ -794,7 +810,7 @@ function InspectorPanelBase({
                 section reads the frame's own paint, and a frame usually has none, so
                 without this the colours of everything inside it were nowhere in the
                 panel while the selection was visibly several colours. */}
-              {(selectedElements.length > 1 || hasNestedColors) && (
+              {(selectedElements.length > 1 || hasNestedColors) && !isComponentSet && (
                 <SelectedColorsStrip
                   elements={selectedElements}
                   docRef={docRef}

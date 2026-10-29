@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "preact/hooks";
-import { ChevronDown, Check, Copy, Save, History, FileDown, FilePlus, FileUp, FileInput, Braces, AlertTriangle, ShieldCheck, RotateCcw } from "lucide-react";
+import { ChevronDown, Check, Copy, Save, History, FileDown, FilePlus, FileUp, FileInput, AlertTriangle, ShieldCheck, RotateCcw } from "lucide-react";
 import { t } from "../../i18n";
 import type { AutosaveStatus } from "../../core/persistence/autosave-controller";
 import { Button } from "../Button";
@@ -22,7 +22,6 @@ interface AutosaveBadgeProps {
   onNewFile: () => void;
   onOpenHistory: () => void;
   onExportJson: () => Promise<boolean>;
-  onCopyCompactJson: () => Promise<boolean>;
   onImportJson: () => void | Promise<unknown>;
   onImportFromFile: (file: File) => void;
   /** False without `showOpenFilePicker`, where the row opens a file input instead. */
@@ -87,7 +86,6 @@ export function AutosaveBadge(props: AutosaveBadgeProps) {
     onNewFile,
     onOpenHistory,
     onExportJson,
-    onCopyCompactJson,
     onImportJson,
     onImportFromFile,
     canUseFilePicker
@@ -159,11 +157,6 @@ export function AutosaveBadge(props: AutosaveBadgeProps) {
       })
     );
   }, [onExportJson]);
-
-  const handleCopyCompact = useCallback(() => {
-    setIsOpen(false);
-    void onCopyCompactJson();
-  }, [onCopyCompactJson]);
 
   const handleImportJson = useCallback(() => {
     closeAfter(() => {
@@ -383,7 +376,7 @@ export function AutosaveBadge(props: AutosaveBadgeProps) {
 
             <div className={MENU_SEPARATOR_CLASS} />
 
-            {/* One section: the three ways a document leaves or enters this tab.
+            {/* One section: the two ways a document leaves or enters this tab.
                 They are a set because they are the transport, not the file — what
                 they share is that none of them is "save", so grouping them apart
                 from Save / Save As is what keeps the destructive rows honest. */}
@@ -398,13 +391,6 @@ export function AutosaveBadge(props: AutosaveBadgeProps) {
               <div className={ROW_CLASS}>
                 <FileInput size={13} />
                 <span>{t("documentJson.importAction")}</span>
-              </div>
-            </button>
-
-            <button onClick={handleCopyCompact} data-title-bar-copy-compact-json="true" className={`${MENU_ITEM_CLASS} justify-between`}>
-              <div className={ROW_CLASS}>
-                <Braces size={13} />
-                <span>{t("documentJson.copyCompact")}</span>
               </div>
             </button>
 

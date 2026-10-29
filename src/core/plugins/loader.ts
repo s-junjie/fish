@@ -150,6 +150,17 @@ export async function installFromFile(file: Blob): Promise<InstalledRecord> {
   return installPlugin(await file.arrayBuffer());
 }
 
+/** Fetch a plugin bundle from a URL and install it through the exact same verification. */
+export async function installFromUrl(url: string, fetchImpl?: typeof globalThis.fetch): Promise<InstalledRecord> {
+  const doFetch = fetchImpl ?? globalThis.fetch;
+  const res = await doFetch(url);
+  if (!res.ok) {
+    throw new PluginRejected(`failed to download plugin from ${url} (status ${res.status})`, "shape");
+  }
+  const bytes = await res.arrayBuffer();
+  return installPlugin(bytes);
+}
+
 export async function uninstallPlugin(id: string): Promise<void> {
   modules.delete(id);
   await storage.delete(id);

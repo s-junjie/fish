@@ -1,4 +1,4 @@
-import { History, AlertTriangle, RefreshCw, X, Loader2, ImageOff } from "lucide-react";
+import { History, AlertTriangle, X, Loader2, ImageOff } from "lucide-react";
 import { useRef } from "preact/hooks";
 import { t } from "../i18n";
 import type { DesignDocument } from "../core/dsl/types";
@@ -27,11 +27,6 @@ interface AppNoticesProps {
    * toast rather than a hint that would be timed off its own text length.
    */
   busyMessage?: string | null;
-  /** A launch check found a newer shell. Announced once, then cleared by the shell. */
-  updateVersion: string | null;
-  /** Opens the updates panel — the notice's action has to go somewhere. */
-  onUpdateReview: () => void;
-  onUpdateDismiss: () => void;
   /** The panel being open IS history mode: this notice would be in its way. */
   historyOpen: boolean;
   /** Bitmaps an import could not read; the notice offers the folder that holds them. */
@@ -56,9 +51,6 @@ export function AppNotices(props: AppNoticesProps) {
     hintMessage,
     onHintDismiss,
     busyMessage,
-    updateVersion,
-    onUpdateReview,
-    onUpdateDismiss,
     historyOpen,
     pendingAssets,
     onAttachAssetFolder,
@@ -74,7 +66,6 @@ export function AppNotices(props: AppNoticesProps) {
     !loadFailed &&
     !hintMessage &&
     !busyMessage &&
-    !updateVersion &&
     !pendingAssets
   ) {
     return null;
@@ -183,28 +174,7 @@ export function AppNotices(props: AppNoticesProps) {
         </div>
       )}
 
-      {/* A newer shell exists. It is announced rather than applied: the update
-          replaces the runtime, not the document, and the user's next save is not
-          something a background check gets to spend. The notice is a button, not
-          a message, because the only useful response to "there is a new version"
-          is the thing that installs it. */}
-      {updateVersion && (
-        <div
-          data-update-notice="true"
-          className="pointer-events-auto font-sans bg-surface border border-rule-strong text-ink text-ui px-3 py-1.5 rounded-dock flex items-center gap-3 animate-pop-in"
-        >
-          <RefreshCw size={14} className="text-brand flex-none" />
-          <span>{t("updates.notice", { v: updateVersion })}</span>
-          <div className={ROW_TIGHT_CLASS}>
-            <Button variant="primary" size="text" onClick={onUpdateReview}>
-              {t("updates.review")}
-            </Button>
-            <Button variant="ghost" size="text" onClick={onUpdateDismiss}>
-              {t("common.close")}
-            </Button>
-          </div>
-        </div>
-      )}
+
 
       {/* Ephemeral toast / hint message (e.g. UI hidden notice, component messages) */}
       {hintMessage && (

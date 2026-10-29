@@ -1,11 +1,15 @@
 import { useState, useRef, useEffect } from "preact/hooks";
 import { createPortal } from "preact/compat";
-import { Search, Scissors, Sparkles, Image, Package, Upload, Aperture, Film } from "lucide-react";
+import { Search, Scissors, Sparkles, Image, Package, Upload, Aperture, Film, Download, Check } from "lucide-react";
 import { t } from "../../i18n";
-import { installPluginFile, removePlugin } from "../../core/plugins/store";
+import { installPluginFile, installPluginOnline, removePlugin } from "../../core/plugins/store";
+import { fetchPluginCatalog } from "../../core/plugins/catalog";
+import type { PluginManifest } from "../../core/plugins/manifest";
 import { ContextMenu } from "../context-menu/ContextMenu";
 import { usePluginList } from "../plugins/usePluginList";
 import { useDismiss } from "../hooks/useDismiss";
+import { Button } from "../Button";
+import { SUB_LABEL_CLASS } from "../label-tier";
 
 interface ResourcesPopoverProps {
   onClose: () => void;
@@ -18,6 +22,8 @@ interface Row {
   name: string;
   description: string;
   icon: string;
+  manifest: PluginManifest;
+  installed: boolean;
 }
 
 /** Presses on the menu are part of this popover, not a click-away from it. */
@@ -30,40 +36,66 @@ export function ResourcesPopover({ onClose, onOpenPlugin, anchorRef }: Resources
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [installing, setInstalling] = useState(false);
+  const [installingId, setInstallingId] = useState<string | null>(null);
+  const [remotePlugins, setRemotePlugins] = useState<PluginManifest[]>([]);
   const [menu, setMenu] = useState<{ x: number; y: number; id: string } | null>(null);
-  const catalog = usePluginList();
+  const pluginList = usePluginList();
 
   useDismiss(true, onClose, containerRef, anchorRef, [MENU_INSIDE]);
 
   useEffect(() => {
     inputRef.current?.focus();
+    let unmounted = false;
+    fetchPluginCatalog()
+      .then((cat) => {
+        if (!unmounted && Array.isArray(cat.plugins)) {
+          setRemotePlugins(cat.plugins);
+        }
+      })
+      .catch(() => {
+        // Offline or remote catalog unreachable; local installed plugins remain fully functional
+      });
+    return () => {
+      unmounted = true;
+    };
   }, []);
 
-  // Everything in this list is installed; this build knows of no others.
-  const rows: Row[] = catalog.items.map((manifest) => ({
+  const installedMap = new Map<string, PluginManifest>(pluginList.items.map((m) => [m.id, m]));
+
+  const installedRows: Row[] = pluginList.items.map((manifest) => ({
     id: manifest.id,
     name: manifest.name,
     description: manifest.description,
-    icon: manifest.icon as string
+    icon: manifest.icon as string,
+    manifest,
+    installed: true
   }));
 
-  const filteredItems = rows.filter((item) => {
-    if (!query.trim()) return true;
+  const availableRows: Row[] = remotePlugins
+    .filter((manifest) => !installedMap.has(manifest.id))
+    .map((manifest) => ({
+      id: manifest.id,
+      name: manifest.name,
+      description: manifest.description,
+      icon: manifest.icon as string,
+      manifest,
+      installed: false
+    }));
+
+  const filterRows = (list: Row[]) => {
+    if (!query.trim()) return list;
     const q = query.toLowerCase();
-    return item.name.toLowerCase().includes(q) || item.id.toLowerCase().includes(q);
-  });
+    return list.filter((item) => item.name.toLowerCase().includes(q) || item.id.toLowerCase().includes(q));
+  };
+
+  const filteredInstalled = filterRows(installedRows);
+  const filteredAvailable = filterRows(availableRows);
 
   const pickFile = () => {
     setError(null);
     fileRef.current?.click();
   };
 
-  /**
-   * A plugin that is not installed cannot be opened; the only way in is to hand
-   * over its bytes. Its fingerprint decides which plugin it is, so there is
-   * nothing to choose: pick the file and it either matches this build or it is
-   * refused.
-   */
   const installAndOpen = async (file: File) => {
     setInstalling(true);
     setError(null);
@@ -78,9 +110,24 @@ export function ResourcesPopover({ onClose, onOpenPlugin, anchorRef }: Resources
     }
   };
 
+  const handleOnlineInstall = async (e: Event, manifest: PluginManifest) => {
+    e.stopPropagation();
+    setInstallingId(manifest.id);
+    setError(null);
+    try {
+      await installPluginOnline(manifest);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setInstallingId(null);
+    }
+  };
+
   const activate = (row: Row) => {
-    onOpenPlugin(row.id);
-    onClose();
+    if (row.installed) {
+      onOpenPlugin(row.id);
+      onClose();
+    }
   };
 
   const renderPluginIcon = (icon: string) => {
@@ -139,40 +186,82 @@ export function ResourcesPopover({ onClose, onOpenPlugin, anchorRef }: Resources
         </div>
 
         {/* Plugin List */}
-        <div className="p-1.5 max-h-72 overflow-y-auto flex flex-col gap-0.5 font-sans">
-          {rows.length === 0 ? (
+        <div className="p-1.5 max-h-80 overflow-y-auto flex flex-col gap-0.5 font-sans">
+          {filteredInstalled.length === 0 && filteredAvailable.length === 0 ? (
             <div className="py-6 text-center text-ui text-ink-muted font-sans">
-              {t("plugins.empty")}
-            </div>
-          ) : filteredItems.length === 0 ? (
-            <div className="py-6 text-center text-ui text-ink-muted font-sans">
-              {t("resources.noResults")}
+              {query.trim() ? t("resources.noResults") : t("plugins.empty")}
             </div>
           ) : (
-            filteredItems.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => activate(item)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  setMenu({ x: e.clientX, y: e.clientY, id: item.id });
-                }}
-                className="flex items-center gap-2.5 px-2 py-2 rounded-ctl hover:bg-surface text-left transition-colors group font-sans"
-              >
-                <div className="w-7 h-7 rounded-ctl bg-raised border border-rule flex items-center justify-center flex-none group-hover:border-rule-strong">
-                  {renderPluginIcon(item.icon)}
+            <>
+              {filteredInstalled.length > 0 && (
+                <div className="flex flex-col gap-0.5">
+                  {filteredAvailable.length > 0 && (
+                    <div className={`px-2 py-1 ${SUB_LABEL_CLASS}`}>{t("plugins.installed")}</div>
+                  )}
+                  {filteredInstalled.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => activate(item)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setMenu({ x: e.clientX, y: e.clientY, id: item.id });
+                      }}
+                      className="flex items-center gap-2.5 px-2 py-2 rounded-ctl hover:bg-surface text-left transition-colors group font-sans"
+                    >
+                      <div className="w-7 h-7 rounded-ctl bg-raised border border-rule flex items-center justify-center flex-none group-hover:border-rule-strong">
+                        {renderPluginIcon(item.icon)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-ui font-medium text-ink truncate font-sans">
+                          {item.name}
+                        </div>
+                        <div className="text-ui text-ink-muted truncate font-sans opacity-80">
+                          {item.description}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-ui font-medium text-ink truncate font-sans">
-                    {item.name}
-                  </div>
-                  <div className="text-ui text-ink-muted truncate font-sans opacity-80">
-                    {item.description}
-                  </div>
+              )}
+
+              {filteredAvailable.length > 0 && (
+                <div className="flex flex-col gap-0.5 mt-1 border-t border-rule pt-1">
+                  <div className={`px-2 py-1 ${SUB_LABEL_CLASS}`}>{t("plugins.available")}</div>
+                  {filteredAvailable.map((item) => {
+                    const isRowInstalling = installingId === item.id;
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex items-center gap-2.5 px-2 py-2 rounded-ctl hover:bg-surface text-left transition-colors group font-sans"
+                      >
+                        <div className="w-7 h-7 rounded-ctl bg-raised border border-rule flex items-center justify-center flex-none group-hover:border-rule-strong">
+                          {renderPluginIcon(item.icon)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-ui font-medium text-ink truncate font-sans">
+                            {item.name}
+                          </div>
+                          <div className="text-ui text-ink-muted truncate font-sans opacity-80">
+                            {item.description}
+                          </div>
+                        </div>
+                        <Button
+                          variant="boxed"
+                          size="text"
+                          disabled={isRowInstalling}
+                          onClick={(e) => void handleOnlineInstall(e, item.manifest)}
+                          className="flex items-center gap-1 shrink-0"
+                        >
+                          <Download size={12} className="flex-none" />
+                          <span>{isRowInstalling ? t("plugins.installing") : t("plugins.install")}</span>
+                        </Button>
+                      </div>
+                    );
+                  })}
                 </div>
-              </button>
-            ))
+              )}
+            </>
           )}
 
           {error && (

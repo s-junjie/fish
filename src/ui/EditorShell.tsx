@@ -374,7 +374,6 @@ export function EditorShell(p: EditorShellProps) {
           onNewFile={file.triggerNewFile}
           onOpenHistory={file.openHistory}
           onExportJson={documentJson.exportJson}
-          onCopyCompactJson={documentJson.copyCompact}
           onImportJson={documentJson.openImport}
           onImportFromFile={documentJson.importFromFile}
           canUseFilePicker={documentJson.canUseFilePicker}
@@ -396,12 +395,6 @@ export function EditorShell(p: EditorShellProps) {
           hintMessage={hint.hintMessage}
           onHintDismiss={hint.dismissHint}
           busyMessage={hint.busyMessage}
-          updateVersion={updates.announced}
-          onUpdateReview={() => {
-            updates.clearAnnouncement();
-            updates.openPanel();
-          }}
-          onUpdateDismiss={updates.clearAnnouncement}
           historyOpen={file.showHistory}
           pendingAssets={p.commands.pendingAssets}
           onAttachAssetFolder={p.commands.handleAttachAssetFolder}

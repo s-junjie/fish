@@ -48,9 +48,11 @@ function fakeHandle(permission: PermissionState): any {
     // needs it: it is what takes the pre-write copy. A stub without one models
     // an impossible handle and silently skips the safety net.
     getFile: async () => ({ text: async () => "<html>PREVIOUS CONTENTS</html>" }),
+    // A real FileSystemWritableFileStream takes a Blob as readily as a string,
+    // and the writer hands it one so the document is not encoded twice.
     createWritable: async () => ({
-      write: (s: string) => {
-        captured = s;
+      write: async (data: string | Blob) => {
+        captured = typeof data === "string" ? data : await data.text();
       },
       close: async () => undefined
     })

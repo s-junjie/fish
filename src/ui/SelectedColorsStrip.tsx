@@ -1,4 +1,4 @@
-import { useRef, useState } from "preact/hooks";
+import { useMemo, useRef, useState } from "preact/hooks";
 import {
   DesignElement,
   DesignDocument,
@@ -12,6 +12,7 @@ import {
   boundFillStyleFor,
   applyPaintToSelection,
   collectSelectedColors,
+  elementIndexOf,
   SelectedColor,
   selectedColorCss
 } from "../core/interactions/selected-colors";
@@ -73,11 +74,15 @@ export function SelectedColorsStrip({
   const [picking, setPicking] = useState<string | null>(null);
   const styleAnchorRef = useRef<HTMLElement | null>(null);
 
-  const colors = collectSelectedColors(docRef.current, elements);
+  const doc = docRef.current;
+  // Both walks are over the whole page and both run on every render of the
+  // inspector — a hover in the strip must not re-flatten 1,841 nodes.
+  const colors = useMemo(() => collectSelectedColors(doc, elements), [doc, elements]);
+  const elementIndex = useMemo(() => elementIndexOf(doc), [doc]);
   if (colors.length === 0) return null;
   const editingColor = editing ? colors.find((c) => c.elementIds[0] === editing.layerId) ?? null : null;
   const pickingColor = picking ? colors.find((c) => c.elementIds[0] === picking) ?? null : null;
-  const pickingStyle = pickingColor ? boundFillStyleFor(docRef.current, pickingColor) : null;
+  const pickingStyle = pickingColor ? boundFillStyleFor(doc, pickingColor, elementIndex) : null;
 
   const imageUri = paintImageUri(docRef.current);
 
@@ -144,7 +149,7 @@ export function SelectedColorsStrip({
         data-selected-colors="true"
       >
         {colors.map((color) => {
-          const style = boundFillStyleFor(docRef.current, color);
+          const style = boundFillStyleFor(doc, color, elementIndex);
           const rowKey = color.tokenId ? `token:${color.tokenId}` : `${color.kind}:${color.hex}`;
           const selectByColor = onSelectByColor && (
             <button

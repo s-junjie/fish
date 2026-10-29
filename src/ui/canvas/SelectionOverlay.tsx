@@ -19,8 +19,11 @@ import { scalableAxes } from "../../core/interactions/scale-ops";
 import { SmartSelectionInfo } from "../../core/geometry/smart-selection";
 import { SmartSelectionOverlay } from "./SmartSelectionOverlay";
 import { isSelectingTool } from "../../core/geometry/shape-creation";
+import { runEditorCommand } from "../commands/editor-commands";
 import type { ToolType } from "../../core/tools";
 import {
+  CANVAS_BADGE_INK,
+  CANVAS_BADGE_SURFACE,
   CANVAS_CORAL,
   CANVAS_GUIDE,
   CANVAS_PREVIEW,
@@ -321,6 +324,43 @@ export function SelectionOverlay({
                 pointerEvents="none"
               />
             )}
+
+            {/* "Add variant", on the box it would add to. A set is a definition
+                whose next member is its most likely edit, and reaching for the
+                inspector to do it made the canvas gesture the slow way round.
+                A standalone component is offered it too: the command promotes it
+                to a set, which is exactly "Add variant" before a matrix exists. */}
+            {!isEditingText && !lockedEl && !gradientTarget && !cropTarget &&
+              (el.type === "componentSet" || el.type === "component") && (
+                <g
+                  data-canvas-add-variant={el.id}
+                  transform={`translate(${worldX + el.width / 2}, ${worldY + el.height + 9 / zoom})`}
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    runEditorCommand("addVariant");
+                  }}
+                  style={{ cursor: "pointer" }}
+                >
+                  <rect
+                    x={-7 / zoom}
+                    y={-7 / zoom}
+                    width={14 / zoom}
+                    height={14 / zoom}
+                    rx={3 / zoom}
+                    ry={3 / zoom}
+                    fill={CANVAS_BADGE_SURFACE}
+                    stroke={CANVAS_COMPONENT}
+                    strokeWidth={1 / zoom}
+                  />
+                  <path
+                    d={`M ${-3 / zoom} 0 H ${3 / zoom} M 0 ${-3 / zoom} V ${3 / zoom}`}
+                    stroke={CANVAS_BADGE_INK}
+                    strokeWidth={1 / zoom}
+                    strokeLinecap="round"
+                  />
+                </g>
+              )}
 
             {/* Corner Resize Handles — hidden when layout-controlled or editing text */}
             {!isEditingText && canResize && !lockedEl && !gradientTarget && !cropTarget && [

@@ -6,8 +6,8 @@ import { loadHtmlFromEmbedCode, loadHtmlFromFile, loadHtmlFromUrl } from "../../
 import { captureHeadlessSnapshot } from "../../core/interactions/html-embed-snapshot";
 import { createId } from "../../core/id";
 import { createInstanceFromComponent } from "../../core/interactions/component-ops";
-import { findInstanceAtPoint, findMasterComponent } from "../../core/interactions/component-inventory";
-import { swapInstanceComponent, swapRefusal } from "../../core/interactions/component-swap";
+import { findMasterComponent } from "../../core/interactions/component-inventory";
+import { findSwapTargetAtPoint, swapInstanceComponent, swapNestedInstance, swapRefusal } from "../../core/interactions/component-swap";
 import { createImageFillElement } from "../../core/dsl/image-fill";
 import { OFFICIAL_PROVIDERS } from "../../core/plugins";
 import { insertRemoteImage } from "../../core/plugins/remote-image";
@@ -155,7 +155,7 @@ export function useAssetInsertion({
 
   // Asset-panel insert (click = viewport center, drop = pointer world coords).
   const insertAsset = useCallback(
-    async (payload: AssetInsertPayload, worldX?: number, worldY?: number) => {
+    async (payload: AssetInsertPayload, worldX?: number, worldY?: number, swap = false) => {
       // A point the gesture gave us is exact and wins. With none, every branch
       // lands on the centre of what the user can see, sized to the element it is
       // about to make — a fixed guess at "half a card" centred a tall photo off
@@ -165,22 +165,33 @@ export function useAssetInsertion({
 
       let result: AssetInsertResult | null = null;
       if (payload.componentId) {
-        // Dropping a component ONTO an instance swaps that instance rather than
-        // stacking a second one on top of it — the gesture the canvas has that the
-        // panel cannot offer, and the reason the swap list need not be a menu.
-        if (worldX !== undefined && worldY !== undefined) {
-          const target = findInstanceAtPoint(getActivePage(docRef.current).children, worldX, worldY);
-          if (
-            target &&
-            target.componentId !== payload.componentId &&
-            !swapRefusal(docRef.current, target.id, payload.componentId)
-          ) {
-            const swapped = swapInstanceComponent(docRef.current, target.id, payload.componentId);
+        // Alt held, over an instance: that instance becomes this component.
+        // The modifier is the whole protection — before it, ANY drop on an
+        // instance swapped it, so putting a button beside a card meant losing
+        // the card. The hit test descends into resolved clones, which is what
+        // makes "replace the icon inside the card" reachable at all.
+        if (swap && worldX !== undefined && worldY !== undefined) {
+          const target = findSwapTargetAtPoint(docRef.current, worldX, worldY);
+          if (target) {
+            // A refusal ENDS the gesture. Falling through to the insert path put a
+            // second instance on top of the one the user was pointing at, so "this
+            // cannot be swapped" read as "it duplicated it".
+            const refusal = swapRefusal(docRef.current, target.id, payload.componentId);
+            if (refusal) {
+              showHint?.(t(`component.swapRefused.${refusal}`));
+              return;
+            }
+            const swapped =
+              target.kind === "nested"
+                ? swapNestedInstance(docRef.current, target.id, payload.componentId)
+                : swapInstanceComponent(docRef.current, target.id, payload.componentId);
             if (swapped) {
               commitSnapshot(swapped);
               select(new Set([target.id]));
               return;
             }
+            showHint?.(t("component.swapNotPossible"));
+            return;
           }
         }
         // The instance copies the master's box, so the master is the size to
@@ -253,10 +264,10 @@ export function useAssetInsertion({
   );
 
   const dropAssetJson = useCallback(
-    (payloadJson: string, worldX: number, worldY: number) => {
+    (payloadJson: string, worldX: number, worldY: number, swap = false) => {
       try {
         const payload = JSON.parse(payloadJson) as AssetInsertPayload;
-        insertAsset(payload, worldX, worldY);
+        insertAsset(payload, worldX, worldY, swap);
       } catch (err) {
         console.error("Invalid asset drop payload:", err);
       }

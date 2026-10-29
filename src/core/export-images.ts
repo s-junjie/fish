@@ -7,6 +7,8 @@
  * Inlining them into `data:` URIs ensures rasterization sees the image pixels.
  */
 
+import { externalFetch, publicProxyUrl } from "./net/external-fetch";
+
 const FETCH_TIMEOUT_MS = 6000;
 
 function blobToDataUri(blob: Blob): Promise<string> {
@@ -20,7 +22,7 @@ function blobToDataUri(blob: Blob): Promise<string> {
 
 async function fetchToDataUri(url: string): Promise<string | null> {
   try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    const response = await externalFetch(url, { timeoutMs: FETCH_TIMEOUT_MS });
     if (!response.ok) return null;
     return await blobToDataUri(await response.blob());
   } catch {
@@ -60,9 +62,14 @@ async function canvasToDataUri(url: string): Promise<string | null> {
 }
 
 async function fetchViaProxyToDataUri(url: string): Promise<string | null> {
+  // Same rule as `embedExternalAsset`: a third-party proxy may only ever see an
+  // address the user published. A private host or a signed URL leaves the export
+  // with a blank image instead of handing the credential to `wsrv.nl` — and a
+  // blank image is visible, which is what makes it reportable.
+  const proxyUrl = publicProxyUrl(url);
+  if (!proxyUrl) return null;
   try {
-    const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(url)}`;
-    const response = await fetch(proxyUrl, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    const response = await externalFetch(proxyUrl, { timeoutMs: FETCH_TIMEOUT_MS });
     if (!response.ok) return null;
     return await blobToDataUri(await response.blob());
   } catch {

@@ -5,11 +5,19 @@ import { flattenElements } from "../../core/geometry/tree-ops";
 import {
   createInstanceFromComponent,
   hasAnythingToReset,
+  removeInstanceOverrides,
   resetInstance
 } from "../../core/interactions/component-ops";
-import { setComponentSetCollapsed } from "../../core/interactions/component-variants";
-import { findMasterComponent } from "../../core/interactions/component-inventory";
+import {
+  addVariant,
+  addVariantProperty,
+  combineAsVariants,
+  setComponentSetCollapsed
+} from "../../core/interactions/component-variants";
+import { promotionTargets, promoteSelectionToComponents } from "../../core/interactions/component-batch";
+import { findComponentSet, findMasterComponent, groupComponentSets } from "../../core/interactions/component-inventory";
 import { resolveInstanceSelection, isStoredNode } from "../../core/interactions/instance-resolve";
+import { VARIANT_LABELS } from "../inspector/variant-labels";
 import { registerEditorCommand } from "../commands/editor-commands";
 import { t } from "../../i18n";
 
@@ -57,6 +65,23 @@ export function useComponentCommands({
     const primary = () => live.current.primarySelected;
     const instance = (): InstanceElement | null =>
       primary()?.type === "instance" ? (primary() as InstanceElement) : null;
+    /** The selection as stored elements — a resolved clone cannot be promoted. */
+    const storedSelection = (): DesignElement[] => {
+      const ids = live.current.selectedIds;
+      return flattenElements(getActivePage(docRef.current).children || []).filter((el) => ids.has(el.id));
+    };
+    const batchTargets = () => promotionTargets(getActivePage(docRef.current).children || [], storedSelection());
+    const selectedComponents = () => storedSelection().filter((el) => el.type === "component");
+    const childSelection = () => {
+      const el = primary();
+      return el ? resolveInstanceSelection(docRef.current, el.id) : null;
+    };
+    const childHasOverrides = () => {
+      const sel = childSelection();
+      return Boolean(
+        sel?.overridable && (sel.instance.overrides || []).some((o) => o.targetId === sel.masterNodeId)
+      );
+    };
 
     const offs = [
       registerEditorCommand("createInstance", {
@@ -119,6 +144,93 @@ export function useComponentCommands({
           if (next) commitSnapshot(next);
         },
         enabled: () => true
+      }),
+
+      /** "Create multiple components" — the inspector's batch bar, on right-click. */
+      registerEditorCommand("createComponents", {
+        run: () => {
+          const res = promoteSelectionToComponents(docRef.current, batchTargets());
+          if (!res) return;
+          commitSnapshot(res.doc);
+          setSelectedIds(new Set(res.created));
+          if (res.hoisted) showHint(t("component.hoistedMaster"));
+        },
+        enabled: () => batchTargets().length > 0
+      }),
+
+      /** "Combine as variants" — two or more components into one set. */
+      registerEditorCommand("combineAsVariants", {
+        run: () => {
+          const res = combineAsVariants(
+            docRef.current,
+            selectedComponents().map((el) => el.id),
+            VARIANT_LABELS
+          );
+          if (!res) return;
+          commitSnapshot(res.doc);
+          setSelectedIds(new Set([res.setId]));
+        },
+        enabled: () => selectedComponents().length >= 2
+      }),
+
+      /**
+       * "Add variant" on the definition itself.
+       *
+       * A lone main component becomes a set with its first axis — that is what
+       * the command means before there is a matrix to add a column to — and a
+       * member gains a sibling in its set otherwise.
+       */
+      registerEditorCommand("addVariant", {
+        run: () => {
+          const el = primary();
+          if (!el) return;
+          // The canvas offers this on a SET's own box, where the answer is "one
+          // more member of the default cell" — the clicked thing is a container,
+          // not a component that can be a source.
+          if (el.type === "componentSet") {
+            const set = groupComponentSets(docRef.current).sets.find(
+              (s) => s.setId === (el as ComponentSetElement).id
+            );
+            if (!set) return;
+            const res = addVariant(docRef.current, set.defaultMember.id, VARIANT_LABELS, set.properties[0]?.property);
+            if (!res.doc) return;
+            commitSnapshot(res.doc);
+            if (res.variant) setSelectedIds(new Set([res.variant.id]));
+            return;
+          }
+          if (el.type !== "component") return;
+          const set = findComponentSet(docRef.current, el.id);
+          if (!set) {
+            const made = addVariantProperty(docRef.current, el.id, VARIANT_LABELS);
+            if (!made.set) return;
+            commitSnapshot(made.doc);
+            setSelectedIds(new Set([made.set.id]));
+            return;
+          }
+          const res = addVariant(docRef.current, el.id, VARIANT_LABELS, set.properties[0]?.property);
+          if (!res.doc) return;
+          commitSnapshot(res.doc);
+          if (res.variant) setSelectedIds(new Set([res.variant.id]));
+        },
+        enabled: () => {
+          const type = primary()?.type;
+          return type === "component" || type === "componentSet";
+        }
+      }),
+
+      /**
+       * Reset ONE layer's changes inside an instance, rather than the whole
+       * instance. The panel offers the same thing as a tag on each overridden
+       * property; from the canvas this is the only route to it.
+       */
+      registerEditorCommand("resetNodeOverrides", {
+        run: () => {
+          const sel = childSelection();
+          if (!sel) return;
+          const next = removeInstanceOverrides(docRef.current, sel.instanceId, sel.masterNodeId);
+          if (next) commitSnapshot(next);
+        },
+        enabled: childHasOverrides
       })
     ];
     return () => {

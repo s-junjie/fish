@@ -32,6 +32,13 @@ export interface CommentAuthor {
   role: "user" | "ai";
 }
 
+/**
+ * Who writes an agent's own message. There is one author for every AI on every
+ * surface — a CLI reply and an accepted suggestion are turns of the same
+ * conversation, and two spellings of the name would put two people in one thread.
+ */
+export const AI_AUTHOR: CommentAuthor = { id: "ai", name: "AI Agent", role: "ai" };
+
 export interface CommentMessage {
   id: string;
   author: CommentAuthor;

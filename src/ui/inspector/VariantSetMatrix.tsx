@@ -4,6 +4,7 @@ import {
   addVariantPropertyToSet,
   removeVariant,
   removeVariantProperty,
+  removeVariantValue,
   renameVariantProperty,
   renameVariantValue,
   setVariantValue
@@ -65,7 +66,7 @@ export function VariantSetMatrix({
 
   const addProperty = () => {
     const res = addVariantPropertyToSet(docRef.current, set.id, VARIANT_LABELS);
-    commit(res.doc);
+    if (res.property) commit(res.doc);
   };
 
   return (
@@ -185,13 +186,25 @@ export function VariantSetMatrix({
                         }}
                         className={`flex-1 ${TEXT_FIELD_CLASS}`}
                       />
-                      {members.length > 1 && (
+                      {(members.length > 1 || membersWithValue.length === 0) && (
                         <Button
                           size="icon"
                           variant="danger"
                           type="button"
-                          title={t("component.removeVariant")}
+                          title={
+                            membersWithValue.length === 0
+                              ? t("component.removeVariantValue")
+                              : t("component.removeVariant")
+                          }
                           onClick={() => {
+                            // A value nobody fills has no member to remove: the
+                            // row IS the leftover, so the trash takes the value
+                            // out of the table. Left unhandled it looped over an
+                            // empty list and did nothing.
+                            if (membersWithValue.length === 0) {
+                              commit(removeVariantValue(docRef.current, set.id, propName, val));
+                              return;
+                            }
                             let currDoc = docRef.current;
                             for (const m of membersWithValue) {
                               const nextDoc = removeVariant(currDoc, m.id);
@@ -211,6 +224,23 @@ export function VariantSetMatrix({
           );
         })}
       </div>
+
+      {/* A second axis is a property of the SET, not of any member, so the
+          control that adds one sits under the whole matrix rather than on a
+          row. It was defined and never rendered, which left the slash-naming
+          merge as the only route to a multi-axis set. */}
+      {properties.length > 0 && (
+        <button
+          type="button"
+          data-variant-add-property="true"
+          onClick={addProperty}
+          className={`${ACTION_BAR_CLASS} ${ACTION_BAR_ON}`}
+          title={t("component.addProperty")}
+        >
+          <Plus size={13} className="shrink-0" />
+          <span>{t("component.addProperty")}</span>
+        </button>
+      )}
 
       {/* Add Variant Footer Button (only when no property and no variant exist) */}
       {properties.length === 0 && (

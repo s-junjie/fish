@@ -16,6 +16,7 @@ import {
   dissolveComponentSet,
   removeVariant,
   removeVariantProperty,
+  removeVariantValue,
   renameComponentSet,
   renameVariantProperty,
   renameVariantValue,
@@ -824,5 +825,29 @@ describe("grouping a whole document", () => {
     expect(sets).toHaveLength(1);
     expect(sets[0].name).toBe("Button");
     expect(singles.map((e) => e.name)).toEqual(["Solo"]);
+  });
+});
+/**
+ * Editing a cell registers the new value and leaves the old one declared, which is
+ * what keeps a value offerable after the last member stops using it. Nobody could
+ * take it away again: the row's trash looped over the members carrying the value,
+ * and an unused value has none.
+ */
+describe("a value nobody fills can be removed from the table", () => {
+  it("takes the leftover out, and refuses a value a member still sits on", () => {
+    let d = started();
+    const set = onlySet(d);
+    const property = Object.keys(set.variantGroupProperties!)[0];
+    const memberId = (set.children![0] as ComponentElement).id;
+
+    d = setVariantValue(d, set.id, memberId, property, "Hover")!;
+    expect(Object.values(onlySet(d).variantGroupProperties!)[0]).toEqual(["Default", "Hover"]);
+
+    const cleaned = removeVariantValue(d, set.id, property, "Default");
+    expect(cleaned, "`Default` has no member behind it").toBeTruthy();
+    expect(Object.values(onlySet(cleaned!).variantGroupProperties!)[0]).toEqual(["Hover"]);
+
+    expect(removeVariantValue(d, set.id, property, "Hover"), "a value in use is not removable").toBeNull();
+    expect(removeVariantValue(cleaned!, set.id, property, "Hover"), "and neither is the last one").toBeNull();
   });
 });

@@ -55,7 +55,7 @@ export interface PhotoFxOptions {
 export type RetroPrintOptions = PhotoFxOptions;
 
 export const COLOR_PRESETS: ColorPreset[] = [
-  { id: "violet", dark: "#381b35", light: "#f6f4f5" }, // Editorial Violet (样图同款)
+  { id: "violet", dark: "#381b35", light: "#f6f4f5" }, // Editorial Violet (matches sample)
   { id: "mono", dark: "#18181b", light: "#fafafa" },   // Classic Mono
   { id: "cyber", dark: "#091226", light: "#00f0ff" },  // Cyber Neon
   { id: "riso", dark: "#003b6d", light: "#ff6040" },   // Risograph Blue/Orange

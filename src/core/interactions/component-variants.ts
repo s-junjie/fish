@@ -381,6 +381,37 @@ export function renameVariantValue(
 }
 
 /**
+ * Removes one VALUE from a property's table — the leftover of a rename.
+ *
+ * `setVariantValue` registers the new value and leaves the old one declared, so a
+ * cell edited to `Compact` keeps `Small` on every dropdown with no member behind
+ * it. There is no member to delete, and the row's trash looped over the members
+ * that carried the value — of which there were none — so it did nothing at all.
+ *
+ * Refusals are the two things a column cannot survive: a value some member still
+ * sits on (rename it on that member instead), and the last value (a column with no
+ * values is not a column).
+ */
+export function removeVariantValue(
+  doc: DesignDocument,
+  setId: string,
+  property: string,
+  value: string
+): DesignDocument | null {
+  const set = locateSet(doc, setId);
+  if (!set) return null;
+  const values = set.variantGroupProperties?.[property];
+  if (!values?.includes(value) || values.length <= 1) return null;
+  const used = (set.children ?? []).some(
+    (child) => (child as ComponentElement).variantProperties?.[property] === value
+  );
+  if (used) return null;
+  return writeSet(doc, set, ({ properties }) => {
+    properties[property] = (properties[property] ?? []).filter((v) => v !== value);
+  });
+}
+
+/**
  * Removes a property and its column.
  *
  * The table keeps the values even when no member used them, so this is the only

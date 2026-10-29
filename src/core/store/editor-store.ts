@@ -49,6 +49,7 @@ export class EditorStore {
   private gestureInitialDoc: DesignDocument | null = null;
   private listeners = new Set<(doc: DesignDocument) => void>();
   private historyListeners = new Set<(doc: DesignDocument) => void>();
+  private gestureListeners = new Set<() => void>();
   /** What the UI renders instead of the live document, when it is not the live one. */
   private viewDoc: DesignDocument | null = null;
   private readOnlyReason: ReadOnlyReason | null = null;
@@ -175,6 +176,27 @@ export class EditorStore {
   }
 
   /**
+   * Whether an interactive gesture is open.
+   *
+   * A drag frame is not a state a background job should chase: work that a
+   * gesture will invalidate a frame later (the cover thumbnail) has to wait for
+   * the gesture to close, not for the document to hold still for a moment.
+   */
+  isGestureActive(): boolean {
+    return this.gestureInitialDoc !== null;
+  }
+
+  /** Fires when a gesture opens or closes, never on a frame within one. */
+  onGestureChange(listener: () => void): () => void {
+    this.gestureListeners.add(listener);
+    return () => this.gestureListeners.delete(listener);
+  }
+
+  private notifyGesture() {
+    for (const listener of this.gestureListeners) listener();
+  }
+
+  /**
    * Marks the beginning of an interactive gesture (drag, scrub, slider).
    * Freezes a snapshot of the current document for undo consolidation.
    */
@@ -182,6 +204,7 @@ export class EditorStore {
     if (this.writesRefused()) return;
     if (!this.gestureInitialDoc) {
       this.gestureInitialDoc = this.doc;
+      this.notifyGesture();
     }
   }
 
@@ -191,12 +214,15 @@ export class EditorStore {
    */
   endGesture() {
     if (this.writesRefused()) {
+      const had = this.gestureInitialDoc !== null;
       this.gestureInitialDoc = null;
+      if (had) this.notifyGesture();
       return;
     }
     const initial = this.gestureInitialDoc;
     if (!initial) return;
     this.gestureInitialDoc = null;
+    this.notifyGesture();
     if (!deepEqual(initial, this.doc)) {
       this.past.push(initial);
       if (this.past.length > this.historyLimit) this.past.shift();
@@ -210,7 +236,9 @@ export class EditorStore {
    */
   cancelGesture() {
     if (this.writesRefused()) {
+      const had = this.gestureInitialDoc !== null;
       this.gestureInitialDoc = null;
+      if (had) this.notifyGesture();
       return;
     }
     const initial = this.gestureInitialDoc;
@@ -219,6 +247,7 @@ export class EditorStore {
       this.doc = initial;
       this.notify();
     }
+    if (initial) this.notifyGesture();
   }
 
   /**

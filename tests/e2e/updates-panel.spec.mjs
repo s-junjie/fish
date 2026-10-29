@@ -53,7 +53,7 @@ const entry = await page.evaluate(() => {
   };
 });
 check("the title bar carries an updates entry", !!entry);
-check("it is the Icon-button box — 20px square", entry && entry.w === 20 && entry.h === 20, JSON.stringify(entry));
+check("it is the Logo-button box — 28px square", entry && entry.w === 28 && entry.h === 28, JSON.stringify(entry));
 check("it lives inside the title bar, not floating", entry?.insideBar === true);
 check("it has no badge while there is no update", entry?.badge === false);
 
@@ -105,8 +105,8 @@ check("it offers no write action", panel?.apply === false);
 check("it wears no badge", panel?.badge === false);
 check("the manual check is disabled, not live-and-failing", panel?.checkRow.disabled === true);
 check(
-  "the launch-check toggle is present and disabled",
-  panel?.autoCheck.present === true && panel?.autoCheck.disabled === true
+  "the launch-check toggle is present and interactive",
+  panel?.autoCheck.present === true && panel?.autoCheck.disabled === false
 );
 // Left edge flush with the entry, not with the window: the entry now sits in
 // the left cluster, so a right-anchored popover would extend off the left edge
@@ -128,9 +128,9 @@ const hover = await page.evaluate(async () => {
 });
 check("a disabled row does not answer the pointer with a wash", hover === "rgba(0, 0, 0, 0)", hover);
 
-// Where the other panel probes put theirs (gitignored); the geometry above is
-// the assertion, this is the picture of it.
-await page.screenshot({ path: ".workbuddy/artifacts/updates-panel.png", clip: { x: 0, y: 0, width: 620, height: 300 } });
+if (process.env.TEST_SCREENSHOTS) {
+  await page.screenshot({ path: "test-results/updates-panel.png", clip: { x: 0, y: 0, width: 620, height: 300 } });
+}
 
 await page.keyboard.press("Escape");
 await page.waitForTimeout(200);

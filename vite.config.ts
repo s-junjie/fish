@@ -189,6 +189,11 @@ export default defineConfig({
     emptyOutDir: true
   },
   test: {
+    // Resets the module-level singletons (`heldMasters`, the text-measure cache
+    // and its injected measurer) after every test: with shared modules, a
+    // measurer or a held component definition outlives the file that installed
+    // it. See the header of `tests/setup.ts`.
+    setupFiles: ["tests/setup.ts"],
     // Modules are shared between test FILES, which is what keeps the suite at
     // ~45 s. The price is that a module's state outlives the file that built it,
     // so a failing case can move to a different file when the file set changes —

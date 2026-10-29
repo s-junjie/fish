@@ -195,8 +195,8 @@ const barOrder = await page.evaluate(() => {
   };
 });
 check(
-  "updates follows the document name on the left",
-  barOrder.updates.left > barOrder.name.right && barOrder.updates.right < barOrder.bar.right / 2,
+  "updates is integrated into the logo on the far left before the document name",
+  barOrder.updates.left < barOrder.name.left && barOrder.updates.right <= barOrder.name.left,
   JSON.stringify(barOrder)
 );
 check(

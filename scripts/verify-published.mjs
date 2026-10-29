@@ -7,7 +7,7 @@
 // the live origin after it.
 //
 //   node scripts/verify-published.mjs --dir release-site
-//   node scripts/verify-published.mjs --base https://dl.themindstudio.cc
+//   node scripts/verify-published.mjs --base https://dl.fish.themindstudio.cc
 //
 // The CORS check is the response header, not a browser: `Access-Control-Allow-
 // Origin: *` is what makes an opaque-origin `file://` page able to read it.

@@ -439,7 +439,7 @@ export function ColorPanel({
       {/* The kind is a DROPDOWN, not four segments.
           Four labels in a 220px track is a width the labels do not have: at
           `text-row` the English four come to 188px of a 220px box, and the same
-          four in Japanese — 全塗りつぶし / グラデーション / 画像 / パターン — do
+          four in Japanese — full-fill / gradient / image / pattern — do
           not fit at any padding. A segmented strip that must truncate is a strip
           whose segments stop naming anything. One field shows the kind in full,
           in any language, and it is the same object as the gradient dialect

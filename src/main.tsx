@@ -55,6 +55,7 @@ import { useLayerRowActions } from "./ui/hooks/useLayerRowActions";
 import { useZoomCommands } from "./ui/hooks/useZoomCommands";
 import { useHtmlEmbedSnapshotListener } from "./ui/hooks/useHtmlEmbedSnapshotListener";
 import { useThumbnailSnapshot } from "./ui/hooks/useThumbnailSnapshot";
+import { useGestureActive } from "./ui/hooks/useGestureActive";
 import { useFontStatusSync } from "./ui/hooks/useFontStatusSync";
 import { EditorShell } from "./ui/EditorShell";
 import { useEditorStore } from "./ui/hooks/useEditorStore";
@@ -76,6 +77,7 @@ import { setLineSize } from "./core/interactions/line-ops";
 import { useComments } from "./ui/hooks/useComments";
 import type { CommentsOverlayProps } from "./ui/canvas/CommentsOverlay";
 import type { CommentsPanelProps } from "./ui/comments/CommentsPanel";
+import type { DesignDocument } from "./core/dsl/types";
 import { resolveCommentCanvasPoint } from "./core/comments/anchor";
 
 export function App() {
@@ -140,8 +142,9 @@ export function App() {
   const documentJsonActions = useDocumentJsonActions(store, file.setSaveStatus);
 
   // The cover snapshot a save pastes into the file. Kept warm here because the
-  // save path is synchronous and cannot wait for a decode.
-  useThumbnailSnapshot(doc);
+  // save path is synchronous and cannot wait for a decode — and held off while a
+  // gesture is redrawing the document, whose every frame it would chase.
+  useThumbnailSnapshot(doc, useGestureActive(store));
 
   // Which of the document's families this machine actually has. Decided once per
   // document version, in the one module everyone reads — see `core/fonts/font-status`.
@@ -793,6 +796,13 @@ export function App() {
     [comments, docRef, findElementBounds, focusOn, handleSelectPage]
   );
 
+  /** A suggestion preview is a view redirect, the same one browsing a version
+      uses: read-only, and invisible to auto-save, so nothing unaccepted lands
+      in `#design-doc`. */
+  const handleSetCommentPreview = useCallback((doc: DesignDocument | null) => {
+    store.setViewDoc(doc);
+  }, [store]);
+
   const commentsOverlayProps: CommentsOverlayProps = {
     comments: comments.comments,
     pageId: activePage.id,
@@ -811,13 +821,22 @@ export function App() {
     activeThreadId: comments.activeThreadId,
     setActiveThreadId: comments.setActiveThreadId,
     docRef,
+    onSetPreview: handleSetCommentPreview,
     hidden: !isUiVisible
   };
+
+  /* Named by id so the rail can label the threads it now lists from every page.
+     Read off `doc` rather than a ref: renaming a page has to rename its rows. */
+  const pageNames = useMemo(
+    () => Object.fromEntries(doc.pages.map((page) => [page.id, page.name ?? page.id])),
+    [doc.pages]
+  );
 
   const commentsPanelProps: CommentsPanelProps = useMemo(
     () => ({
       comments: comments.comments,
       pageId: activePage.id,
+      pageNames,
       activeThreadId: comments.activeThreadId,
       onFocusThread: handleFocusCommentThread,
       onResolve: comments.handleResolveComment,
@@ -830,6 +849,7 @@ export function App() {
       comments.handleResolveComment,
       comments.handleReopenComment,
       comments.handleDeleteComment,
+      pageNames,
       activePage.id,
       handleFocusCommentThread
     ]

@@ -4,6 +4,7 @@ import { EXPORT_CHROME_SELECTOR } from "./chrome-markers";
 import { bakeTiltedElements } from "./export-tilt";
 import { injectFontFaces, pruneUnusedDefs } from "./export-defs";
 import { inlineExternalImages } from "./export-images";
+import { restoreSourceUris } from "./assets/render-uri";
 import { wrapLinkedElements } from "./export-links";
 import {
   allowedIdsForBucket,
@@ -62,6 +63,10 @@ export async function prepareSvgForExport(
   allowedElementIds?: Set<string>
 ): Promise<PreparedSvg> {
   const clone = sourceSvg.cloneNode(true) as SVGSVGElement;
+  // The live canvas paints bitmaps through runtime `blob:` handles. Nothing
+  // outside this tab can resolve one, so the clone gets the document's own
+  // `data:` URIs back before any pass reads an href.
+  restoreSourceUris(clone);
   clone.removeAttribute("style");
   // The editor's pan and zoom ride a stage group rather than the root's style
   // (see `stageTransform` in CanvasArea — a CSS transform anywhere above the

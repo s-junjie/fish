@@ -16,6 +16,11 @@ import {
   type ResolvedAsset
 } from "../../core/import/html-asset-folder";
 import type { MissingAsset } from "../../core/import/html-types";
+import {
+  describeImportRefusal,
+  refuseClipboardText,
+  refuseFile
+} from "../../core/import/import-limits";
 import { t } from "../../i18n";
 
 export interface HtmlImportProgress {
@@ -65,6 +70,13 @@ export function useHtmlImport({
     async (file: File | Blob) => {
       if (busyRef.current) {
         showHint?.(t("htmlImport.alreadyImporting"));
+        return;
+      }
+      // Before `file.text()`, which reads the whole thing into one string: the
+      // refusal has to cost nothing, or it is the freeze it exists to prevent.
+      const oversize = refuseFile(file.size);
+      if (oversize) {
+        showHint?.(describeImportRefusal(oversize));
         return;
       }
       busyRef.current = true;
@@ -174,6 +186,13 @@ export function useHtmlImport({
     ) => {
       if (busyRef.current) {
         showHint?.(t("htmlImport.alreadyImporting"));
+        return;
+      }
+      // A clip arrives as a string, so there is no `File.size` to ask: measured
+      // before `parseHtmlClip` and before the document is mounted.
+      const oversize = refuseClipboardText(payloadText);
+      if (oversize) {
+        showHint?.(describeImportRefusal(oversize));
         return;
       }
       busyRef.current = true;

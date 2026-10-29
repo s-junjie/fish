@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-// Build the directory that `wrangler deploy` publishes to dl.themindstudio.cc.
+// Build the directory that `wrangler deploy` publishes to dl.fish.themindstudio.cc.
 //
 // A static-assets deploy replaces the whole site, so this script first carries
 // forward everything the live origin already serves (`sha256sums.txt` is the
 // index), then adds the release it was given. That is what keeps an old shell's
 // URL alive after a new release, without committing binaries to the repository.
 //
-//   node scripts/assemble-site.mjs --origin https://dl.themindstudio.cc
-//   node scripts/assemble-site.mjs --promote 0.1.0 --origin https://dl.themindstudio.cc
+//   node scripts/assemble-site.mjs --origin https://dl.fish.themindstudio.cc
+//   node scripts/assemble-site.mjs --promote 0.1.0 --origin https://dl.fish.themindstudio.cc
 //
 // Versioned paths are write-once: a second run with different bytes refuses
 // instead of silently replacing a published artifact. Pointers under `stable/`

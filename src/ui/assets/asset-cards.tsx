@@ -2,7 +2,7 @@ import { useMemo } from "preact/hooks";
 import { memo } from "../memo";
 import { Image as ImageIcon, ExternalLink, Video } from "lucide-react";
 import { t } from "../../i18n";
-import { ComponentMark } from "../ComponentMark";
+import { ComponentMark, VariantMark } from "../ComponentMark";
 import { renderNodeList, NodeRenderContext } from "../canvas/SvgElementRenderer";
 import { getActiveNumberMode, getActiveTheme } from "../../core/interactions/mode-ops";
 import { CanvasDefs } from "../canvas/CanvasDefs";
@@ -153,7 +153,8 @@ export const ComponentCard = memo(ComponentCardView, (prev, next) =>
   prev.name === next.name &&
   prev.onToggleVariants === next.onToggleVariants &&
   prev.expanded === next.expanded &&
-  prev.locateId === next.locateId
+  prev.locateId === next.locateId &&
+  prev.variant === next.variant
 );
 
 function ComponentCardView({
@@ -166,7 +167,8 @@ function ComponentCardView({
   name,
   onToggleVariants,
   expanded,
-  locateId
+  locateId,
+  variant
 }: {
   entry: ComponentEntry;
   ctx: NodeRenderContext;
@@ -184,10 +186,15 @@ function ComponentCardView({
    * the set node; a member card has nothing else to point at.
    */
   locateId?: string;
+  /**
+   * A member of a set. One diamond rather than four: inside an expanded set the
+   * card is a VARIANT, and the mark is the only thing that says so at a glance.
+   */
+  variant?: boolean;
 }) {
   const payload: AssetInsertPayload = { componentId: entry.id };
   const el = entry.el;
-  // The member's own name IS its coordinates in Figma, so this is a title that
+  // A member's own name IS its coordinates in Figma, so this is a title that
   // repeats it — kept as the tooltip because the card itself has room for the set
   // name and a count but not for two properties' worth of values.
   const variantLabel = entry.variantProperties
@@ -279,7 +286,11 @@ function ComponentCardView({
         )}
       </div>
       <div className={CARD_CAPTION_CLASS}>
-        <ComponentMark size={13} className="shrink-0 text-component" />
+        {variant ? (
+          <VariantMark size={13} className="shrink-0 text-component" />
+        ) : (
+          <ComponentMark size={13} className="shrink-0 text-component" />
+        )}
         <span className="flex-1 min-w-0 text-ui text-ink truncate" data-asset-name={entry.id}>
           {name ?? entry.name}
         </span>

@@ -57,9 +57,8 @@ const DOC = {
           style: { fontFamily: "system-ui", fontSize: 16, color: "#FFFFFF" }
         },
         {
-          // Same missing family, but pinned on BOTH axes: nothing would ever
-          // re-measure this box, so the freeze protects nothing and the gate has
-          // no reason to take the caret away.
+          // Pinned on BOTH axes, but uses the missing face: canvas editing is
+          // refused regardless of sizing.
           id: "pinned",
           type: "text",
           name: "Pinned",

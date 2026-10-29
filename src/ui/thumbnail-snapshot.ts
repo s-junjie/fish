@@ -76,6 +76,12 @@ export function resetThumbnailSnapshot(): void {
   cache = null;
 }
 
+/** Drop the pending refresh, keeping the snapshot already on hand. */
+export function cancelThumbnailSnapshot(): void {
+  if (timer) clearTimeout(timer);
+  timer = null;
+}
+
 /** Append one encode to the chain, and answer for THAT encode. */
 function enqueue(doc: DesignDocument): Promise<void> {
   const run = chain.then(() => (cachedThumbnailSnapshot(doc) ? undefined : encodeIntoCache(doc)));

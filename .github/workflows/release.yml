@@ -29,7 +29,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  ORIGIN: https://dl.themindstudio.cc
+  ORIGIN: https://dl.fish.themindstudio.cc
 
 jobs:
   build:

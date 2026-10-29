@@ -330,6 +330,24 @@ export function selectedColorCss(color: SelectedColor): string {
 }
 
 /**
+ * Every stored layer of the active page, by id.
+ *
+ * Kept for as long as the page's element array: the palette asks this question
+ * once per colour row, and rebuilding a 1,841-node map per row was 96 walks of
+ * the page to answer the same question.
+ */
+const pageIndexes = new WeakMap<readonly DesignElement[], Map<string, DesignElement>>();
+
+export function elementIndexOf(doc: DesignDocument): Map<string, DesignElement> {
+  const children = getActivePage(doc).children;
+  const cached = pageIndexes.get(children);
+  if (cached) return cached;
+  const index = new Map(flattenElements(children).map((el) => [el.id, el]));
+  pageIndexes.set(children, index);
+  return index;
+}
+
+/**
  * The style a colour comes from, when every layer carrying it is bound to one.
  *
  * Only then: two layers sharing a hex but bound to *different* styles are two
@@ -345,12 +363,13 @@ export function selectedColorCss(color: SelectedColor): string {
  */
 export function boundFillStyleFor(
   doc: DesignDocument,
-  color: SelectedColor
+  color: SelectedColor,
+  index?: ReadonlyMap<string, DesignElement>
 ): PaintStyle | null {
   if (color.kind !== "solid" || color.elementIds.length === 0) return null;
   const styles = (doc.styles || []).filter((s): s is PaintStyle => s.styleType === "paint");
   if (styles.length === 0) return null;
-  const byId = new Map(flattenElements(getActivePage(doc).children).map((el) => [el.id, el]));
+  const byId = index ?? elementIndexOf(doc);
   let found: PaintStyle | null = null;
   for (const id of color.elementIds) {
     const el = byId.get(id);

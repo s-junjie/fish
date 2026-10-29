@@ -73,6 +73,39 @@ export function useUpdateStatus(doc: DesignDocument): UpdateStatus {
 
   useEffect(() => {
     liveRef.current = true;
+
+    if (typeof window !== "undefined") {
+      const mock = (available = true, version = "0.2.0") => {
+        if (available) {
+          setCheck({
+            status: "update",
+            release: {
+              app: "fish",
+              version,
+              url: `https://dl.fish.themindstudio.cc/shell/${version}/index.html`,
+              sha256: "0".repeat(64)
+            }
+          });
+          setAnnounced(version);
+        } else {
+          setCheck(null);
+          setAnnounced(null);
+          setApplied(null);
+        }
+      };
+      (window as any).__mockUpdate = mock;
+
+      if (window.location.search.includes("mockUpdate") || window.location.hash.includes("mockUpdate")) {
+        const timer = setTimeout(() => {
+          if (liveRef.current) mock(true, "0.2.0");
+        }, 300);
+        return () => {
+          liveRef.current = false;
+          clearTimeout(timer);
+        };
+      }
+    }
+
     return () => {
       liveRef.current = false;
     };

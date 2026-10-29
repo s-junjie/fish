@@ -236,7 +236,7 @@ function breakTokens(paragraph: string): string[] {
  * explicit newline is a hard break, runs of whitespace collapse, a break is
  * allowed at a space, and between two CJK characters.
  *
- * The two 禁则 rules are the ones the browser applies and this module could not:
+ * The two kinsoku (line-break prohibition) rules are the ones the browser applies and this module could not:
  * a closing mark or a comma must not be pushed to the start of a line, and an
  * opening bracket must not be left at the end of one. Rather than move the mark
  * the box is allowed to overflow by the one glyph — which is what the browser

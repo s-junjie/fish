@@ -1,7 +1,7 @@
 import { DesignDocument, DesignElement, ComponentElement, ComponentSetElement, InstanceElement } from "../../core/dsl/types";
 import { getActivePage } from "../../core/dsl/types";
-import { createComponentFromElement, detachInstance, hasAnythingToReset, resetInstance } from "../../core/interactions/component-ops";
-import { canBecomeComponent, canCreateComponentHere, collectComponents, findComponentSet, findMasterComponent, findVariantMember, variantOptionsFor } from "../../core/interactions/component-inventory";
+import { createComponentFromElement, detachInstance, hasAnythingToReset, instanceOwnFields, resetInstance, resetInstanceField, type InstanceOwnField } from "../../core/interactions/component-ops";
+import { canBecomeComponent, canCreateComponentHere, collectComponents, findComponentSet, findMasterComponent, findVariantMember, variantHoles, variantOptionsFor } from "../../core/interactions/component-inventory";
 import { componentSwapOptions, swapInstanceComponent } from "../../core/interactions/component-swap";
 import { InstanceSwapPicker } from "./InstanceSwapPicker";
 import { InstanceVariantSection } from "./InstanceVariantSection";
@@ -12,12 +12,14 @@ import { combineAsVariants } from "../../core/interactions/component-variants";
 import { VARIANT_LABELS } from "./variant-labels";
 import { Section } from "./SectionHeader";
 import { ComponentMark, InstanceMark, VariantSetMark } from "../ComponentMark";
+import { TokenTag } from "../TokenTag";
+import { SUB_LABEL_CLASS } from "../label-tier";
+import { overrideLabel } from "./override-label";
 import type { ComponentChildren } from "preact";
 import { t } from "../../i18n";
 import { RotateCcw, Unlink, ExternalLink } from "lucide-react";
-import { findParentById } from "../../core/geometry/tree-ops";
-import { ACTION_BAR_CLASS, ACTION_BAR_OFF, ACTION_BAR_ON, ACTION_BUTTON_CLASS } from "./action-bar-style";
-import { SUB_LABEL_CLASS } from "../label-tier";
+import { promotionTargets, promoteSelectionToComponents } from "../../core/interactions/component-batch";
+import { ACTION_BAR_CLASS, ACTION_BAR_OFF, ACTION_BAR_ON } from "./action-bar-style";
 import { Button } from "../Button";
 
 interface ComponentSectionProps {
@@ -59,46 +61,18 @@ export function ComponentSection({
   /**
    * A batch promotion is the same operation applied once per top-level selected
    * element: each becomes its own component and they are selected together, so the
-   * whole batch can be moved or deleted as one. A selected element nested inside
-   * another selected one is left out — promoting the outer one already carries it,
-   * and promoting both would nest a definition in a definition (§7).
+   * whole batch can be moved or deleted as one. See `promotionTargets` for which
+   * of the selection counts.
    */
   const multiSelected = selectedElements.length > 1;
-  const batchTargets = (() => {
-    if (!multiSelected) return [];
-    const elements = getActivePage(docRef.current).children;
-    const ids = new Set(selectedElements.map((el) => el.id));
-    const hasSelectedAncestor = (el: DesignElement) => {
-      let cur = findParentById(elements, el.id);
-      while (cur) {
-        if (ids.has(cur.id)) return true;
-        cur = findParentById(elements, cur.id);
-      }
-      return false;
-    };
-    return selectedElements.filter(
-      (el) => canCreateComponentHere(elements, el) && !hasSelectedAncestor(el)
-    );
-  })();
+  const batchTargets = promotionTargets(getActivePage(docRef.current).children, selectedElements);
 
   const handleCreateComponents = () => {
-    // Each step returns the document it produced, so the batch threads through
-    // them: a promotion that hoists a master out cannot leave a later target
-    // resolving against a stale tree.
-    let next = docRef.current;
-    const made: string[] = [];
-    let hoistedAny = false;
-    for (const el of batchTargets) {
-      const step = createComponentFromElement(next, el.id);
-      if (!step.component) continue;
-      next = step.doc;
-      made.push(step.component.id);
-      if (step.hoisted.length > 0) hoistedAny = true;
-    }
-    if (made.length === 0) return;
-    onCommitSnapshot(next);
-    setSelectedIds(new Set(made));
-    if (hoistedAny && onHint) onHint(t("component.hoistedMaster"));
+    const res = promoteSelectionToComponents(docRef.current, batchTargets);
+    if (!res) return;
+    onCommitSnapshot(res.doc);
+    setSelectedIds(new Set(res.created));
+    if (res.hoisted && onHint) onHint(t("component.hoistedMaster"));
   };
 
   const canCreateHere = canCreateComponentHere(getActivePage(docRef.current).children, primarySelected);
@@ -279,12 +253,28 @@ export function ComponentSection({
       onHint?.(t("component.variantCombinationMissing"));
     };
 
-    const swapOptions = componentSwapOptions(
-      docRef.current,
-      t("component.defaultVariantLabel"),
-      inst.id,
-      entries
-    );
+    const swapOptions = componentSwapOptions(docRef.current, inst.id, entries);
+
+    /**
+     * What this instance has changed, one removable tag each. Before this the
+     * panel could only say "something is different" (the Reset button lit up) and
+     * answer with "all of it": a user who tried a fill and kept the copy had no
+     * way to give back just the fill.
+     */
+    const ownFields = instanceOwnFields(inst, master ?? undefined);
+    const childOverrides = (inst.overrides ?? []).length;
+    const handleResetField = (field: InstanceOwnField) => {
+      const nextDoc = resetInstanceField(docRef.current, inst.id, field);
+      if (nextDoc) onCommitSnapshot(nextDoc);
+    };
+
+    /**
+     * What the instance IS, in the user's vocabulary: its set's name when it
+     * belongs to one, its master's name otherwise. `master.name` for a variant is
+     * the coordinate string (`Size=Medium, State=Default`), which named the cell
+     * and never the component.
+     */
+    const identity = set ? set.name : master?.name || t("component.missingComponent");
 
     return (
       <Section id="component" title={componentSectionHeader} className="">
@@ -295,71 +285,96 @@ export function ComponentSection({
         {createButton}
         {/* Instance info & actions container */}
         <div className="space-y-3 pt-3">
-          <div className="flex items-center justify-between min-w-0">
-            <div className="flex items-center gap-1.5 min-w-0">
+          {/* One row: what it is, how to change it, what can be done to it. The
+              name IS the swap control — Figma's header — so picking another
+              component is one click from the thing it changes, and the separate
+              "Swap instance" section at the bottom of the panel (a second place
+              for the same question) is gone. */}
+          <div className="flex items-center justify-between gap-1.5 min-w-0">
+            <div className="flex items-center gap-1.5 min-w-0 flex-1">
               <InstanceMark size={13} className="shrink-0 text-component" />
-              <span className={`${SUB_LABEL_CLASS} shrink-0`}>{t("component.instanceOf")}:</span>
-              <span className="text-row text-ink truncate">{master?.name || t("component.missingComponent")}</span>
+              {swapOptions.length > 1 ? (
+                <InstanceSwapPicker
+                  className="flex-1 min-w-0"
+                  options={swapOptions}
+                  value={inst.componentId}
+                  onSelect={swapTo}
+                />
+              ) : (
+                <span className="font-sans text-ui text-ink truncate min-w-0" title={identity}>
+                  {identity}
+                </span>
+              )}
             </div>
-            {master && (
+            <div className="flex items-center gap-1 shrink-0">
+              {master && (
+                <Button
+                  size="icon"
+                  onClick={handleGoToMain}
+                  title={t("component.goToMain")}
+                >
+                  <ExternalLink size={12} />
+                </Button>
+              )}
               <Button
                 size="icon"
-                onClick={handleGoToMain}
-                title={t("component.goToMain")}
+                onClick={handleReset}
+                disabled={!instanceDirty}
+                data-instance-reset="true"
+                title={instanceDirty ? t("component.resetOverrides") : t("component.resetNothing")}
               >
-                <ExternalLink size={12} />
+                <RotateCcw size={12} />
               </Button>
-            )}
+              <Button
+                size="icon"
+                onClick={handleDetach}
+                data-instance-detach="true"
+                title={`${t("component.detachInstance")} (⌥⌘B)`}
+              >
+                <Unlink size={12} />
+              </Button>
+            </div>
           </div>
 
-          {/* Action bar — the half-width twin of the bar above: same 25px field
-              box, one line of `text-row`. The old buttons were `py-1 text-ui`,
-              and a 12px mono label in a half-width slot wrapped onto two lines,
-              which is why this pair read as two slabs from a different UI. */}
-          <div className="flex items-center gap-1.5 pt-0.5">
-            <button
-              onClick={handleReset}
-              disabled={!instanceDirty}
-              data-instance-reset="true"
-              className={`${ACTION_BUTTON_CLASS} ${instanceDirty ? ACTION_BAR_ON : ACTION_BAR_OFF}`}
-              title={t("component.resetOverrides")}
-            >
-              <RotateCcw size={11} />
-              <span>{t("component.resetOverrides")}</span>
-            </button>
-            <button
-              onClick={handleDetach}
-              data-instance-detach="true"
-              className={`${ACTION_BUTTON_CLASS} ${ACTION_BAR_ON}`}
-              title={`${t("component.detachInstance")} (⌥⌘B)`}
-            >
-              <Unlink size={11} />
-              <span>{t("component.detachInstance")}</span>
-            </button>
-          </div>
+          {/* What it has changed, above what it is configured with: the tags are
+              the answer to "why is my Reset lit", and each one is removable on its
+              own. Child overrides are summarised rather than listed — a card with
+              nine changed layers would fill the panel with tags whose names live
+              in the layer tree. */}
+          {(ownFields.length > 0 || childOverrides > 0) && (
+            <div className="flex flex-wrap items-center gap-1" data-instance-override-tags="true">
+              {ownFields.map((field) => {
+                const label = overrideLabel(field);
+                const tip = t("component.resetProperty", { name: label });
+                return (
+                  <TokenTag
+                    key={field}
+                    name={label}
+                    title={tip}
+                    detachTitle={tip}
+                    onDetach={() => handleResetField(field)}
+                    tagProps={{ "data-instance-own-field": field }}
+                  />
+                );
+              })}
+              {childOverrides > 0 && (
+                <span className={`${SUB_LABEL_CLASS} truncate`} data-instance-child-override-count={childOverrides}>
+                  {t("component.childOverrideCount", { count: childOverrides })}
+                </span>
+              )}
+            </div>
+          )}
 
           {/* The one thing an instance can be configured with. */}
           <InstanceVariantSection
             variantRows={(set?.properties ?? []).map((p) => ({
               property: p.property,
               value: currentVariant[p.property] ?? p.values[0] ?? "",
-              options: variantOptionsFor(set!, p.property, currentVariant)
+              options: variantOptionsFor(set!, p.property, currentVariant),
+              holes: variantHoles(set!, p.property, currentVariant)
             }))}
             onSetVariant={setVariant}
           />
-
-          {/* Swapping to any other component. Its own heading, because it is not a
-              variant axis — the shared caption was wrong whenever the instance came
-              from a standalone component. */}
-          {swapOptions.length > 1 && (
-            <Section
-              id="instance-swap"
-              title={t("component.swapInstance")}
-              data-instance-swap="true"
-            >
-              <InstanceSwapPicker options={swapOptions} value={inst.componentId} onSelect={swapTo} />
-            </Section>
-          )}
         </div>
       </Section>
     );

@@ -4,6 +4,7 @@ import type { NormalizationRepair } from "../dsl/normalize/shared";
 import { documentJson } from "../document-json";
 import { documentJsonFileName } from "../document-import";
 import { getFileName, pickerStartIn, type PickerStartIn } from "../data-bridge";
+import { writeBytesAtomically } from "./atomic-write";
 
 /**
  * The `.fish.json` sidecar — a document with no shell around it.
@@ -55,10 +56,11 @@ export async function saveDocumentJson(doc: DesignDocument): Promise<JsonExportR
   }
 
   try {
-    const writable = await handle.createWritable?.();
-    if (!writable) return { ok: false, reason: "no-writable" };
-    await writable.write(text);
-    await writable.close();
+    // Same atomic path as a `.fish.html` write: overwriting an existing sidecar
+    // is a normal answer to the picker, and both failure modes are real here —
+    // a bare `createWritable()` empties the file first, and a shorter export
+    // over a longer one leaves the previous document's tail behind.
+    await writeBytesAtomically(handle, text);
     return { ok: true };
   } catch (e) {
     return { ok: false, reason: e instanceof Error ? e.message : "write-failed" };

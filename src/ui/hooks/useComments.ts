@@ -18,12 +18,15 @@ import { elementWorldAABB } from "../../core/geometry/tree-hit";
 import {
   applySuggestionToDocument,
   acceptThreadSuggestion,
+  partialAcceptThreadSuggestion,
+  reportSuggestionApply,
   discardThreadSuggestion
 } from "../../core/comments/suggested-ops";
+import { t } from "../../i18n";
 import type { DesignDocument, DesignElement } from "../../core/dsl/types";
 import { getActivePage } from "../../core/dsl/types";
 
-const USER_AUTHOR = { id: "user", name: "You", role: "user" as const };
+const USER_AUTHOR = { id: "user", name: "User", role: "user" as const };
 
 function makeMessage(content: string): CommentMessage {
   return {
@@ -185,7 +188,7 @@ export function useComments(
       const thread = comments.threads.find((t) => t.id === threadId);
       if (!thread?.suggestion?.ops) return;
 
-      const { nextDoc, changed } = applySuggestionToDocument(
+      const { nextDoc, changed, outcomes } = applySuggestionToDocument(
         docRef.current,
         thread.suggestion.ops
       );
@@ -193,7 +196,29 @@ export function useComments(
       // the same runtime, so ⌘Z returns the canvas to what the user was reading
       // when they pressed Accept.
       if (changed) commitSnapshot(nextDoc);
-      updateComments(acceptThreadSuggestion(comments, threadId));
+
+      const report = reportSuggestionApply(outcomes);
+      if (report.failures.length === 0) {
+        updateComments(acceptThreadSuggestion(comments, threadId, t("comments.appliedSuccess")));
+        return;
+      }
+      /* `changed` cannot tell these apart from a clean accept: one op landing is
+         enough. Resolving anyway would record "applied" over a canvas that is
+         missing part of what the card promised, so the failure is written into
+         the thread and the thread stays open. */
+      updateComments(
+        partialAcceptThreadSuggestion(
+          comments,
+          threadId,
+          t("comments.appliedPartial", {
+            n: report.applied,
+            total: outcomes.length,
+            detail: report.failures
+              .map((failure) => `${failure.op}${failure.id ? ` ${failure.id}` : ""} — ${failure.detail}`)
+              .join("; ")
+          })
+        )
+      );
     },
     [comments, docRef, commitSnapshot, updateComments]
   );

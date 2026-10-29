@@ -9,7 +9,7 @@
   },
   "routes": [
     {
-      "pattern": "dl.themindstudio.cc",
+      "pattern": "dl.fish.themindstudio.cc",
       "custom_domain": true
     }
   ]

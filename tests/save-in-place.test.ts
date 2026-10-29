@@ -225,3 +225,86 @@ describe("launchQueue file adoption", () => {
     await consumerFn!({ files: [fakeHandle] });
   });
 });
+
+/**
+ * A save-as can land on a file that already exists — the picker suggests the
+ * current name, and choosing that same file is how "replace this" is spelled.
+ * `createWritable()` truncates it to zero bytes before `write` is called, so
+ * without the atomic pair a failed write leaves the user with nothing.
+ */
+describe("saveDocAsNewFile writes atomically", () => {
+  const overwriteDoc = () =>
+    ({
+      docId: "doc_1",
+      version: "0.1",
+      id: "d1",
+      name: "Overwrite",
+      createdAt: "2020-01-01T00:00:00Z",
+      updatedAt: "2020-01-01T00:00:00Z",
+      canvas: { width: 100, height: 100 },
+      elements: []
+    }) as any;
+
+  it("keeps existing data and cuts the file to the bytes it wrote", async () => {
+    await withFsStubs(async () => {
+      const seen: { opts?: unknown; truncatedTo?: number; closed: boolean; aborted: boolean } = {
+        closed: false,
+        aborted: false
+      };
+      let written = "";
+      (globalThis as any).window.showSaveFilePicker = async () => ({
+        name: "overwrite.fish.html",
+        createWritable: async (opts?: unknown) => {
+          seen.opts = opts;
+          return {
+            write: async (s: string) => {
+              written = s;
+            },
+            truncate: async (size: number) => {
+              seen.truncatedTo = size;
+            },
+            close: async () => {
+              seen.closed = true;
+            },
+            abort: async () => {
+              seen.aborted = true;
+            }
+          };
+        }
+      });
+
+      const res = await saveDocAsNewFile(overwriteDoc(), "overwrite.fish.html");
+      expect(res.ok).toBe(true);
+      expect(seen.opts).toEqual({ keepExistingData: true });
+      // Bytes, not characters, and not the file's previous length: the tail of
+      // a longer document would otherwise survive the write.
+      expect(seen.truncatedTo).toBe(new TextEncoder().encode(written).byteLength);
+      expect(seen.closed).toBe(true);
+      expect(seen.aborted).toBe(false);
+    });
+  });
+
+  it("aborts the temp file instead of committing a failed write", async () => {
+    await withFsStubs(async () => {
+      let aborted = false;
+      (globalThis as any).window.showSaveFilePicker = async () => ({
+        name: "overwrite.fish.html",
+        createWritable: async () => ({
+          write: async () => {
+            throw new Error("quota exceeded");
+          },
+          truncate: async () => undefined,
+          close: async () => undefined,
+          abort: async () => {
+            aborted = true;
+          }
+        })
+      });
+
+      const res = await saveDocAsNewFile(overwriteDoc(), "overwrite.fish.html");
+      expect(res.ok).toBe(false);
+      expect(res.reason).toBe("quota exceeded");
+      expect(aborted).toBe(true);
+    });
+  });
+});

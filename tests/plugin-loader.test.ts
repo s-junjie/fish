@@ -172,6 +172,51 @@ describe("the installed copy", () => {
     await uninstallPlugin(manifest.id);
     await expect(openPlugin(manifest.id)).rejects.toThrow(/not installed/);
   });
+
+  it("installs a signed plugin downloaded from a catalog URL", async () => {
+    const { fetchPluginCatalog, installPluginFromCatalog } = await import("../src/core/plugins/catalog");
+    const { file, manifest } = await signWith(key.pair.privateKey, CODE, {
+      id: "fish.remote-test",
+      name: "Remote Test",
+      version: "1.0.0"
+    });
+
+    const fakeFetch: typeof globalThis.fetch = async (input) => {
+      const url = String(input);
+      if (url.endsWith("catalog.json")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            app: "fish",
+            version: "0.1.0",
+            plugins: [manifest]
+          })
+        } as unknown as Response;
+      }
+      if (url.includes("fish.remote-test")) {
+        return {
+          ok: true,
+          status: 200,
+          arrayBuffer: async () => file
+        } as unknown as Response;
+      }
+      return { ok: false, status: 404 } as unknown as Response;
+    };
+
+    const catalog = await fetchPluginCatalog("https://dl.fish.themindstudio.cc/catalog.json", fakeFetch);
+    expect(catalog.plugins.length).toBe(1);
+    expect(catalog.plugins[0].id).toBe("fish.remote-test");
+
+    const installed = await installPluginFromCatalog(catalog.plugins[0], {
+      catalogBaseUrl: "https://dl.fish.themindstudio.cc/catalog.json",
+      fetchImpl: fakeFetch
+    });
+    const records = await installedRecords();
+    const found = records.find((r) => r.id === "fish.remote-test");
+    expect(found).toBeDefined();
+    expect(found?.manifest.name).toBe("Remote Test");
+  });
 });
 
 describe("the bundle contract", () => {

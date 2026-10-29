@@ -1,6 +1,7 @@
 import { AssetRef, DesignElement } from "../dsl/types";
 import { createImageFillElement } from "../dsl/image-fill";
 import { createId } from "../id";
+import { externalFetch, isAbortFailure, publicProxyUrl } from "../net/external-fetch";
 
 // 4096 is the longest edge whose square still fits Safari's 16,777,216px
 // canvas-area ceiling; the cap cannot go higher without the encode going blank
@@ -647,19 +648,28 @@ export async function embedExternalAsset(asset: AssetRef): Promise<AssetRef> {
     return asset;
   }
 
-  let response: Response;
+  // CORS is the only failure that retrying somewhere else can fix. An HTTP
+  // status is the server's answer and a timeout is the network's, and neither
+  // gets better through a third party — so a 404 is reported as a 404 instead
+  // of being replayed through the proxy, and a timeout is not retried at all.
+  let response: Response | null = null;
+  let directError: unknown;
   try {
-    response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch image: ${response.statusText}`);
-    }
-  } catch {
-    // If direct fetch is blocked by CORS, try public secure image proxy fallback (wsrv.nl)
-    const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(url)}`;
-    response = await fetch(proxyUrl);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch image: ${response.statusText}`);
-    }
+    response = await externalFetch(url);
+  } catch (err) {
+    if (isAbortFailure(err)) throw err;
+    directError = err;
+  }
+  if (!response) {
+    // `null` means this address carries something private — an intranet host, a
+    // signed query string, plain http. Sending it to a public proxy would leak
+    // exactly what it was addressing, so the original failure is the answer.
+    const proxyUrl = publicProxyUrl(url);
+    if (!proxyUrl) throw directError;
+    response = await externalFetch(proxyUrl);
+  }
+  if (!response.ok) {
+    throw new Error(`Failed to fetch image: ${response.statusText}`);
   }
   const blob = await response.blob();
   const rawPath = url.split("?")[0];

@@ -2,6 +2,7 @@ import { AssetRef, DesignDocument, DesignElement, VideoElement } from "../dsl/ty
 import { getActivePage } from "../dsl/types";
 import { createId } from "../id";
 import { flattenElements } from "../geometry/tree-ops";
+import { externalFetch } from "../net/external-fetch";
 
 export const MAX_VIDEO_EDGE = 640;
 
@@ -451,7 +452,7 @@ export async function embedExternalVideoAsset(asset: AssetRef): Promise<AssetRef
     return asset;
   }
 
-  const response = await fetch(url);
+  const response = await externalFetch(url);
   if (!response.ok) {
     throw new Error(`Failed to fetch video: ${response.statusText}`);
   }
