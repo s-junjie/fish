@@ -237,7 +237,7 @@ export function SelectedColorsStrip({
           boundStyleId={pickingStyle.id}
           availableStyles={docRef.current.styles || []}
           anchorRef={styleAnchorRef}
-          currentSelection={{ type: "paint", paints: pickingStyle.paints }}
+          currentSelection={{ type: "paint", paints: pickingStyle.paints, elementIds: pickingColor.elementIds }}
           onSelectStyle={(s) => writeStyle(pickingColor, (el) => styleOpsFor(pickingColor).bind(el, s as PaintStyle))}
           onDetachStyle={() => writeStyle(pickingColor, (el) => styleOpsFor(pickingColor).unbind(el, pickingStyle))}
           onSaveStyle={(style) => {

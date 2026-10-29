@@ -153,6 +153,9 @@ export function collectTextInk(doc: DesignDocument, rawDoc: unknown): InkCollect
             content: (el as { content?: string }).content ?? "",
             authored: authoredAlignmentOf(rawById.get(el.id)),
             computedAlign: getComputedStyle(container).textAlign,
+            // `vertical-align` is painted as a column flex box, so this is where
+            // the authored value either arrived or did not.
+            computedJustify: getComputedStyle(container).justifyContent,
             box,
             ink: unionInkRects(inkRects(container), trackingOf(container)),
             group: nearestSibling(node),

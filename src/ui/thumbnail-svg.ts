@@ -8,6 +8,7 @@ import { CanvasDefs } from "./canvas/CanvasDefs";
 import { thumbnailContext } from "./assets/asset-cards";
 import { findThumbnailTargetFrame } from "../core/thumbnail-target";
 import { convertForeignObjectsToSvg } from "../core/export-text";
+import { restoreSourceUris } from "../core/assets/render-uri";
 import { DEFAULT_CANVAS_BACKGROUND } from "../core/dsl/defaults";
 
 /**
@@ -110,6 +111,11 @@ export function buildThumbnailSvg(doc: DesignDocument): ThumbnailArt | null {
         convertForeignObjectsToSvg(svg as unknown as SVGSVGElement, doc);
       } catch (err) {
         console.warn("FISH: preview text could not be converted to SVG text:", err);
+      }
+      try {
+        restoreSourceUris(svg);
+      } catch (err) {
+        console.warn("FISH: failed to restore source URIs for thumbnail:", err);
       }
     }
 

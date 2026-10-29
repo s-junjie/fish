@@ -46,12 +46,13 @@ export const LEGACY_COVER_BLOCK_RE =
  * a cover.
  */
 export function coverBlockHtml(inner: string, background: string): string {
+  // Break literal attribute tokens so stripCoverBlock regexes matching on an inlined
+  // bundle (e.g. during shell assembly or reshelling) never match this function's
+  // own minified source code. Terser does not constant-fold array joins.
+  const previewAttr = ["data", "fish", 'preview="1"'].join("-");
+  const previewEndAttr = ["data", "fish", 'preview-end="1"'].join("-");
   return (
-    '<div data-fish-preview="1"><div style="position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;background:' +
-    background +
-    ';overflow:hidden">' +
-    inner +
-    '</div><div data-fish-preview-end="1"></div></div>'
+    `<div ${previewAttr}><div style="position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;background:${background};overflow:hidden">${inner}</div><div ${previewEndAttr}></div></div>`
   );
 }
 
