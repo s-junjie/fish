@@ -575,7 +575,7 @@ check(
 // 13 — and the bound the engine DOES resolve. This container used to be the one
 //      criterion 6 was about: `max-width: 120px` on a `flex: 1` item is now
 //      clamped by the layout pass, so it rebuilds instead of giving up its
-//      layout. "精确但不可重建" is the failure mode to watch for on every bound
+//      layout. "Exact-but-unrebuildable" is the failure mode to watch for on every bound
 //      the engine grows, and this is the assertion that it has not happened.
 const clampedId = idByPath.get("body/4");
 const clamped = clampedId ? byId.get(clampedId) : null;

@@ -1,6 +1,7 @@
-import { Sparkles } from "lucide-react";
+import { Eye, EyeOff, Sparkles } from "lucide-react";
 import { t } from "../../i18n";
 import { Button } from "../Button";
+import { ACTION_BAR_TOGGLE_OFF, ACTION_BAR_TOGGLE_ON, ACTION_TOGGLE_ICON_CLASS } from "../inspector/action-bar-style";
 import type { CommentDiffRow } from "../../core/comments/diff";
 
 export interface CommentDiffCardProps {
@@ -10,6 +11,10 @@ export interface CommentDiffCardProps {
   onDiscard: () => void;
   /** Applied/discarded stats still show the ops; the buttons only exist while pending. */
   pending?: boolean;
+  /** An ops list that changes nothing has no result to look at. */
+  canPreview?: boolean;
+  previewOn?: boolean;
+  onTogglePreview?: () => void;
   /**
    * Off when the summary is already the AI's last message — `fish comments
    * suggest` writes it as both, and the card repeating the sentence directly
@@ -57,6 +62,9 @@ export function CommentDiffCard({
   onApply,
   onDiscard,
   pending = true,
+  canPreview = true,
+  previewOn = false,
+  onTogglePreview,
   showSummary = true
 }: CommentDiffCardProps) {
   return (
@@ -84,13 +92,31 @@ export function CommentDiffCard({
       )}
 
       {pending && (
-        <div className="flex items-center justify-end gap-1.5 pt-0.5">
-          <Button size="field" variant="ghost" onClick={onDiscard}>
-            {t("comments.discardSuggestion")}
-          </Button>
-          <Button size="field" variant="primary" onClick={onApply}>
-            {t("comments.applySuggestion")}
-          </Button>
+        <div className="flex items-center justify-between gap-1.5 pt-0.5">
+          {/* Looking at the result is not a third decision, so it sits apart from
+              the two that are — same row, opposite end. */}
+          <button
+            type="button"
+            data-comment-preview-toggle="true"
+            disabled={!canPreview}
+            onClick={onTogglePreview}
+            aria-pressed={previewOn}
+            title={t(previewOn ? "comments.previewHint" : canPreview ? "comments.preview" : "comments.previewUnavailable")}
+            aria-label={t("comments.preview")}
+            className={`${ACTION_TOGGLE_ICON_CLASS} ${
+              previewOn ? ACTION_BAR_TOGGLE_ON : ACTION_BAR_TOGGLE_OFF
+            } disabled:opacity-50`}
+          >
+            {previewOn ? <Eye size={13} /> : <EyeOff size={13} />}
+          </button>
+          <div className="flex items-center gap-1.5">
+            <Button size="field" variant="ghost" onClick={onDiscard}>
+              {t("comments.discardSuggestion")}
+            </Button>
+            <Button size="field" variant="primary" onClick={onApply}>
+              {t("comments.applySuggestion")}
+            </Button>
+          </div>
         </div>
       )}
     </div>

@@ -17,6 +17,7 @@ import type { DesignDocument, DesignElement, TextElement, TextStyleDefinition } 
 import { declaresFallback, firstNamedFamily } from "../font-stack";
 import { mapElements } from "../geometry/tree-edit";
 import { relayoutDocumentTree } from "../layout/auto-layout";
+import { instanceSizeResolver } from "./instance-size";
 
 export type FontReplaceScope = "document" | { readonly elementIds: ReadonlySet<string> };
 
@@ -46,7 +47,7 @@ export function replaceFontFamily(
   const selection = scope === "document" ? null : scope.elementIds;
   let touched = false;
 
-  const pages = (doc.pages ?? []).map((page) => {
+  const replacedPages = (doc.pages ?? []).map((page) => {
     const children = mapElements(page.children ?? [], (el) => {
       if (el.type !== "text") return el;
       if (selection && !selection.has(el.id)) return el;
@@ -65,22 +66,19 @@ export function replaceFontFamily(
       const spansChanged = spans !== text.spans;
       if (style === text.style && !spansChanged) return el;
 
-      const next: TextElement = { ...text, ...(style ? { style } : {}), ...(spans ? { spans } : {}) };
+      const nextEl: TextElement = { ...text, ...(style ? { style } : {}), ...(spans ? { spans } : {}) };
       // A layer bound to a text STYLE re-materialises its whole `style` from that
       // style on the next cascade, so a family written here alone would be gone
       // by the next commit. Replacing on the SELECTION therefore detaches the
       // layer — that is what "this layer, in the new font" has to mean when the
       // font comes from a shared style. The document scope rewrites the style
       // itself, and the binding survives.
-      if (selection) delete (next as { textStyleId?: string }).textStyleId;
-      return next;
+      if (selection) delete (nextEl as { textStyleId?: string }).textStyleId;
+      return nextEl;
     });
-    if (children === page.children) return page;
-    touched = true;
-    // The replacement is normally an installed family, which is what lifts the
-    // freeze in `resolveTextSizing`: the box re-measures here, once, instead of
-    // being thawed by whichever gesture happens to touch it next.
-    return { ...page, children: relayoutDocumentTree(children) };
+    const changed = children !== page.children;
+    if (changed) touched = true;
+    return { page, children, changed };
   });
 
   const styles = selection
@@ -98,7 +96,10 @@ export function replaceFontFamily(
   const fonts = selection ? doc.fonts : doc.fonts?.filter((font) => keyOf(font.family) !== fromKey);
 
   if (!touched) return doc;
-  const next: DesignDocument = { ...doc, pages };
+  const next: DesignDocument = {
+    ...doc,
+    pages: replacedPages.map(({ page, children }) => (page.children === children ? page : { ...page, children }))
+  };
   if (styles) next.styles = styles;
   if (fonts !== doc.fonts) {
     // An emptied table is REMOVED, not left as `[]`: the canonical form does not
@@ -107,6 +108,18 @@ export function replaceFontFamily(
     if (fonts && fonts.length > 0) next.fonts = fonts;
     else delete (next as { fonts?: unknown }).fonts;
   }
+
+  // The replacement is normally an installed family, which is what lifts the
+  // freeze in `resolveTextSizing`: the box re-measures here, once, instead of
+  // being thawed by whichever gesture happens to touch it next. Passing the
+  // instanceSizeResolver ensures instances referencing modified master components
+  // are updated in the same pass.
+  const resolver = instanceSizeResolver(next);
+  next.pages = next.pages.map((page, i) => {
+    if (!replacedPages[i]?.changed) return page;
+    return { ...page, children: relayoutDocumentTree(page.children, resolver) };
+  });
+
   return next;
 }
 

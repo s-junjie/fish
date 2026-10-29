@@ -26,7 +26,8 @@ export interface ImagePaintImage {
 export function imagePaintImage(
   paint: ImagePaint,
   box: CropBox,
-  asset: Pick<AssetRef, "uri" | "width" | "height">
+  asset: Pick<AssetRef, "uri" | "width" | "height">,
+  href: string = asset.uri
 ): ImagePaintImage | null {
   if (!asset.uri) return null;
   const natural =
@@ -34,7 +35,7 @@ export function imagePaintImage(
   const placement = croppedPlacement(paint, box, natural);
   if (placement && natural) {
     return {
-      href: asset.uri,
+      href,
       x: 0,
       y: 0,
       width: natural.width,
@@ -44,7 +45,7 @@ export function imagePaintImage(
     };
   }
   return {
-    href: asset.uri,
+    href,
     x: 0,
     y: 0,
     width: box.width,

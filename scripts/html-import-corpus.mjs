@@ -54,11 +54,11 @@ for (const file of files) {
 const row = (form, hit, decls, note) => `| \`${form}\` | ${hit.size} / ${files.length} | ${decls} | ${note} |`;
 
 console.log(`\n${files.length} files in ${dir}/\n`);
-console.log("| 形态 | 文件 | 声明 | 结论 |");
+console.log("| form | file | declaration | verdict |");
 console.log("| --- | --- | --- | --- |");
-console.log(row("grid-template-columns: 290px 1fr 300px", filesWith.mixedPxFr, trackForms.mixedPxFr, "混合 px/fr：改宽度时按什么比例分，导入丢失"));
-console.log(row("repeat(auto-fit, minmax(360px, 1fr))", filesWith.autoFit, trackForms.autoFit, "列数是宽度的函数，计算值里已被解析掉"));
-console.log(row("repeat(N, 1fr)", filesWith.equalFr, trackForms.equalFr, "等宽，已由 `columns: N` 覆盖"));
-console.log(row("max-width: <px>", filesWith.maxWidth, declarations.maxWidth, "限宽惯用法，引擎不 clamp"));
-console.log(row("min-height: 0", filesWith.minHeightZero, declarations.minHeightZero, "flex 自动最小尺寸的变通，对引擎是空操作"));
-console.log(`\n（另：纯 px 的 grid-template-columns ${trackForms.fixedPx} 条，导入无损）\n`);
+console.log(row("grid-template-columns: 290px 1fr 300px", filesWith.mixedPxFr, trackForms.mixedPxFr, "mixed px/fr: when width changes, the split ratio is undefined; lost on import"));
+console.log(row("repeat(auto-fit, minmax(360px, 1fr))", filesWith.autoFit, trackForms.autoFit, "column count depends on width; resolved away in computed values"));
+console.log(row("repeat(N, 1fr)", filesWith.equalFr, trackForms.equalFr, "equal width, already covered by `columns: N`"));
+console.log(row("max-width: <px>", filesWith.maxWidth, declarations.maxWidth, "width-limiting idiom; engine does not clamp"));
+console.log(row("min-height: 0", filesWith.minHeightZero, declarations.minHeightZero, "flex auto-min-size workaround; no-op for the engine"));
+console.log(`\n(note: ${trackForms.fixedPx} pure-px grid-template-columns rows import losslessly)\n`);

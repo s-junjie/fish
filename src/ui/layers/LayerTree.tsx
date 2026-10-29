@@ -559,7 +559,11 @@ export function LayerTree({
   return (
     <>
       <div ref={scrollContainerRef} onScroll={onScroll} className="flex-1 overflow-auto p-2">
-        <div className="min-w-full w-max space-y-1">
+        {/* `min-w-full` only: `w-max` let a long label size the list instead of
+            truncating, so a row grew past the rail and its own marks (theme mode,
+            mask, the lock/eye) were the parts that fell off the end. A name that
+            does not fit elides; the rail is resizable. */}
+        <div className="min-w-full space-y-1">
           {renderRun(plan.roots, 0, LAYER_ROW_GAP_ROOT)}
         </div>
       </div>

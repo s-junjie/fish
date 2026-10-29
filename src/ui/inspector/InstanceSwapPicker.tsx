@@ -3,10 +3,13 @@ import { t } from "../../i18n";
 import { ChevronDown, Check, Search } from "lucide-react";
 import { POPOVER_SURFACE_CLASS } from "../menu-style";
 import { useDismiss } from "../hooks/useDismiss";
+import { ComponentMark, VariantSetMark } from "../ComponentMark";
 
 export interface SwapPickerOption {
   id: string;
   label: string;
+  /** A set's frame or a single component — the list mixes both, so each row says which. */
+  kind?: "set" | "component";
   disabled?: boolean;
   refusal?: string;
 }
@@ -21,12 +24,14 @@ const LIST_MAX_HEIGHT = 200;
 export function InstanceSwapPicker({
   options,
   value,
-  onSelect
+  onSelect,
+  className = "w-full min-w-0"
 }: {
   options: SwapPickerOption[];
   value: string;
   onSelect: (id: string) => void;
   label?: string;
+  className?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -93,7 +98,7 @@ export function InstanceSwapPicker({
   };
 
   return (
-    <div className="relative w-full" data-swap-picker-root="true">
+    <div className={`relative ${className}`.trim()} data-swap-picker-root="true">
       <button
         ref={triggerRef}
         type="button"
@@ -106,9 +111,9 @@ export function InstanceSwapPicker({
             setOpen(true);
           }
         }}
-        className="relative w-full flex items-center h-[25px] bg-inset rounded-swatch pl-[7px] pr-6 text-row text-ink hover:bg-surface focus:outline-none cursor-default transition-colors duration-micro ease-snap text-left"
+        className="relative w-full min-w-0 flex items-center h-[25px] bg-inset rounded-swatch pl-[7px] pr-6 font-sans text-ui text-ink hover:bg-surface focus:outline-none cursor-default transition-colors duration-micro ease-snap text-left"
       >
-        <span className="truncate">{current?.label ?? t("component.missingComponent")}</span>
+        <span className="truncate min-w-0">{current?.label ?? t("component.missingComponent")}</span>
         <ChevronDown
           size={12}
           className={`absolute right-1.5 pointer-events-none shrink-0 ${
@@ -136,7 +141,7 @@ export function InstanceSwapPicker({
               onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
               onKeyDown={handleKeyDown}
               onPointerDown={(e) => e.stopPropagation()}
-              className="w-full bg-transparent outline-none text-ui text-ink placeholder:text-ink-muted"
+              className="w-full bg-transparent outline-none font-sans text-ui text-ink placeholder:text-ink-muted"
             />
           </div>
 
@@ -157,7 +162,7 @@ export function InstanceSwapPicker({
                   title={o.refusal ? t(`component.swapRefused.${o.refusal}`) : undefined}
                   onClick={() => commit(o)}
                   onMouseMove={() => setHighlight(i)}
-                  className={`w-full flex items-center justify-between gap-2 px-2.5 py-1 text-row text-left truncate transition-colors duration-micro ease-snap ${
+                  className={`w-full flex items-center justify-between gap-2 px-2.5 py-1 font-sans text-ui text-left truncate transition-colors duration-micro ease-snap ${
                     o.disabled
                       ? "text-ink-muted cursor-default opacity-50"
                       : isHighlighted
@@ -165,13 +170,20 @@ export function InstanceSwapPicker({
                       : "text-ink-dim hover:bg-raised hover:text-ink cursor-default"
                   }`}
                 >
-                  <span className="truncate">{o.label}</span>
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    {o.kind === "set" ? (
+                      <VariantSetMark size={11} className="shrink-0 text-component" />
+                    ) : o.kind === "component" ? (
+                      <ComponentMark size={11} className="shrink-0 text-component" />
+                    ) : null}
+                    <span className="truncate">{o.label}</span>
+                  </span>
                   {isSelected && <Check size={12} className="text-brand shrink-0" />}
                 </button>
               );
             })}
             {matches.length === 0 && (
-              <div className="px-3 py-2 text-ui text-ink-muted">{t("assets.noResults")}</div>
+              <div className="px-3 py-2 font-sans text-ui text-ink-muted">{t("assets.noResults")}</div>
             )}
           </div>
         </div>

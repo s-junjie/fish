@@ -3,9 +3,8 @@ import { t } from "../../i18n";
 import type { AutosaveStatus } from "../../core/persistence/autosave-controller";
 import { TITLE_BAR_HEIGHT } from "./titlebar-layout";
 import { AutosaveBadge } from "./AutosaveBadge";
-import { UpdatesControl } from "../updates/UpdatesControl";
+import { LogoMenu } from "./LogoMenu";
 import type { UpdateStatus } from "../hooks/useUpdateStatus";
-import { FishLogo } from "../FishLogo";
 import { ZoomControl } from "./ZoomControl";
 
 interface TitleBarProps {
@@ -29,7 +28,6 @@ interface TitleBarProps {
   onNewFile: () => void;
   onOpenHistory: () => void;
   onExportJson: () => Promise<boolean>;
-  onCopyCompactJson: () => Promise<boolean>;
   onImportJson: () => void | Promise<unknown>;
   onImportFromFile: (file: File) => void;
   canUseFilePicker: boolean;
@@ -72,7 +70,6 @@ export function TitleBar({
   onNewFile,
   onOpenHistory,
   onExportJson,
-  onCopyCompactJson,
   onImportJson,
   onImportFromFile,
   canUseFilePicker,
@@ -94,9 +91,7 @@ export function TitleBar({
       }`}
     >
       <div className="flex items-center gap-2 min-w-0">
-        <span className="shrink-0 flex items-center select-none" title={t("titlebar.brand")}>
-          <FishLogo size={18} />
-        </span>
+        <LogoMenu status={updates} />
         {/* The document's name — the second of the three `font-sans` places,
             and the reference layout's own `.tb-title` (13px/600), the only text
             it draws in sans. It was stock `text-xs` and `ink-dim`, which made
@@ -104,10 +99,6 @@ export function TitleBar({
         <span data-title-bar-name="true" className="truncate font-sans text-displaySm text-ink max-w-[200px] md:max-w-[320px]">
           {docName ?? t("titlebar.untitled")}
         </span>
-
-        <div className="ml-1 pl-3 border-l border-rule flex shrink-0 items-center">
-          <UpdatesControl status={updates} />
-        </div>
       </div>
 
       {/* Centered Auto-save / Document Hub */}
@@ -127,7 +118,6 @@ export function TitleBar({
           onNewFile={onNewFile}
           onOpenHistory={onOpenHistory}
           onExportJson={onExportJson}
-          onCopyCompactJson={onCopyCompactJson}
           onImportJson={onImportJson}
           onImportFromFile={onImportFromFile}
           canUseFilePicker={canUseFilePicker}

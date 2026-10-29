@@ -385,6 +385,15 @@ export function useContextMenu(options: UseContextMenuOptions) {
     if (single && canCreateComponentHere(getActivePage(doc).children, single)) {
       list.push(registered("createComponent", "⌥⌘K"));
     }
+    // The batch and the combine are multi-selection commands, so they cannot hang
+    // off `single`: they are the two things Figma's right-click offers on a set of
+    // layers that the inspector had and the menu did not.
+    if (selected.length > 1 && editorCommandEnabled("createComponents")) {
+      list.push(registered("createComponents", ""));
+    }
+    if (editorCommandEnabled("combineAsVariants")) {
+      list.push(registered("combineAsVariants", ""));
+    }
     // The inspector's Vector section only exists in edit mode, so this and Enter
     // are the two ways in. Offered for a lone path: "edit" on a multi-selection
     // has no single thing to apply to.
@@ -405,6 +414,7 @@ export function useContextMenu(options: UseContextMenuOptions) {
     // an instance's changes all meant finding the panel first.
     if (single?.type === "component") {
       list.push(registered("createInstance", ""));
+      list.push(registered("addVariant", ""));
     }
     if (single?.type === "instance") {
       // No swap entry: picking a target needs a list, and a flat menu cannot hold
@@ -413,7 +423,14 @@ export function useContextMenu(options: UseContextMenuOptions) {
       list.push(registered("resetInstanceChanges", ""));
       list.push(registered("goToMainComponent", ""));
       list.push(registered("detachInstance", "⌥⌘B"));
-    } else if (single && editorCommandEnabled("goToMainComponent")) {
+    }
+    if (single && editorCommandEnabled("resetNodeOverrides")) {
+      // One layer inside an instance has been changed: undo THAT layer's changes.
+      // `resetInstanceChanges` above would throw away every other override on the
+      // instance as well, which is a different command at a different scope.
+      list.push(registered("resetNodeOverrides", ""));
+    }
+    if (single?.type !== "instance" && single && editorCommandEnabled("goToMainComponent")) {
       // A layer INSIDE an instance resolves to the same master, which is the
       // common case: the user has double-clicked in and wants the definition.
       list.push(registered("goToMainComponent", ""));

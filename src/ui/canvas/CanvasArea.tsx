@@ -142,7 +142,15 @@ interface CanvasAreaProps {
   onCommitCanvasText: () => void;
   onCancelCanvasText: () => void;
   onInsertImage?: (file: File | Blob, worldX: number, worldY: number) => void;
-  onAssetDrop?: (payloadJson: string, worldX: number, worldY: number) => void;
+  /**
+   * `swap` is the Alt/Option modifier at the moment of the drop.
+   *
+   * A plain drop INSERTS — the component lands where it was let go, on top of
+   * whatever is there. Swapping is the destructive reading of the same gesture
+   * and gets the modifier Figma gives it, so "drop a Button on a Dialog" no
+   * longer replaces the Dialog.
+   */
+  onAssetDrop?: (payloadJson: string, worldX: number, worldY: number, swap?: boolean) => void;
   onPathDragStart?: () => void;
   onPathDragChange?: (newD: string) => void;
   /** Cmd/Ctrl held: the resize handles of a frame mean "resize the frame only". */
@@ -383,7 +391,7 @@ export function CanvasArea({
       const rect = canvasContainerRef.current.getBoundingClientRect();
       const worldX = Math.round(((e.clientX - rect.left) - pan.x) / zoom);
       const worldY = Math.round(((e.clientY - rect.top) - pan.y) / zoom);
-      onAssetDrop(assetPayload, worldX, worldY);
+      onAssetDrop(assetPayload, worldX, worldY, e.altKey);
       return;
     }
 

@@ -27,12 +27,33 @@ export function styleTables(doc: Pick<DesignDocument, "tokens" | "styles">): Sty
   return { tokens: doc.tokens ?? [], styles: doc.styles ?? [] };
 }
 
+/**
+ * The lookup maps a document's tables are read through, kept for as long as the
+ * arrays they describe.
+ *
+ * `syncDualStorage` asks once per element, and a page has a thousand of them: the
+ * two maps were rebuilt a thousand times per normalize from the same two arrays,
+ * which measured 4.2 ms of a 4.2 ms pass. A table is replaced wholesale rather
+ * than edited in place (every writer maps it into a new array), so identity is
+ * the version, and the size check catches the one writer that appends.
+ */
+const styleMaps = new WeakMap<readonly DesignStyle[], Map<string, DesignStyle>>();
+const tokenMaps = new WeakMap<readonly DesignToken[], Map<string, DesignToken>>();
+
 export function tokenMap(tokens: readonly DesignToken[]): Map<string, DesignToken> {
-  return new Map(tokens.map((token) => [token.id, token]));
+  const cached = tokenMaps.get(tokens);
+  if (cached && cached.size === tokens.length) return cached;
+  const map = new Map(tokens.map((token) => [token.id, token]));
+  tokenMaps.set(tokens, map);
+  return map;
 }
 
 export function styleMap(styles: readonly DesignStyle[]): Map<string, DesignStyle> {
-  return new Map(styles.map((style) => [style.id, style]));
+  const cached = styleMaps.get(styles);
+  if (cached && cached.size === styles.length) return cached;
+  const map = new Map(styles.map((style) => [style.id, style]));
+  styleMaps.set(styles, map);
+  return map;
 }
 
 /** `modes[theme] ?? value` — a token's other half for the mode in scope. */

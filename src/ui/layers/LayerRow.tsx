@@ -98,6 +98,15 @@ export function LayerRow({
     : insideSelectedSubtree
       ? "bg-selection-subtree-solid group-hover:bg-selection-subtree-hover-solid"
       : "bg-panel group-hover:bg-raised";
+  /* The same fills, attached to the hover instead of painted at rest. The chip
+     sits ON the row (see below), so a fill at rest is a bare rectangle covering
+     the label's tail and whatever mark sits under it — the icons inside are
+     invisible, only the block was not. */
+  const actionHoverSurface = isSelected
+    ? "group-hover:bg-selection-solid"
+    : insideSelectedSubtree
+      ? "group-hover:bg-selection-subtree-hover-solid"
+      : "group-hover:bg-raised";
 
   useFontStatusUpdates();
   // Only `missing` is marked. A `remote` family is a font this machine can still
@@ -106,6 +115,32 @@ export function LayerRow({
     const font = textFontStatus(el);
     return font?.status === "missing" ? font.family : null;
   })();
+
+  /* What the chip carries that is true whether or not the row is hovered: a
+     warning, an external source, and the two switches that are currently OFF
+     (locked / hidden). Those keep their slot in the row; everything else is an
+     overlay that only exists on hover. */
+  const actionsPinned =
+    Boolean(missingFont) ||
+    Boolean(externalAsset) ||
+    Boolean(showRowActions && (el.locked || el.visible === false));
+
+  /* The chip lands on the row's right end, which is where the row's own marks
+     (`Mask`, link, theme mode, number mode) sit. They step aside as it fades in
+     — the slot holds status at rest and controls under the pointer — instead of
+     being covered one frame after they were read. A pinned chip keeps its own
+     slot in the flow, so nothing there needs to move. */
+  const marksYieldOnHover =
+    showRowActions && !actionsPinned
+      ? "group-hover:opacity-0 transition-opacity duration-micro ease-snap"
+      : "";
+
+  /* An elided name is the one thing the row cannot tell you and the list no
+     longer scrolls sideways to reveal, so the tooltip is attached on the way in
+     and only when the text is actually cut. */
+  const titleIfElided = (node: HTMLElement) => {
+    node.title = node.scrollWidth > node.clientWidth + 1 ? el.name || el.type : "";
+  };
 
   return (
     <div className="select-none relative">
@@ -205,6 +240,7 @@ export function LayerRow({
                 e.stopPropagation();
                 if (!isDerived) handlers.onStartRename();
               }}
+              onMouseEnter={(e) => titleIfElided(e.currentTarget)}
               className={`truncate flex-1 select-none ${
                 (el.type === "component" || el.type === "instance" || el.type === "componentSet") && !isSelected
                   ? "text-component"
@@ -217,14 +253,14 @@ export function LayerRow({
         </div>
 
         {el.isMask && (
-          <span className="shrink-0 text-meta bg-brand-wash text-brand border border-brand/30 px-1 py-0.2 rounded-ctl ">
+          <span className={`shrink-0 text-meta bg-brand-wash text-brand border border-brand/30 px-1 py-0.2 rounded-ctl ${marksYieldOnHover}`}>
             Mask
           </span>
         )}
 
         {/* The only place a link is visible without opening the inspector. */}
         {el.link && (
-          <span data-layer-link={el.id} title={el.link} className="shrink-0 text-ink-dim">
+          <span data-layer-link={el.id} title={el.link} className={`shrink-0 text-ink-dim ${marksYieldOnHover}`}>
             <Link2 size={11} />
           </span>
         )}
@@ -233,7 +269,7 @@ export function LayerRow({
           <span
             data-layer-theme-mode={el.id}
             title={`${t("tokens.themeMode")}: ${themeModeLabel || el.themeMode}`}
-            className="shrink-0 text-meta bg-raised text-ink-muted border border-rule px-1 py-0.2 rounded-ctl uppercase"
+            className={`shrink-0 text-meta bg-raised text-ink-muted border border-rule px-1 py-0.2 rounded-ctl uppercase ${marksYieldOnHover}`}
           >
             {themeModeLabel || el.themeMode}
           </span>
@@ -243,7 +279,7 @@ export function LayerRow({
           <span
             data-layer-number-mode={el.id}
             title={`${t("tokens.numberMode")}: ${numberModeLabel || el.numberMode}`}
-            className="shrink-0 text-meta bg-raised text-ink-muted border border-rule px-1 py-0.2 rounded-ctl uppercase"
+            className={`shrink-0 text-meta bg-raised text-ink-muted border border-rule px-1 py-0.2 rounded-ctl uppercase ${marksYieldOnHover}`}
           >
             {numberModeLabel || el.numberMode}
           </span>
@@ -251,9 +287,19 @@ export function LayerRow({
 
         {/* `h-3.5` pins the row to the 14px control `DESIGN.md` specifies: the
             p-0.5-wrapped 12px icons are 16px, and without this the row renders
-            28px against the 26px the scroll plan lays out. */}
+            28px against the 26px the scroll plan lays out.
+            The chip sits ON the row instead of parking in the flow: a reserved
+            slot took 34px off every label for two buttons the author cannot see
+            while idle. It is opaque only while it is drawn, so a row nobody is
+            pointing at is pure label. */}
         {(showRowActions || externalAsset || missingFont) && (
-          <div className={`sticky right-1.5 ml-auto flex h-3.5 items-center shrink-0 z-10 pl-1.5 rounded-ctl ${actionSurface}`}>
+          <div
+            className={`flex h-3.5 items-center pl-1.5 rounded-ctl z-10 ${
+              actionsPinned
+                ? `relative ml-auto shrink-0 ${actionSurface}`
+                : `absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-micro ease-snap ${actionHoverSurface}`
+            }`}
+          >
             {/* The one row mark that says the file will not paint as designed. It is
                 always drawn, never hover-gated like the eye and the lock: a warning
                 you have to find is a warning that arrives too late. `measure-coral`

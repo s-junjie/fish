@@ -5,6 +5,7 @@ import { importFigmaFile as importFigmaJson, type ImportFigmaFileOutcome } from 
 import type { FigmaImportOptions } from "../../core/import/figma-types";
 import { landFigmaImport } from "../../core/import/figma-landing";
 import { FigmaExportError, parseFigmaExport } from "../../core/import/figma-export";
+import { describeImportRefusal, refuseFile } from "../../core/import/import-limits";
 import { FigmaBundleError, looksLikeZip, readFigmaBundle } from "../../core/import/figma-bundle";
 import { blobsFromImageFills } from "../../core/import/figma-assets";
 import { withImportedDesignSystem } from "../../core/import/imported-tokens";
@@ -173,8 +174,15 @@ export function useFigmaImport({
    * the landing which of the two meanings this arrival has.
    */
   const importFigmaExport = useCallback(
-    (file: File, options?: { paste?: boolean }) =>
-      guarded(async (existing, report) => {
+    (file: File, options?: { paste?: boolean }) => {
+      // Refused before the first byte is read: a 99 MB export is `JSON.parse`d
+      // into one string, and a payload past this ceiling is not a design file.
+      const oversize = refuseFile(file.size);
+      if (oversize) {
+        showHint?.(describeImportRefusal(oversize));
+        return Promise.resolve();
+      }
+      return guarded(async (existing, report) => {
         const head = new Uint8Array(await file.slice(0, 4).arrayBuffer());
         const bundle = looksLikeZip(head) ? await readFigmaBundle(file) : null;
         let envelope: unknown;
@@ -224,8 +232,9 @@ export function useFigmaImport({
           result,
           notes: lostLayers > 0 ? [t("figmaImport.exportPartialNote", { n: lostLayers })] : []
         };
-      }, options?.paste === true),
-    [guarded]
+      }, options?.paste === true);
+    },
+    [guarded, showHint]
   );
 
   return { importFigmaExport };

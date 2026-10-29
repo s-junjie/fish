@@ -2,7 +2,7 @@ import type { DesignDocument, Page } from "../dsl/types";
 import { normalizeDesignDocument } from "../dsl/normalize";
 import type { KVBackend } from "./backend";
 import type { SnapshotDoc } from "./assets";
-import { stableHash, cachedHash } from "./hash";
+import { stableHash, cachedHash, objectHash } from "./hash";
 
 export interface RecoveryRecord {
   key: string;
@@ -160,7 +160,17 @@ export function computeContentHash(doc: DesignDocument): string {
     JSON.stringify(canonicalDoc.canvas ?? null)
   ];
   for (const page of canonicalDoc.pages) parts.push(cachedHash(JSON.stringify(withoutViewport(page))));
-  for (const a of canonicalDoc.assets ?? []) parts.push(cachedHash((a as { uri?: string }).uri ?? ""));
+  // Normalization builds fresh asset objects on every call, so the canonical
+  // copy is useless as a cache key: a 5 MB bitmap would be re-hashed by every
+  // save. The live ref is the identity that survives; it is only used as a key,
+  // and only when it demonstrably carries the very string being hashed, so the
+  // digest is the one `cachedHash` would have produced either way.
+  const liveAssets = (doc.assets ?? []) as { uri?: string }[];
+  for (const [i, a] of (canonicalDoc.assets ?? []).entries()) {
+    const uri = (a as { uri?: string }).uri ?? "";
+    const live = liveAssets[i];
+    parts.push(live && (live.uri ?? "") === uri ? objectHash(live, uri) : cachedHash(uri));
+  }
   const hash = stableHash(parts.join("\u0001"));
   hashMemo.set(doc, hash);
   return hash;

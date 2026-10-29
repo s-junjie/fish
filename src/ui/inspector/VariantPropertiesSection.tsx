@@ -3,26 +3,30 @@ import {
   addVariant,
   addVariantProperty,
   removeVariant,
-  renameVariantValue,
   setVariantValue
 } from "../../core/interactions/component-variants";
 import { variantTableOf } from "../../core/interactions/component-inventory";
 import { t } from "../../i18n";
 import { VARIANT_LABELS } from "./variant-labels";
-import { InstanceMark } from "../ComponentMark";
 import { Plus, Trash2 } from "lucide-react";
 import { TEXT_FIELD_CLASS } from "../ScrubInput";
-import { ACTION_BAR_CLASS, ACTION_BAR_ON } from "./action-bar-style";
-import { Button } from "../Button";
+import { ACTION_BAR_CLASS, ACTION_BAR_ON, ACTION_BAR_OFF, ACTION_BUTTON_CLASS } from "./action-bar-style";
 import { ROW_SPREAD_GAP_CLASS } from "../row-style";
 
 /**
  * One variant's own panel in the Inspector.
  *
  * In Figma, when selecting a variant inside a component set:
- * - Shows the property name (editable) and the current variant's value (editable via text input/dropdown).
+ * - Shows the property name and the current variant's value, editable as a
+ *   combobox over the values the set already declares.
  * - Provides a quick "+" button to add another variant state.
  * - Shows a delete button to remove this variant.
+ *
+ * Editing a VALUE here writes that one member's coordinates. Renaming a value
+ * across the whole set is the matrix's job (`VariantSetMatrix`), because only
+ * there does the cell stand for a column rather than for one member — the two
+ * readings of the same keystroke, and the panel used to answer with the wrong
+ * one: changing a member's `State` renamed every member that shared it.
  *
  * For a lone main component without a set, provides "+ Add variant" to turn it
  * into a component set with its first variant property.
@@ -60,13 +64,12 @@ export function VariantPropertiesSection({
   }
 
   const properties = variantTableOf(set);
-  const primaryProp = properties[0];
-  const propName = primaryProp?.property ?? VARIANT_LABELS.property(1);
-  const currentValue = comp.variantProperties?.[propName] ?? "";
   const members = (set.children ?? []) as ComponentElement[];
+  const primaryProp = properties[0];
+  const firstPropName = primaryProp?.property ?? VARIANT_LABELS.property(1);
 
   const handleAddNextVariant = () => {
-    const res = addVariant(docRef.current, comp.id, VARIANT_LABELS, propName);
+    const res = addVariant(docRef.current, comp.id, VARIANT_LABELS, firstPropName);
     if (res.doc) {
       commit(res.doc);
       if (res.variant) {
@@ -79,18 +82,20 @@ export function VariantPropertiesSection({
     commit(removeVariant(docRef.current, comp.id));
   };
 
+  const canRemove = members.length > 1;
+
   return (
     <div className="space-y-1.5 pt-1" data-variant-properties={set.id}>
       {properties.map((prop) => {
         const propName = prop.property;
         const val = comp.variantProperties?.[propName] ?? "";
+        const listId = `variant-values-${comp.id}-${propName}`;
         return (
           <div
             key={propName}
             className={ROW_SPREAD_GAP_CLASS}
             data-variant-property-row={propName}
           >
-            {/* Property Name Label */}
             <span
               data-variant-property={propName}
               title={propName}
@@ -99,7 +104,6 @@ export function VariantPropertiesSection({
               {propName}
             </span>
 
-            {/* Variant Value Input */}
             <div className="flex-1 min-w-0" data-variant-property-value={propName}>
               <input
                 key={`${comp.id}-${propName}-${val}`}
@@ -107,14 +111,11 @@ export function VariantPropertiesSection({
                 name="variant-value"
                 defaultValue={val}
                 placeholder="—"
+                list={listId}
                 onBlur={(e) => {
                   const next = (e.target as HTMLInputElement).value.trim();
                   if (next && next !== val) {
-                    if (val) {
-                      commit(renameVariantValue(docRef.current, set.id, propName, val, next));
-                    } else {
-                      commit(setVariantValue(docRef.current, set.id, comp.id, propName, next));
-                    }
+                    commit(setVariantValue(docRef.current, set.id, comp.id, propName, next));
                   }
                 }}
                 onKeyDown={(e) => {
@@ -123,10 +124,39 @@ export function VariantPropertiesSection({
                 }}
                 className={TEXT_FIELD_CLASS}
               />
+              <datalist id={listId}>
+                {prop.values.map((value) => (
+                  <option key={value} value={value} />
+                ))}
+              </datalist>
             </div>
           </div>
         );
       })}
+
+      <div className="flex items-center gap-1.5 pt-1">
+        <button
+          type="button"
+          data-variant-add-next="true"
+          onClick={handleAddNextVariant}
+          className={`${ACTION_BUTTON_CLASS} ${ACTION_BAR_ON}`}
+          title={t("component.addVariant")}
+        >
+          <Plus size={11} />
+          <span>{t("component.addVariant")}</span>
+        </button>
+        <button
+          type="button"
+          data-variant-remove="true"
+          onClick={handleRemove}
+          disabled={!canRemove}
+          className={`${ACTION_BUTTON_CLASS} ${canRemove ? ACTION_BAR_ON : ACTION_BAR_OFF}`}
+          title={t("component.removeVariant")}
+        >
+          <Trash2 size={11} />
+          <span>{t("component.removeVariant")}</span>
+        </button>
+      </div>
     </div>
   );
 }

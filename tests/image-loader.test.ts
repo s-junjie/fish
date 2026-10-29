@@ -284,6 +284,57 @@ describe("embedExternalAsset", () => {
     expect(result.width).toBe(MAX_IMAGE_EDGE);
     expect(result.uri).toMatch(/^data:image\/webp;base64,/);
   });
+
+  it("never hands a private address to the public proxy", async () => {
+    // `wsrv.nl` is a third party. An intranet host, a dev server on loopback or a
+    // signed object-store URL is not something this app may forward to one — the
+    // address IS the secret. The original failure is the honest answer.
+    const calls: string[] = [];
+    globalThis.fetch = (async (url: string) => {
+      calls.push(String(url));
+      throw new TypeError("Failed to fetch");
+    }) as any;
+
+    const asset = { id: "a_priv", name: "mock", uri: "http://localhost:3000/mockup.png", width: 10, height: 10 };
+    await expect(embedExternalAsset(asset)).rejects.toThrow(/Failed to fetch/);
+    expect(calls).toEqual(["http://localhost:3000/mockup.png"]);
+  });
+
+  it("reports an HTTP status instead of replaying it through the proxy", async () => {
+    const calls: string[] = [];
+    globalThis.fetch = (async (url: string) => {
+      calls.push(String(url));
+      return { ok: false, status: 404, statusText: "Not Found", blob: async () => new Blob([]) };
+    }) as any;
+
+    const asset = { id: "a_404", name: "missing", uri: "https://example.com/missing.png", width: 10, height: 10 };
+    await expect(embedExternalAsset(asset)).rejects.toThrow(/Not Found/);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("retries a cross-origin refusal through the proxy for a public https address", async () => {
+    const calls: string[] = [];
+    globalThis.createImageBitmap = (async () => ({ width: 1200, height: 800, close: () => {} })) as any;
+    globalThis.OffscreenCanvas = class {
+      getContext() {
+        return { drawImage: () => {} };
+      }
+      async convertToBlob() {
+        return new Blob(["fake-webp"], { type: "image/webp" });
+      }
+    } as any;
+    globalThis.fetch = (async (url: string) => {
+      calls.push(String(url));
+      if (calls.length === 1) throw new TypeError("Failed to fetch");
+      return { ok: true, blob: async () => new Blob(["fake-avif"], { type: "image/avif" }) };
+    }) as any;
+
+    const asset = { id: "a_pub", name: "photo", uri: "https://example.com/photo.avif", width: 1200, height: 800 };
+    const result = await embedExternalAsset(asset);
+
+    expect(calls[1]).toBe(`https://wsrv.nl/?url=${encodeURIComponent("https://example.com/photo.avif")}`);
+    expect(result.uri).toMatch(/^data:image\/avif;base64,/);
+  });
 });
 
 describe("detectModernFormat", () => {

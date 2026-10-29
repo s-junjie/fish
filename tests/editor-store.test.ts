@@ -214,3 +214,20 @@ describe("EditorStore viewer state", () => {
     expect(docListener).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("gesture boundary signal", () => {
+  it("fires once when a gesture opens and once when it closes, never per frame", () => {
+    const store = new EditorStore(makeTestDoc());
+    const seen: boolean[] = [];
+    store.onGestureChange(() => seen.push(store.isGestureActive()));
+
+    store.startGesture();
+    store.setTransient(updateActivePageElements(store.getDoc(), []));
+    store.setTransient(updateActivePageElements(store.getDoc(), []));
+    expect(seen).toEqual([true]);
+
+    store.endGesture();
+    expect(seen).toEqual([true, false]);
+    expect(store.isGestureActive()).toBe(false);
+  });
+});

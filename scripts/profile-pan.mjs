@@ -320,7 +320,7 @@ async function downscaleBitmaps(limit) {
 
   if (openPanel) {
     const clicked = await page.evaluate((which) => {
-      const labels = which === "assets" ? /asset|资源|素材/i : /layer|图层/i;
+      const labels = which === "assets" ? /asset/i : /layer/i;
       const tabs = [...document.querySelectorAll("[role=tab],button")];
       const hit = tabs.find((el) => labels.test(el.getAttribute("aria-label") || el.textContent || ""));
       if (hit) hit.click();

@@ -2,6 +2,7 @@ import { DesignDocument, DesignElement, ComponentElement, InstanceElement, Paint
 import { getShapeLocalPath, isGradientPaint } from "../../core/geometry/gradient-utils";
 import { GradientDef } from "./GradientDef";
 import { imagePaintImage } from "./image-paint-attrs";
+import { imageRenderUri, onRenderUriReady } from "../../core/assets/render-uri";
 import { flattenElements, isContainer } from "../../core/geometry/tree-ops";
 import { ViewportBox, computeVisibleElementIds } from "../../core/geometry/cull";
 import { rectToPathData } from "../../core/compile";
@@ -26,7 +27,7 @@ import { maskAlphaFilterDef, maskClipDef, maskLayerDef } from "./mask-defs";
 import { edgeClipDefs } from "./EdgeLayer";
 import type { TearEffect } from "../../core/dsl/types";
 import { Fragment } from "preact";
-import { useMemo } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
 import { memo } from "../memo";
 import { CANVAS_MASK_CUT, CANVAS_MASK_KEEP } from "./canvas-colors";
 import { paintAdjustRegion } from "./filter-region";
@@ -82,6 +83,16 @@ interface CanvasDefsProps {
 }
 
 export function CanvasDefs({ allElements, viewportBox, selectedIds, viewScale = 1, pixelScale = 1, assets, docRef, onPathGuides }: CanvasDefsProps) {
+  // A handle for a bitmap is produced off the main thread a moment after the
+  // first frame that asked for it, and the def that points at it has to be
+  // rebuilt when it lands. Zero on a test that calls this as a plain function.
+  let uriRevision = 0;
+  try {
+    uriRevision = useRenderUriRevision();
+  } catch {
+    uriRevision = 0;
+  }
+
   // Keyed on the rendered elements, not the document: the index is built from
   // every page but is only read through an element on this one.
   //
@@ -293,6 +304,7 @@ export function CanvasDefs({ allElements, viewportBox, selectedIds, viewScale = 
             el={el}
             viewScale={viewScale}
             pixelScale={pixelScale}
+            uriRevision={uriRevision}
             assets={assets}
             master={el.type === "instance" ? findMaster((el as InstanceElement).componentId) : null}
             guide={el.type === "text" ? onPathGuides?.get(el.id) : undefined}
@@ -307,11 +319,17 @@ export function CanvasDefs({ allElements, viewportBox, selectedIds, viewScale = 
   try {
     return useMemo(
       buildDefs,
-      [allElements, visibleKey, viewScale, pixelScale, assets, docRef, onPathGuides]
+      [allElements, visibleKey, viewScale, pixelScale, assets, docRef, onPathGuides, uriRevision]
     );
   } catch {
     return buildDefs();
   }
+}
+
+function useRenderUriRevision(): number {
+  const [revision, setRevision] = useState(0);
+  useEffect(() => onRenderUriReady(() => setRevision((n) => n + 1)), []);
+  return revision;
 }
 
 /**
@@ -360,6 +378,11 @@ export interface ElementDefsProps {
   viewScale: number;
   /** `pixelScale(zoom)` — the same quantity with no ceiling, for `feMorphology`. */
   pixelScale: number;
+  /**
+   * Bumped when a bitmap handle or proxy lands. A texture swap changes nothing
+   * this fragment can see through `assets`, so the comparator needs telling.
+   */
+  uriRevision?: number;
   assets?: AssetRef[];
   /** The component an instance resolves against; its defs follow the master. */
   master: ComponentElement | null;
@@ -379,8 +402,8 @@ export interface ElementDefsProps {
  * is recovering.
  *
  * The comparator lists what a def actually depends on, all of it local: its own
- * element, the two raster-scale rungs, the asset list, the master it resolves
- * against, and the path its text follows. Everything else — a different page, a
+ * element, the two raster-scale rungs, the bitmap handle revision, the asset
+ * list, the master it resolves against, and the path its text follows. Everything else — a different page, a
  * selection, the camera — leaves the markup byte-identical, and the emitted
  * fragment is kept.
  *
@@ -437,7 +460,12 @@ export function renderElementDefs(props: ElementDefsProps) {
       if (!f || f.type !== "image" || f.enabled === false) return null;
       const asset = assets?.find((a) => a.id === f.assetId);
       if (!asset?.uri) return null;
-      const img = imagePaintImage(f, { width: w, height: h }, asset);
+      const img = imagePaintImage(
+        f,
+        { width: w, height: h },
+        asset,
+        imageRenderUri(asset, w * viewScale, h * viewScale)
+      );
       if (!img) return null;
       return (
         <pattern
@@ -656,6 +684,7 @@ export const ElementDefs = memo(renderElementDefs, (prev, next) =>
   prev.el === next.el &&
   prev.viewScale === next.viewScale &&
   prev.pixelScale === next.pixelScale &&
+  prev.uriRevision === next.uriRevision &&
   prev.assets === next.assets &&
   prev.master === next.master &&
   prev.guide === next.guide &&

@@ -10,6 +10,7 @@
  * plugins exist; it learns one at a time, from a file that proves it.
  */
 import { installedRecords, installFromFile, uninstallPlugin } from "./loader";
+import { installPluginFromCatalog } from "./catalog";
 import type { PluginManifest } from "./manifest";
 
 export interface PluginListSnapshot {
@@ -67,6 +68,19 @@ export async function installPluginFile(file: Blob): Promise<PluginManifest> {
   error = null;
   rebuild();
   return record.manifest;
+}
+
+export async function installPluginOnline(
+  manifest: PluginManifest,
+  options?: { catalogBaseUrl?: string; fetchImpl?: typeof globalThis.fetch }
+): Promise<PluginManifest> {
+  const installedManifest = await installPluginFromCatalog(manifest, options);
+  installed = [...installed.filter((m) => m.id !== installedManifest.id), installedManifest].sort((a, b) =>
+    a.id.localeCompare(b.id)
+  );
+  error = null;
+  rebuild();
+  return installedManifest;
 }
 
 export async function removePlugin(id: string): Promise<void> {

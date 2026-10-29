@@ -18,7 +18,7 @@ A Chrome extension to capture any web element or entire page and paste directly 
 1. Open Google Chrome (or any Chromium browser such as Edge, Arc, Brave).
 2. Navigate to `chrome://extensions/`.
 3. Toggle on **Developer mode** in the top right corner.
-4. Click **Load unpacked** (加载已解压的扩展程序) in the top left.
+4. Click **Load unpacked** in the top left.
 5. Select this `chrome-extension/` directory.
 
 ---

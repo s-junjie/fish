@@ -3,7 +3,7 @@ import { assetUsageCounts } from "../src/core/dsl/asset-usage";
 import { collectComponents } from "../src/core/interactions/component-inventory";
 import { hashAsset, createAssetStore } from "../src/core/persistence/assets";
 import { computeContentHash } from "../src/core/persistence/recovery";
-import { stableHash } from "../src/core/persistence/hash";
+import { stableHash, cachedHash, objectHash } from "../src/core/persistence/hash";
 import { MemoryBackend } from "../src/core/persistence/backend";
 import type { AssetRef, DesignDocument, DesignElement, Page } from "../src/core/dsl/types";
 
@@ -144,5 +144,56 @@ describe("content hash", () => {
       pages: [{ ...plain.pages[0], metadata: { viewport: { x: 12, y: 34, zoom: 0.8 } } }]
     };
     expect(computeContentHash(viewed)).toBe(computeContentHash(plain));
+  });
+});
+
+/**
+ * The caches above are only worth their memory if they can be *released*. A
+ * bitmap is a multi-megabyte string, so a cache that keys on the string itself
+ * pins every image the session ever saw — the objects that own those strings
+ * are the only identity that goes away with the document.
+ */
+describe("bulky strings are cached against an owner, never by value", () => {
+  const bitmap = "data:image/png;base64," + "A".repeat(200_000);
+
+  it("hashes a bitmap to the same digest with and without the literal cache", () => {
+    expect(cachedHash(bitmap)).toBe(stableHash(bitmap));
+    expect(cachedHash(bitmap)).toBe(stableHash(bitmap));
+  });
+
+  it("reuses an owner's digest but never across replaced bytes", () => {
+    const ref: AssetRef = { id: "a1", name: "img", uri: bitmap };
+    expect(hashAsset(ref)).toBe("a" + stableHash(bitmap));
+    expect(hashAsset(ref)).toBe("a" + stableHash(bitmap));
+
+    // Same object, new bytes: a replaced image must not inherit the old key.
+    const replaced = { ...ref, uri: bitmap + "B" };
+    expect(hashAsset(replaced)).toBe("a" + stableHash(bitmap + "B"));
+    expect(objectHash(ref, bitmap)).toBe(stableHash(bitmap));
+  });
+
+  it("keeps a resident row as a count plus a weak handle, not a copy of the bitmap", async () => {
+    const backend = new MemoryBackend();
+    const store = createAssetStore(backend);
+    const ref: AssetRef = { id: "a1", name: "img", uri: bitmap };
+    await store.put(ref);
+
+    const resident = (store as unknown as { resident: Map<string, any> }).resident;
+    const rows = [...resident.values()];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].refCount).toBe(0);
+    expect(rows[0].ref).toBeInstanceOf(WeakRef);
+    expect(rows[0].ref.deref()).toBe(ref);
+  });
+
+  it("still drops a row whose last reference is released", async () => {
+    const backend = new MemoryBackend();
+    const store = createAssetStore(backend);
+    const ref: AssetRef = { id: "a1", name: "img", uri: bitmap };
+    const hash = await store.put(ref);
+    await store.acquire([hash]);
+    expect(((await backend.get("assets", hash)) as { refCount: number }).refCount).toBe(1);
+    await store.release([hash]);
+    expect(await backend.get("assets", hash)).toBeUndefined();
   });
 });

@@ -6,6 +6,7 @@ import {
   writeFileSafely
 } from "../data-bridge";
 import { queryWritebackPermission, saveDocAsNewFile } from "../persistence/writeback";
+import { timeoutSignal } from "../net/external-fetch";
 import type { DesignDocument } from "../dsl/types";
 import { rememberJustUpdated } from "./config";
 import { UpdateError, verifyDigest, type ReleasePayload } from "./manifest";
@@ -57,7 +58,12 @@ export async function downloadShell(
   }
   let bytes: ArrayBuffer;
   try {
-    const response = await doFetch(release.url, { cache: "no-store" });
+    // A release server that accepts the connection and never answers would
+    // otherwise leave the update prompt spinning with no way to retry it.
+    const response = await doFetch(release.url, {
+      cache: "no-store",
+      signal: timeoutSignal()
+    });
     if (!response.ok) throw new UpdateError(`downloading the update failed (${response.status})`);
     bytes = await response.arrayBuffer();
   } catch (e) {

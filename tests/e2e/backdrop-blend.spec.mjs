@@ -5,8 +5,8 @@ import path from "node:path";
 /**
  * A live blend mode anywhere in the document must not touch a backdrop blur.
  *
- * The report: "当画布中有任何元素的 blend 模式不是 normal 时，background blur 效果
- * 会变化" — with the two screenshots, one panel blurred and one showing a hard
+ * The report: "when any element on the canvas has a blend mode other than normal, the background blur effect
+ * changes" — with the two screenshots, one panel blurred and one showing a hard
  * seam where the blur should be.
  *
  * One cause, and it is a Chromium one: the moment an `<svg>` contains a

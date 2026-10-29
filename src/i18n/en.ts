@@ -104,8 +104,8 @@ export const en = {
     noEndpoint: "This build has no release address, so it cannot check for updates.",
     noCrypto: "This browser cannot verify a release, so updates are unavailable.",
     embedded: "Not checked inside an embedded view — open the file in its own tab.",
-    notice: "FISH v{v} is available",
-    review: "Review update"
+    whatsNew: "What's New",
+    githubRepo: "GitHub Repository"
   },
   history: {
     title: "Version History",
@@ -254,10 +254,14 @@ export const en = {
     aiSuggested: "AI suggested changes",
     suggestedTitle: "AI Suggested Changes",
     suggestionApplied: "AI suggestion applied",
-    applySuggestion: "Accept & Apply",
+    applySuggestion: "Apply",
     discardSuggestion: "Discard",
     diffEmpty: "No property changes detected",
+    preview: "Preview",
+    previewHint: "Previewing. Canvas is read-only until you leave.",
+    previewUnavailable: "Nothing to preview",
     appliedSuccess: "Applied suggestion to canvas",
+    appliedPartial: "Applied {n} of {total} ops. Failed: {detail}",
     empty: "No comments yet",
     /** Diff row keys come from `src/core/comments/diff.ts`; a new one falls back to its key. */
     field: {
@@ -424,6 +428,14 @@ export const en = {
     assetsAttached: "Attached {n, plural, one {# image} other {# images}} from {name}",
     assetsAttachedPartial: "Attached {n, plural, one {# image} other {# images}} from {name} — {k} still missing",
     assetsNoMatch: "Nothing in {name} matched — try the folder above it"
+  },
+  importLimits: {
+    /* Refusals, not errors: nothing broke, the payload is simply past what one
+       main thread can take. Each names the limit it broke so the next attempt
+       can be a smaller one. */
+    tooLarge: "That is about {size} MB — past the {limit} MB this app loads in one piece",
+    tooManyElements: "That holds more than {limit} layers, so it was not imported",
+    tooDeep: "That nests more than {limit} levels deep, so it was not imported"
   },
   figmaImport: {
     /* One file, picked from the media menu: no dialog stands between the picker
@@ -965,8 +977,14 @@ export const en = {
       effectStyleId: "Effect style",
       tokenBindings: "Token bindings",
       themeMode: "Colour mode",
-      numberMode: "Number mode"
+      numberMode: "Number mode",
+      /** The instance's own box: a hand-set size and a scale are two answers. */
+      size: "Size",
+      sizing: "Sizing",
+      stroke: "Stroke",
+      instanceScale: "Scale"
     },
+    childOverrideCount: "{count, plural, one {# layer changed} other {# layers changed}}",
     nestedHint: "Nested instance — edit its main component to change this",
     derivedChildLocked: "This layer lives inside an instance — edit its main component, or detach it, to change its geometry",
     selfNestingInstance: "An instance cannot be nested inside its own main component",
@@ -979,6 +997,7 @@ export const en = {
       "inside-instance": "This instance already shows that component"
     },
     swapNested: "Swap nested instance",
+    swapNotPossible: "This component cannot replace that instance",
     variantAxes: "Variant",
     swapInstance: "Swap Instance",
     swapSearch: "Search components",
@@ -992,12 +1011,15 @@ export const en = {
     defaultValue: "Default",
     variantN: "Variant {n}",
     addVariant: "Add variant",
+    addProperty: "Add property",
     combineAsVariants: "Combine as variants",
     /** What an instance becomes when nothing was configured — Figma's `defaultVariant`. */
     defaultVariantLabel: "Default variant",
     removeVariant: "Remove variant",
+    removeVariantValue: "Remove unused value",
     removeVariantProperty: "Remove variant property",
     variantCombinationMissing: "No variant of this set has that combination yet — add it below the set",
+    variantOptionMissing: "{value} — no variant yet",
     geometryFromMain: "Position and size come from the main component",
     goToMain: "Go to Main Component",
     resetOverrides: "Reset Overrides",
@@ -1031,6 +1053,10 @@ export const en = {
     sendToBack: "Send to back",
     maskLockedHint: "Not available inside an instance",
     createComponent: "Create component",
+    createComponents: "Create multiple components",
+    combineAsVariants: "Combine as variants",
+    addVariant: "Add variant",
+    resetNodeOverrides: "Reset this layer's changes",
     createInstance: "Create instance",
     detachInstance: "Detach instance",
     goToMainComponent: "Go to main component",
@@ -1202,6 +1228,10 @@ export const en = {
   plugins: {
     empty: "No plugins installed yet",
     installing: "Installing…",
+    install: "Install",
+    installed: "Installed",
+    available: "Available",
+    downloadFailed: "Failed to download plugin",
     loadFile: "Load plugin file…",
     loading: "Loading plugin…",
     failed: "This plugin could not be loaded",

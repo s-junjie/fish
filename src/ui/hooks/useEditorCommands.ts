@@ -64,6 +64,11 @@ import {
   remintFragment
 } from "../../core/interactions/clipboard-fragment";
 import { parseDslClipboardText } from "../../core/interactions/clipboard-dsl";
+import {
+  describeImportRefusal,
+  refuseClipboardText,
+  refuseElementTree
+} from "../../core/import/import-limits";
 import { registerEditorCommand } from "../commands/editor-commands";
 import { exportCanvasAsBlob, withPngDensity } from "../../core/export";
 import { exportBounds } from "../inspector/export-bounds";
@@ -403,10 +408,30 @@ export function useEditorCommands({
       const text = e.clipboardData?.getData?.("text/plain") ?? "";
       const trimmed = text.trim();
 
+      // Refused before anything reads it. Every branch below parses the whole
+      // string — `JSON.parse` for ours and Figma's, the DOM for a foreign clip —
+      // and that work is synchronous: past this budget the tab stops responding
+      // with no cancel and nothing to point at.
+      const oversize = refuseClipboardText(text);
+      if (oversize) {
+        e.preventDefault();
+        e.stopPropagation();
+        setHintMessage(describeImportRefusal(oversize));
+        return;
+      }
+
       const payload = parseClipboardPayload(text);
       if (payload) {
         e.preventDefault();
         e.stopPropagation();
+        // Depth and layer count are checked on the parsed tree as well: a string
+        // can be a legal size and still nest deeper than any recursive walk here
+        // can take.
+        const overTree = refuseElementTree(payload.elements);
+        if (overTree) {
+          setHintMessage(describeImportRefusal(overTree));
+          return;
+        }
         if (payload.clipId === lastCopyId.current && clipboardRef.current.elements.length > 0) {
           pasteClipboard();
           return;
@@ -433,6 +458,13 @@ export function useEditorCommands({
       if (dslClip) {
         e.preventDefault();
         e.stopPropagation();
+        // Same budget as a `fish-clipboard@2` payload: this door is reachable from
+        // any text editor, so the string can be assembled by hand.
+        const overTree = refuseElementTree(dslClip.elements);
+        if (overTree) {
+          setHintMessage(describeImportRefusal(overTree));
+          return;
+        }
         const current = docRef.current;
         const payload = {
           tag: "fish-clipboard@2",

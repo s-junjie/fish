@@ -8,7 +8,7 @@
  */
 import { createHash } from "node:crypto";
 
-export const DEFAULT_ORIGIN = "https://dl.themindstudio.cc";
+export const DEFAULT_ORIGIN = "https://dl.fish.themindstudio.cc";
 export const APP_ID = "fish";
 
 export const SHELL_DIR = "shell";

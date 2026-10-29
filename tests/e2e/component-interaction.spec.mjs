@@ -396,18 +396,23 @@ const nestedSwap = await page.evaluate(() => {
 });
 check("and can still be re-pointed at another component", nestedSwap, true);
 await page.waitForSelector("[data-swap-search]");
-await page.fill("[data-swap-search]", "Large");
+// One row per component SET now, not one per member: this fixture's set is a
+// single `Size` candidate whose committed member is the cell the nested instance
+// already sits in, so searching the set's name has to return exactly one row.
+await page.fill("[data-swap-search]", "Size");
 await page.waitForTimeout(150);
 const nestedFiltered = await page.evaluate(() =>
   [...document.querySelectorAll("[data-swap-option]")].map((el) => el.getAttribute("data-swap-option"))
 );
-check("its picker narrows to the match", nestedFiltered, ["c_size_l"]);
-await page.click('[data-swap-option="c_size_l"]');
+check("its picker narrows to the set, as one row", nestedFiltered, ["c_size_s"]);
+await page.fill("[data-swap-search]", "Alt");
+await page.waitForTimeout(150);
+await page.click('[data-swap-option="c_alt"]');
 await page.waitForTimeout(400);
 check(
   "picking one rewrites the override on the OUTER instance",
   activeElements(await doc()).find((e) => e.id === "inst_card").overrides,
-  [{ targetId: "card_slot", property: "componentId", value: "c_size_l" }]
+  [{ targetId: "card_slot", property: "componentId", value: "c_alt" }]
 );
 
 const failed = results.filter((r) => !r.ok);

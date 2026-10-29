@@ -29,6 +29,16 @@ export interface AssetsPanelProps {
 const EMPTY_HINT_CLASS = "px-2 py-6 text-center text-row leading-snug text-ink-muted select-none";
 const DEBOUNCE_MS = 250;
 
+/**
+ * A member's caption inside an expanded set: its coordinates, without the set's
+ * name above it. `Size · Hover` under a `Size` card says everything the member's
+ * own `Size=Small, State=Hover` name says, in a third of the width.
+ */
+function coordsLabel(coords: Record<string, string> | undefined): string | undefined {
+  const values = Object.values(coords ?? {});
+  return values.length > 0 ? values.join(" · ") : undefined;
+}
+
 function ImportRow({ onImport }: { onImport?: (file: File) => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
   if (!onImport) return null;
@@ -241,17 +251,31 @@ export const AssetsPanel = memo(function AssetsPanelInner({
                 />
               ];
               if (expanded) {
-                for (const member of card.set.members) {
-                  cards.push(
-                    <ComponentCard
-                      key={member.id}
-                      entry={member}
-                      ctx={thumbCtx}
-                      onInsert={onInsert}
-                      onLocate={onLocateComponent}
-                    />
-                  );
-                }
+                // The members are a GROUP inside the grid, not two more cards in
+                // it: a recessed, indented box with a hairline down its left edge
+                // is what tells a reader that these four belong to the card
+                // above rather than sitting beside it.
+                cards.push(
+                  <div
+                    key={`members_${card.set.setId}`}
+                    data-asset-variant-group={card.set.setId}
+                    className="col-span-2 ml-0.5 border-l border-rule pl-1.5 pt-0.5"
+                  >
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {card.set.members.map((member) => (
+                        <ComponentCard
+                          key={member.id}
+                          entry={member}
+                          ctx={thumbCtx}
+                          onInsert={onInsert}
+                          onLocate={onLocateComponent}
+                          variant
+                          name={coordsLabel(member.variantProperties)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                );
               }
               return cards;
             })}

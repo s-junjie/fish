@@ -14,7 +14,7 @@ import type { InstanceSelection } from "../../core/interactions/instance-resolve
 import { normalizeTextSpans } from "../../core/dsl/normalize/text-sizing";
 import { reconcileSpansOnTextChange } from "../../core/interactions/text-spans";
 import type { TextEditRange } from "../../core/interactions/text-spans";
-import { resolveTextSizing, textSizingIsFrozen } from "../../core/layout/text-sizing";
+import { resolveTextSizing } from "../../core/layout/text-sizing";
 import { resolveAxis } from "../../core/geometry/resolve-axis";
 import { textFontStatus } from "../../core/fonts/font-status";
 import { openMissingFonts } from "../missing-fonts";
@@ -195,9 +195,8 @@ export function useInlineEditing(deps: InlineEditingDeps) {
     // own rectangle and the saved geometry would stop describing it. The panel
     // that can fix the family opens instead — replace it and the box thaws.
     //
-    // `textSizingIsFrozen` is the whole condition, not "the family is missing":
-    // a box the author pinned on both axes is never re-measured, so refusing to
-    // edit it would take the caret away and protect nothing.
+    // Any missing family gates canvas editing (including fixed-size text boxes):
+    // typing without the font would corrupt layout or render unrepresentative glyphs.
     //
     // `remote` is not refused: that family is waiting to be fetched, and the
     // phase that fetches it decides what an unloaded face may do.

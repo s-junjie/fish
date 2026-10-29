@@ -10,6 +10,7 @@ import {
 import { IdbBackend, MemoryBackend, hasIndexedDb } from "../../core/persistence/backend";
 import { createRecoveryStore, computeContentHash } from "../../core/persistence/recovery";
 import { createAssetStore } from "../../core/persistence/assets";
+import { shouldWarnBeforeUnload } from "../../core/persistence/unload-guard";
 import { createTimelineStore } from "../../core/persistence/timeline";
 import {
   loadHandle,
@@ -125,14 +126,18 @@ export function useFileWriteback(
   const controllerRef = useRef<AutosaveController | null>(null);
   const tabRef = useRef<TabCoordinator | null>(null);
   const [otherTabActive, setOtherTabActive] = useState(false);
-  // Lazily, NOT `useRef(computeContentHash(...))`: a ref's initial value is
-  // evaluated on every render and thrown away after the first, and this one
-  // normalizes and hashes the whole document — 42.6 MB and ~48 ms on the
-  // measured file. Dragging an element re-renders the editor once per frame, so
-  // the app was paying a full-document hash per drag frame: profiled at 17.8 ms
-  // of JS and ~750 ms of GC per gesture, 43 of 107 frames dropped.
-  const lastSavedHashRef = useRef<string | null>(null);
-  if (lastSavedHashRef.current === null) lastSavedHashRef.current = computeContentHash(store.getDoc());
+  // What the file is known to hold, as the document OBJECT that was written.
+  //
+  // A reference, not a hash: the comparison this feeds runs inside
+  // `beforeunload`, and hashing a document that carries its bitmaps inline
+  // costs ~50 ms of blocked main thread on every close. A commit replaces the
+  // object, so identity answers "has anything been committed since the write
+  // that landed" exactly — see `shouldWarnBeforeUnload`, which owns the rule.
+  //
+  // Assigned once on mount, never `useRef(store.getDoc())`: a ref's initial
+  // expression is evaluated on every render and thrown away after the first.
+  const lastSavedDocRef = useRef<DesignDocument | null>(null);
+  if (lastSavedDocRef.current === null) lastSavedDocRef.current = store.getDoc();
   // True while this tab wants write-back but is standing down for another tab.
   // The controller's own flag is off in that state, so it cannot answer
   // "resume when the other tab leaves" on its own.
@@ -168,7 +173,14 @@ export function useFileWriteback(
   useEffect(() => {
     if (typeof window === "undefined") return;
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (computeContentHash(store.getDoc()) !== lastSavedHashRef.current) {
+      const saved = lastSavedDocRef.current;
+      if (!saved) return;
+      const dirty = shouldWarnBeforeUnload({
+        saved,
+        current: store.getDoc(),
+        owed: controllerRef.current?.hasPendingWork() === true
+      });
+      if (dirty) {
         e.preventDefault();
         e.returnValue = "";
         return "";
@@ -220,7 +232,9 @@ export function useFileWriteback(
       onStatus: (status) => {
         setAutosaveStatus(status);
         if (status.kind === "file-saved") {
-          lastSavedHashRef.current = computeContentHash(store.getDoc());
+          // The document that reached the file, which is not necessarily the
+          // one on screen now: the user can type during a write.
+          lastSavedDocRef.current = status.doc;
         }
       },
       onTimeline: setVersions
@@ -228,12 +242,16 @@ export function useFileWriteback(
     controllerRef.current = controller;
     // Two tabs on the same file are last-writer-wins on disk. The lower tab id
     // keeps writing; the other stops and says so, rather than quietly losing
-    // whichever flush lands second.
+    // whichever flush lands second. On screen outranks arrival order: the
+    // background tab is the one whose heartbeat the browser throttles, so it is
+    // the one that has to hand the file over (see `TabCoordinator`).
     const tabChannel = createBroadcastTabChannel();
+    let onVisibilityChange: (() => void) | null = null;
     if (tabChannel) {
       const coordinator = new TabCoordinator(tabChannel, {
         fileId: getFileId(),
         tabId: createId("tab"),
+        visible: typeof document === "undefined" || document.visibilityState !== "hidden",
         onSuperseded: () => {
           setOtherTabActive(true);
           // Persist the debounced edit before standing down: as a follower this
@@ -250,6 +268,13 @@ export function useFileWriteback(
       });
       coordinator.start();
       tabRef.current = coordinator;
+      // `visibilitychange` is not throttled, so this is the tab's chance to give
+      // write-back up while it still can: a heartbeat timeout cannot be relied
+      // on for the same job, because the tab that would have to answer it is the
+      // one the browser has stopped waking up.
+      onVisibilityChange = () =>
+        coordinator.setVisibility(document.visibilityState !== "hidden");
+      document.addEventListener("visibilitychange", onVisibilityChange);
     }
     void loadHandle(getFileId()).then(async () => {
       // Settle the fork before anything reads history or recovery: it is a
@@ -336,7 +361,7 @@ export function useFileWriteback(
             }
             const hash = payloadHashFromHtml(text);
             await controller.noteFileSaved(store.getDoc(), hash);
-            lastSavedHashRef.current = computeContentHash(store.getDoc());
+            lastSavedDocRef.current = store.getDoc();
           }
           void persistHandle(getFileId()).catch(() => undefined);
           // The launched file already holds this document; enabling write-back
@@ -353,6 +378,7 @@ export function useFileWriteback(
     }
 
     return () => {
+      if (onVisibilityChange) document.removeEventListener("visibilitychange", onVisibilityChange);
       controller.disable();
       controllerRef.current = null;
       tabRef.current?.stop();
@@ -429,14 +455,15 @@ export function useFileWriteback(
       if (!superseded) {
         // Bring the target up to date immediately, so the file and the tab agree
         // from the first flush onward rather than only after the next edit.
+        const written = store.getDoc();
         const res = await writeBackFile(fileDoc());
         if (!res.ok) {
           setAutosaveStatus({ kind: "file-unavailable", reason: res.reason ?? "write-failed" });
           return;
         }
-        await controllerRef.current?.noteFileSaved(store.getDoc(), res.payloadHash);
-        lastSavedHashRef.current = computeContentHash(store.getDoc());
-        setAutosaveStatus({ kind: "file-saved", at: new Date().toISOString() });
+        await controllerRef.current?.noteFileSaved(written, res.payloadHash);
+        lastSavedDocRef.current = written;
+        setAutosaveStatus({ kind: "file-saved", at: new Date().toISOString(), doc: written });
       }
       // Remembering the handle only saves the user a re-pick next time. It must
       // never be able to block the feature: a full or unavailable IndexedDB
@@ -466,6 +493,10 @@ export function useFileWriteback(
     }
     setSaveStatus(t("app.saving"));
     const doc = fileDoc();
+    // The document the write is about to serialize. Captured here, not read
+    // after the await: an edit during the write must leave the guard saying
+    // "unsaved", or closing the tab would discard it without a prompt.
+    const sourceDoc = store.getDoc();
     try {
       const res = await saveInPlace(doc);
       if (res.success) {
@@ -479,7 +510,7 @@ export function useFileWriteback(
           else controllerRef.current?.setWritebackEnabled(true, { flush: false });
           setShowActivateAutosave(false);
         }
-        lastSavedHashRef.current = computeContentHash(store.getDoc());
+        lastSavedDocRef.current = sourceDoc;
         setWritebackTarget(writebackTargetName() ?? null);
         // The save named the file it wrote — a picker name this tab had no other
         // way to learn, and on the download path the only file the work now has.
@@ -503,6 +534,9 @@ export function useFileWriteback(
   const triggerSaveAs = useCallback(async () => {
     setSaveStatus(t("app.saving"));
     const doc = fileDoc();
+    // Same capture as `triggerSave`: the new file holds this document, whatever
+    // is committed while the picker and the write are open is not in it.
+    const sourceDoc = store.getDoc();
     const currentName = openedName || `${(doc.name || "untitled").toLowerCase().replace(/\s+/g, "-")}.fish.html`;
     const defaultName = saveAsCopyName(currentName);
     try {
@@ -526,7 +560,7 @@ export function useFileWriteback(
           else controllerRef.current?.setWritebackEnabled(true, { flush: false });
           setShowActivateAutosave(false);
         }
-        lastSavedHashRef.current = computeContentHash(store.getDoc());
+        lastSavedDocRef.current = sourceDoc;
         setWritebackTarget(res.name ?? writebackTargetName() ?? null);
         applyDocumentTitle(res.name, store.getDoc().name);
         setSaveStatus(t("app.saved"));
@@ -642,6 +676,6 @@ export function useFileWriteback(
     previewVersion,
     exitPreview,
     previewingId,
-    isDirty: () => computeContentHash(store.getDoc()) !== lastSavedHashRef.current
+    isDirty: () => lastSavedDocRef.current !== store.getDoc()
   };
 }

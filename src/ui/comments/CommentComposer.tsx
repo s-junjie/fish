@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "preact/hooks";
+import { ArrowUp } from "lucide-react";
 import { t } from "../../i18n";
-import { Button } from "../Button";
 import { PanelHeader } from "../PanelHeader";
 import { POPOVER_SURFACE_CLASS } from "../menu-style";
 
@@ -13,20 +13,10 @@ export interface CommentComposerProps {
   onCancel: () => void;
 }
 
-/**
- * The "new comment" card: one field, two actions, Enter to commit.
- *
- * A reply is a different card (it has a thread above it), but this one is the
- * window a person actually writes in, so it wears the same title bar and the
- * same drag handle as an opened thread — two windows of the same kind cannot
- * have two headers.
- */
 export function CommentComposer({ targetLabel, value, onInput, onSubmit, onCancel }: CommentComposerProps) {
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // The card is portalled and starts hidden for one frame (it is placed after
-    // measuring), so focusing on mount would be undone by that frame.
     const id = setTimeout(() => inputRef.current?.focus(), 60);
     return () => clearTimeout(id);
   }, []);
@@ -40,7 +30,7 @@ export function CommentComposer({ targetLabel, value, onInput, onSubmit, onCance
     }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      onSubmit();
+      if (value.trim()) onSubmit();
     }
   };
 
@@ -49,7 +39,7 @@ export function CommentComposer({ targetLabel, value, onInput, onSubmit, onCance
   return (
     <div
       data-ui-panel="comment-composer"
-      className={`${POPOVER_SURFACE_CLASS} px-2.5 pt-2 pb-2.5 flex flex-col gap-2 text-ui text-ink`}
+      className={`${POPOVER_SURFACE_CLASS} px-2.5 pt-2 pb-2.5 flex flex-col gap-2 font-sans text-ui text-ink`}
       onClick={(e) => e.stopPropagation()}
     >
       <div data-comment-drag-handle="true" className="min-w-0 cursor-grab active:cursor-grabbing">
@@ -60,23 +50,35 @@ export function CommentComposer({ targetLabel, value, onInput, onSubmit, onCance
           className="pb-1.5 border-b border-rule"
         />
       </div>
-      <textarea
-        ref={inputRef}
-        rows={3}
-        value={value}
-        onInput={(e) => onInput((e.currentTarget as HTMLTextAreaElement).value)}
-        onKeyDown={handleKeyDown}
-        placeholder={t("comments.placeholder")}
-        aria-label={t("comments.placeholder")}
-        className="w-full bg-field rounded-ctl p-1.5 text-ui text-ink border border-rule resize-none focus:outline-none focus:border-brand"
-      />
-      <div className="flex items-center justify-end gap-1.5">
-        <Button size="field" variant="ghost" onClick={onCancel}>
-          {t("common.cancel")}
-        </Button>
-        <Button size="field" variant="primary" disabled={!canSubmit} onClick={onSubmit}>
-          {t("comments.send")}
-        </Button>
+      <div className="flex items-center gap-2 pt-0.5">
+        <div className="w-6 h-6 rounded-full bg-raised border border-rule flex items-center justify-center text-row text-ink font-sans shrink-0">
+          U
+        </div>
+        <div className="flex-1 min-w-0 relative flex items-center bg-field rounded-full border border-rule focus-within:border-brand transition-colors pl-3 pr-1 py-1">
+          <input
+            ref={inputRef}
+            type="text"
+            value={value}
+            onInput={(e) => onInput((e.currentTarget as HTMLInputElement).value)}
+            onKeyDown={handleKeyDown}
+            placeholder={t("comments.placeholder")}
+            aria-label={t("comments.placeholder")}
+            className="w-full bg-transparent text-ui text-ink border-0 p-0 focus:outline-none placeholder:text-ink-muted"
+          />
+          <button
+            type="button"
+            disabled={!canSubmit}
+            onClick={onSubmit}
+            aria-label={t("comments.send")}
+            className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-colors ${
+              canSubmit
+                ? "bg-brand text-brand-ink hover:brightness-105 cursor-pointer"
+                : "bg-raised text-ink-muted opacity-40 cursor-default"
+            }`}
+          >
+            <ArrowUp size={11} strokeWidth={2.5} />
+          </button>
+        </div>
       </div>
     </div>
   );

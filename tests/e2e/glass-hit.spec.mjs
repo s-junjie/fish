@@ -4,32 +4,6 @@ import path from "node:path";
 
 /**
  * A layer that paints a material owns its interior for hit testing.
- *
- * The report this pins: "把 fill 关掉后无法选中那个图层" + "从图层上选中它后也无法
- * 拖动". Both are one cause, and it is not that the glass is hard to click — it is
- * that a press inside it reached the CANVAS ROOT and started a marquee:
- *
- *  1. `backdrop-filter` is applied by a `<foreignObject>` whose inner `<div>` is
- *     `pointer-events: none`. That does not make the `foreignObject` inert — the
- *     element still hit-tests its own box;
- *  2. a leaf shape with no fill deliberately hit-tests only its outline
- *     (`pointer-events: stroke`, `fill: none`), so the `foreignObject` — painted
- *     first, but the topmost thing still hittable in the interior — won;
- *  3. it has no handler, so the press bubbled to `handleCanvasMouseDown`, which
- *     for the select tool starts a zero-area MARQUEE: selection cleared, then
- *     every layer intersecting the point selected. That is the reported
- *     "两个图层绑定" — the glass panel came back WITH the layer under it, and
- *     because the gesture was a marquee and not a drag, nothing moved.
- *
- * So there are two independent fixes and this spec tests them apart:
- *  - the backdrop is decoration → `pointer-events: none` (pinned by the CORNER
- *    press: outside a rounded corner the panel must not swallow the press);
- *  - a shape that paints a backdrop owns its interior → the hit path becomes
- *    `all` (pinned by the CENTRE press: exactly one layer, the glass one).
- *
- * The controls matter as much as the assertions: a fill-less shape with NO effect
- * must stay click-through, or the "fix" would have quietly made every transparent
- * rectangle swallow its own clicks.
  */
 const html = path.resolve(process.cwd(), process.argv[2] ?? "dist/index.html");
 const results = [];
@@ -55,11 +29,6 @@ const glass = (over = {}) => ({
 });
 const frost = (over = {}) => ({ type: "backdrop-blur", blur: 12, enabled: true, ...over });
 
-/* 60, not 24: the corner cut of a rounded rect is `(1 - 1/√2)·r` deep, and the hit
-   path carries an 8-screen-px invisible stroke band around the outline. At r = 60
-   the cut is 17.6 doc px, so a press one screen px inside the box corner is
-   unambiguously outside the SHAPE while still inside the BOX — which is exactly
-   the region the backdrop `foreignObject` used to claim. */
 const R = 60;
 const PANEL = { x: 260, y: 200, width: 240, height: 160 };
 const UNDER = { x: 120, y: 120, width: 480, height: 340 };
@@ -213,8 +182,8 @@ const targetAt = (id, where) =>
         w === "corner"
           ? { x: b.left + d, y: b.top + d }
           : w === "corner-br"
-          ? { x: b.right - d, y: b.bottom - d }
-          : { x: b.left + b.width / 2, y: b.top + b.height / 2 };
+            ? { x: b.right - d, y: b.bottom - d }
+            : { x: b.left + b.width / 2, y: b.top + b.height / 2 };
       const el = document.elementFromPoint(p.x, p.y);
       return {
         tag: el?.tagName ?? null,

@@ -1,11 +1,12 @@
-import { useState, useRef, useEffect } from "preact/hooks";
-import { Check, Trash2, RotateCcw, AlertCircle, Sparkles } from "lucide-react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "preact/hooks";
+import { Check, Trash2, RotateCcw, AlertCircle, Sparkles, ArrowUp } from "lucide-react";
 import { t } from "../../i18n";
 import { Button } from "../Button";
 import { PanelHeader } from "../PanelHeader";
 import { POPOVER_SURFACE_CLASS } from "../menu-style";
 import { CommentDiffCard } from "../comments/CommentDiffCard";
 import { computeSuggestionDiff } from "../../core/comments/diff";
+import { applySuggestionToDocument } from "../../core/comments/suggested-ops";
 import type { CommentThread } from "../../core/comments/types";
 import type { DesignDocument } from "../../core/dsl/types";
 
@@ -21,6 +22,8 @@ export interface CommentPopoverProps {
   onClose: () => void;
   onApplySuggestion?: (threadId: string) => void;
   onDiscardSuggestion?: (threadId: string) => void;
+  /** Redirects the canvas to a document read against the live one, or back. */
+  onSetPreview?: (doc: DesignDocument | null) => void;
 }
 
 const STATUS_DOT_CLASS: Record<CommentThread["status"], string> = {
@@ -40,10 +43,11 @@ export function CommentPopover({
   onDelete,
   onClose,
   onApplySuggestion,
-  onDiscardSuggestion
+  onDiscardSuggestion,
+  onSetPreview
 }: CommentPopoverProps) {
   const [replyText, setReplyText] = useState("");
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     inputRef.current?.focus?.();
@@ -53,13 +57,60 @@ export function CommentPopover({
   const suggestion = thread.suggestion;
   const isPendingSuggestion = thread.status === "suggested" && Boolean(suggestion);
 
-  const diffRows = isPendingSuggestion && docRef && suggestion
+  const freshRows = isPendingSuggestion && docRef && suggestion
     ? computeSuggestionDiff(
         docRef.current,
         { pageId: thread.pageId, elementId: thread.target.elementId },
         suggestion.ops
       )
     : [];
+  /* A preview redirects the document the rows are read off, so recomputing them
+     would diff the ops against their own output and report "no changes" — which
+     reads as a broken Accept. The evidence is frozen at what the user agreed to. */
+  const frozenRows = useRef<typeof freshRows>([]);
+  const [previewing, setPreviewing] = useState(false);
+  if (!previewing) frozenRows.current = freshRows;
+  const diffRows = previewing ? frozenRows.current : freshRows;
+
+  const canPreview = useMemo(() => {
+    if (!docRef || !suggestion) return false;
+    return applySuggestionToDocument(docRef.current, suggestion.ops).changed;
+  }, [docRef, suggestion]);
+
+  const exitPreview = useCallback(() => {
+    setPreviewing(false);
+    onSetPreview?.(null);
+  }, [onSetPreview]);
+
+  /* The preview has no life of its own outside this thread's card: switching
+     threads, closing the card, or accepting/discarding take the canvas back. */
+  useEffect(() => {
+    setPreviewing(false);
+    onSetPreview?.(null);
+  }, [thread.id]);
+  useEffect(() => () => onSetPreview?.(null), [onSetPreview]);
+  useEffect(() => {
+    if (!isPendingSuggestion && previewing) exitPreview();
+  }, [isPendingSuggestion, previewing, exitPreview]);
+
+  const togglePreview = () => {
+    if (!docRef || !suggestion) return;
+    if (previewing) {
+      exitPreview();
+      return;
+    }
+    const { nextDoc, changed } = applySuggestionToDocument(docRef.current, suggestion.ops);
+    if (!changed) return;
+    setPreviewing(true);
+    onSetPreview?.(nextDoc);
+  };
+
+  const handleApply = () => {
+    // Writes are refused while the view is redirected, so the preview has to go
+    // before the commit — not in an effect that would land after it.
+    exitPreview();
+    onApplySuggestion?.(thread.id);
+  };
 
   const handleSend = () => {
     const trimmed = replyText.trim();
@@ -90,7 +141,7 @@ export function CommentPopover({
     <div
       data-ui-panel="comment-popover"
       data-thread-id={thread.id}
-      className={`${POPOVER_SURFACE_CLASS} px-2.5 pt-2 pb-2.5 flex flex-col gap-2 text-ui text-ink`}
+      className={`${POPOVER_SURFACE_CLASS} px-2.5 pt-2 pb-2.5 flex flex-col gap-2 font-sans text-ui text-ink`}
       onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => {
         if (e.key === "Escape") onClose();
@@ -155,15 +206,27 @@ export function CommentPopover({
         />
       </div>
 
-      <div className="flex flex-col gap-2 max-h-56 overflow-y-auto pr-1">
+      <div className="flex flex-col gap-3 max-h-56 overflow-y-auto pr-1">
         {thread.messages.map((msg) => {
           const isAi = msg.author.role === "ai";
+          const initial = msg.author.name ? msg.author.name.charAt(0).toUpperCase() : (isAi ? "A" : "U");
           return (
-            <div key={msg.id} className="flex flex-col gap-0.5">
-              <span className={`text-row ${isAi ? "text-brand" : "text-ink"}`}>{msg.author.name}</span>
-              <p className="text-ink text-ui whitespace-pre-wrap break-words leading-snug">
-                {msg.content}
-              </p>
+            <div key={msg.id} className="flex items-start gap-2">
+              <div
+                className={`w-6 h-6 rounded-full flex items-center justify-center text-row font-sans shrink-0 border select-none ${
+                  isAi
+                    ? "bg-brand-wash text-brand border-brand/30"
+                    : "bg-raised text-ink border-rule"
+                }`}
+              >
+                {initial}
+              </div>
+              <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+                <span className={`text-row ${isAi ? "text-brand" : "text-ink"}`}>{msg.author.name}</span>
+                <p className="text-ink text-ui whitespace-pre-wrap break-words leading-snug">
+                  {msg.content}
+                </p>
+              </div>
             </div>
           );
         })}
@@ -174,8 +237,11 @@ export function CommentPopover({
           summary={suggestion.summary}
           rows={diffRows}
           pending
+          canPreview={canPreview}
+          previewOn={previewing}
+          onTogglePreview={togglePreview}
           showSummary={suggestion.summary !== lastMessage}
-          onApply={() => onApplySuggestion?.(thread.id)}
+          onApply={handleApply}
           onDiscard={() => onDiscardSuggestion?.(thread.id)}
         />
       )}
@@ -190,21 +256,34 @@ export function CommentPopover({
         </div>
       )}
 
-      <div className="flex flex-col gap-1.5 pt-1 border-t border-rule">
-        <textarea
-          ref={inputRef}
-          rows={2}
-          value={replyText}
-          onInput={(e) => setReplyText((e.currentTarget as HTMLTextAreaElement).value)}
-          onKeyDown={handleKeyDown}
-          placeholder={t("comments.replyPlaceholder")}
-          aria-label={t("comments.replyPlaceholder")}
-          className="w-full bg-field rounded-ctl p-1.5 text-ui text-ink border border-rule resize-none focus:outline-none focus:border-brand"
-        />
-        <div className="flex items-center justify-end">
-          <Button size="field" variant="primary" disabled={!replyText.trim()} onClick={handleSend}>
-            {t("comments.send")}
-          </Button>
+      <div className="pt-2 border-t border-rule flex items-end gap-2">
+        <div className="w-6 h-6 rounded-full bg-raised border border-rule flex items-center justify-center text-row text-ink font-sans shrink-0 mb-0.5">
+          U
+        </div>
+        <div className="flex-1 min-w-0 relative flex items-center bg-field rounded-full border border-rule focus-within:border-brand transition-colors pl-3 pr-1 py-1">
+          <input
+            ref={inputRef}
+            type="text"
+            value={replyText}
+            onInput={(e) => setReplyText((e.currentTarget as HTMLInputElement).value)}
+            onKeyDown={handleKeyDown}
+            placeholder={t("comments.replyPlaceholder")}
+            aria-label={t("comments.replyPlaceholder")}
+            className="w-full bg-transparent text-ui text-ink border-0 p-0 focus:outline-none placeholder:text-ink-muted"
+          />
+          <button
+            type="button"
+            disabled={!replyText.trim()}
+            onClick={handleSend}
+            aria-label={t("comments.send")}
+            className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-colors ${
+              replyText.trim()
+                ? "bg-brand text-brand-ink hover:brightness-105 cursor-pointer"
+                : "bg-raised text-ink-muted opacity-40 cursor-default"
+            }`}
+          >
+            <ArrowUp size={11} strokeWidth={2.5} />
+          </button>
         </div>
       </div>
     </div>

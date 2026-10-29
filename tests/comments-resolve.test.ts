@@ -255,11 +255,11 @@ describe("comments resolve behaviour", () => {
       root
     );
 
-    const textarea = findByAttr(root, "aria-label", "Reply...")[0];
-    expect(textarea).toBeDefined();
-    textarea.input("Great change!");
+    const replyInput = findByAttr(root, "aria-label", "Reply...")[0];
+    expect(replyInput).toBeDefined();
+    replyInput.input("Great change!");
 
-    const sendBtn = findByText(root, "Send")[0];
+    const sendBtn = findByAttr(root, "aria-label", "Send")[0];
     expect(sendBtn).toBeDefined();
     sendBtn.click();
 

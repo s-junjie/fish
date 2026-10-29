@@ -14,6 +14,7 @@ import type { DesignDocument, DesignElement } from "../dsl/types";
 import { parseCommentsBlock, spliceCommentsBlock } from "../data-bridge";
 import { parseLenientJson } from "../dsl/lenient-json";
 import type { CommentThread, FishCommentsDocument, SuggestedMacroOp } from "../comments/types";
+import { AI_AUTHOR } from "../comments/types";
 
 export interface CommentsCommandOptions {
   summary?: string;
@@ -220,7 +221,7 @@ export function commentsCommand(args: string[], opts: CommentsCommandOptions = {
     // reload, not as a status flag with nothing behind it.
     thread.messages.push({
       id: `msg_${Date.now()}`,
-      author: { id: "ai", name: "AI Assistant", role: "ai" },
+      author: AI_AUTHOR,
       content: opts.summary,
       createdAt: new Date().toISOString()
     });
@@ -233,7 +234,7 @@ export function commentsCommand(args: string[], opts: CommentsCommandOptions = {
     if (!opts.text) return fail("reply needs --text");
     thread.messages.push({
       id: `msg_${Date.now()}`,
-      author: { id: "ai", name: "AI Assistant", role: "ai" },
+      author: AI_AUTHOR,
       content: opts.text,
       createdAt: new Date().toISOString()
     });
@@ -249,7 +250,7 @@ export function commentsCommand(args: string[], opts: CommentsCommandOptions = {
     if (opts.reply) {
       thread.messages.push({
         id: `msg_${Date.now()}`,
-        author: { id: "ai", name: "AI Assistant", role: "ai" },
+        author: AI_AUTHOR,
         content: opts.reply,
         createdAt: new Date().toISOString()
       });

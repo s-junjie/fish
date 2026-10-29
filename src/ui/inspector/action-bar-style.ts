@@ -1,5 +1,7 @@
-const ACTION_BAR_BASE =
-  "w-full flex items-center justify-center gap-1.5 h-[25px] rounded-swatch ring-1 ring-inset text-ui font-sans font-medium transition-colors cursor-default";
+const ACTION_BOX_BASE =
+  "flex items-center justify-center gap-1.5 h-[25px] rounded-swatch ring-1 ring-inset text-ui font-sans font-medium transition-colors cursor-default";
+
+const ACTION_BAR_BASE = `w-full ${ACTION_BOX_BASE}`;
 
 /**
  * The wide, full-width action button that closes a section: "Create component",
@@ -46,6 +48,14 @@ export const ACTION_BAR_TOGGLE_OFF = `${ACTION_BAR_ON} bg-field ring-rule`;
  * and the ring goes amber with it so the box keeps an edge on the wash.
  */
 export const ACTION_BAR_TOGGLE_ON = "bg-brand-wash ring-brand text-brand";
+
+/**
+ * The same toggle as an icon-only control sharing a row with other actions, so
+ * it owns a square box instead of the row's width. It pairs with
+ * `ACTION_BAR_TOGGLE_OFF` / `_ON` unchanged: one definition of what an armed
+ * toggle looks like, whatever width it is asked to be.
+ */
+export const ACTION_TOGGLE_ICON_CLASS = `${ACTION_BOX_BASE} w-[25px] flex-none`;
 
 /**
  * The HALF-width twin: two actions side by side ("Reset overrides" /

@@ -3,7 +3,7 @@ import { AlertTriangle, X } from "lucide-react";
 import { t } from "../i18n";
 import type { DesignDocument, DesignElement } from "../core/dsl/types";
 import { getActivePage } from "../core/dsl/types";
-import { fontStatusSnapshot, textFontStatus, subscribeFontStatus } from "../core/fonts/font-status";
+import { fontStatusSnapshot, textFontStatus, subscribeFontStatus, refreshFontStatus } from "../core/fonts/font-status";
 import type { FontUsage } from "../core/fonts/font-status";
 import { replaceFontFamily } from "../core/interactions/font-replace";
 import { flattenElements } from "../core/geometry/tree-ops";
@@ -106,10 +106,14 @@ export function MissingFontsDialog({ doc, commitSnapshot, selectedIds }: Missing
     () => (panel.open ? missingUsers(activePage.children ?? [], selectedIds) : 0),
     [panel.open, activePage, selectedIds]
   );
-  const documentCount = useMemo(
-    () => (panel.open ? missingUsers(activePage.children ?? []) : 0),
-    [panel.open, activePage]
-  );
+  const documentCount = useMemo(() => {
+    if (!panel.open) return 0;
+    const allElements = doc.pages?.length
+      ? doc.pages.flatMap((page) => page.children ?? [])
+      : (activePage.children ?? []);
+    const styleCount = missing.reduce((sum, entry) => sum + entry.styles, 0);
+    return missingUsers(allElements) + styleCount;
+  }, [panel.open, doc, activePage, missing]);
 
   if (!panel.open) return null;
 
@@ -124,7 +128,10 @@ export function MissingFontsDialog({ doc, commitSnapshot, selectedIds }: Missing
         scope === "document" ? "document" : { elementIds: selectedIds }
       );
     }
-    if (nextDoc !== doc) commitSnapshot(nextDoc);
+    if (nextDoc !== doc) {
+      commitSnapshot(nextDoc);
+      refreshFontStatus(nextDoc);
+    }
     setPendingReplacements({});
     const remainingMissing = fontStatusSnapshot().filter((entry) => entry.status === "missing");
     if (remainingMissing.length === 0) {

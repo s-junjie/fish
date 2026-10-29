@@ -129,6 +129,7 @@ let granted: Set<string> | null = null;
 const webFamilies = new Set<string>();
 /** Families the document carries with a `src`; they travel with the file. */
 let carried = new Set<string>();
+let recordedStacks = new Map<string, string>();
 
 const decided = new Map<string, FontStatus>();
 let snapshot: FontUsage[] = [];
@@ -222,6 +223,7 @@ export function noteWebFontFamily(family: string, state: "remote" | "absent"): v
 export function resetFontStatus(): void {
   decided.clear();
   carried = new Set();
+  recordedStacks = new Map();
   webFamilies.clear();
   granted = null;
   snapshot = [];
@@ -300,6 +302,7 @@ export function refreshFontStatus(doc: DesignDocument | null): void {
     ? scanDocument(doc)
     : { usage: new Map<string, FontUsage>(), stacks: new Map<string, string>(), carried: new Set<string>() };
   carried = scan.carried;
+  recordedStacks = scan.stacks;
   const previous = new Map(snapshot.map((entry) => [keyOf(entry.family), entry.status]));
   const beforeSignature = signatureOf(snapshot);
 
@@ -334,7 +337,8 @@ function signatureOf(list: readonly FontUsage[]): string {
 function publish(): void {
   let moved = false;
   snapshot = snapshot.map((entry) => {
-    const status = decide(entry.family);
+    const stack = recordedStacks.get(keyOf(entry.family)) ?? entry.family;
+    const status = decide(stack);
     if (status !== entry.status) moved = true;
     return status === entry.status ? entry : { ...entry, status };
   });

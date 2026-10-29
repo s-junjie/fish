@@ -320,6 +320,24 @@ export function variantOptionsFor(
   return out;
 }
 
+/**
+ * The values of one property that would land on a HOLE in the matrix.
+ *
+ * A set declares every value a property may take, and an instance is offered all
+ * of them — that is how a designer discovers `Pressed` exists. Selecting one that
+ * no member fills changes nothing, so the option says so up front rather than
+ * after a click that appears to have been ignored.
+ */
+export function variantHoles(
+  set: ComponentSet,
+  property: string,
+  current: Record<string, string>
+): string[] {
+  return variantOptionsFor(set, property, current).filter(
+    (value) => !findVariantMember(set, { ...current, [property]: value })
+  );
+}
+
 /** The stored value of one overridable property — shared with `component-swap.ts`. */
 export function propertyValue(el: DesignElement, property: ComponentOverride["property"]): unknown {
   if (property === "strokes") return effectiveStrokes(el);

@@ -128,8 +128,8 @@ export function textSpec(style: TextStyle, spans?: TextElement["spans"]): TextMe
  * both axes never goes through `measureText`, so there is nothing to protect:
  * freezing it would take the caret away and preserve nothing.
  *
- * This is also the edit gate's condition (`useInlineEditing`) — the gesture is
- * refused for exactly the reason the freeze exists, from the same predicate.
+ * Canvas editing (`useInlineEditing`) gates all missing fonts; this predicate
+ * specifically controls whether layout re-measurement is frozen.
  */
 export function textSizingIsFrozen(el: TextElement): boolean {
   // An on-path text is sized by the renderer's glyph measurement, not by a box.

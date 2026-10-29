@@ -272,6 +272,25 @@ function sameValue(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+/**
+ * A copy of a style's declarations that the element can own.
+ *
+ * The declarations are plain data, and the element must not share their arrays
+ * with the style. `JSON.parse(JSON.stringify(…))` achieved that by stringifying
+ * every paint and shadow of every element wearing the style — measured as most
+ * of what a normalize spent. This copies the same data in one pass.
+ */
+function cloneDeclarations<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(cloneDeclarations) as unknown as T;
+  if (value && typeof value === "object") {
+    const source = value as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(source)) out[key] = cloneDeclarations(source[key]);
+    return out as T;
+  }
+  return value;
+}
+
 const STYLE_PROP_MAP: Record<string, { prop: OverridableProperty; read: (s: any, theme?: string) => any }> = {
   fillStyleId: { prop: "fills", read: (s) => s.styleType === "paint" && resolvePaintStylePaints(s) },
   strokeStyleId: { prop: "strokes", read: (s) => s.styleType === "stroke" && s.strokes },
@@ -304,7 +323,7 @@ export function syncDualStorage(
   if (next.fillStyleId && stylesById.has(next.fillStyleId)) {
     const style = stylesById.get(next.fillStyleId)!;
     if (style.styleType === "paint") {
-      next = { ...next, fills: JSON.parse(JSON.stringify(resolvePaintStylePaints(style))) };
+      next = { ...next, fills: cloneDeclarations(resolvePaintStylePaints(style)) };
       changed = true;
     }
   }
@@ -352,7 +371,7 @@ export function syncDualStorage(
   if (next.strokeStyleId && stylesById.has(next.strokeStyleId)) {
     const style = stylesById.get(next.strokeStyleId)!;
     if (style.styleType === "stroke") {
-      next = { ...next, strokes: JSON.parse(JSON.stringify(style.strokes)) };
+      next = { ...next, strokes: cloneDeclarations(style.strokes) };
       changed = true;
     }
   }
@@ -391,7 +410,7 @@ export function syncDualStorage(
   if (next.effectStyleId && stylesById.has(next.effectStyleId)) {
     const style = stylesById.get(next.effectStyleId)!;
     if (style.styleType === "effect") {
-      next = { ...next, effects: JSON.parse(JSON.stringify(style.effects)) };
+      next = { ...next, effects: cloneDeclarations(style.effects) };
       changed = true;
     }
   }
@@ -522,7 +541,7 @@ export function syncDualStorage(
           const val = mapping.read(stylesById.get(ov.value as string), effectiveTheme);
           if (val) {
             const idx = nextOverrides.findIndex((o) => o.targetId === ov.targetId && o.property === mapping.prop);
-            const cloned = JSON.parse(JSON.stringify(val));
+            const cloned = cloneDeclarations(val);
             if (idx >= 0) nextOverrides[idx] = { ...nextOverrides[idx], value: cloned };
             else nextOverrides.push({ targetId: ov.targetId, property: mapping.prop, value: cloned });
             ovChanged = true;

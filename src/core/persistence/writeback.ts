@@ -11,6 +11,7 @@ import {
   writeFileSafely
 } from "../data-bridge";
 import { documentTitleFor } from "../document-title";
+import { writeBytesAtomically } from "./atomic-write";
 import { IdbBackend, MemoryBackend, hasIndexedDb } from "./backend";
 import { createHandleStore, type HandleStore, type FileSystemFileHandleLike } from "./handles";
 
@@ -295,9 +296,11 @@ export async function saveDocAsNewFile(
     if (typeof handle.createWritable !== "function") {
       return { ok: false, reason: "no-writable" };
     }
-    const writable = await handle.createWritable();
-    await writable.write(fileContent);
-    await writable.close();
+    // A save-as may land on a file that already exists — the picker offers the
+    // current name, and choosing it is a legitimate "replace this". A bare
+    // `createWritable()` would truncate that file to zero bytes before the
+    // first byte is written, so a failure here had nothing to fall back on.
+    await writeBytesAtomically(handle, fileContent);
     const writtenId = (/<meta\s+name=["']fish:fileId["']\s+content=["']([^"']+)["']/i).exec(fileContent)?.[1];
     const payloadHash = payloadHashFromHtml(fileContent);
     return {

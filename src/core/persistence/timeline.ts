@@ -1,4 +1,5 @@
 import type { KVBackend } from "./backend";
+import { VERSIONS_BY_DOC } from "./backend";
 import type { AssetStore, SnapshotDoc } from "./assets";
 
 export type VersionKind = "auto" | "named" | "pre-restore" | "restored";
@@ -73,9 +74,13 @@ class KVTimelineStore implements TimelineStore {
   }
 
   async list(docKey: string): Promise<VersionRecord[]> {
-    const all = (await this.backend.getAll("versions")) as VersionRecord[];
-    return all
-      .filter((v) => v.docKey === docKey)
+    // Through the `docKey` index where the backend has one: a full scan reads
+    // every version of every file, each row carrying its snapshot, to answer a
+    // question about one document.
+    const rows = this.backend.getAllBy
+      ? await this.backend.getAllBy("versions", VERSIONS_BY_DOC, docKey)
+      : (await this.backend.getAll("versions")).filter((v) => (v as VersionRecord).docKey === docKey);
+    return (rows as VersionRecord[])
       // Two commits can land in the same millisecond; ids carry a padded
       // monotonic sequence so the tiebreak still yields newest-first.
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
@@ -112,14 +117,19 @@ function bucketOf(createdAt: string, thinMs: number): string {
  * gradient: every recent version is kept; older ones are thinned to one-per
  * bucket; hard caps prune the oldest *unnamed* versions first. Named versions
  * are never auto-pruned. Returns the ids that were removed.
+ *
+ * `versions` is the list the caller already holds, newest first. A commit has
+ * just read it to decide whether the merge window applies, and re-reading the
+ * same rows here was the second of three scans per version.
  */
 export async function applyRetention(
   timeline: TimelineStore,
   assets: AssetStore,
   docKey: string,
-  policy: RetentionPolicy = DEFAULT_RETENTION
+  policy: RetentionPolicy = DEFAULT_RETENTION,
+  versions?: VersionRecord[]
 ): Promise<string[]> {
-  const all = await timeline.list(docKey);
+  const all = versions ?? (await timeline.list(docKey));
   const named = all.filter((v) => v.named);
   const unnamed = all.filter((v) => !v.named);
 

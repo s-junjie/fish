@@ -87,9 +87,10 @@ describe("the flattened i18n table", () => {
       expect(resDouble).not.toBeNull();
       expect(resSingle).not.toBeNull();
       expect(resWithArgs).not.toBeNull();
-      expect(resDouble.code).toContain("const msg = t(178);");
-      expect(resSingle.code).toContain("const msg = t(178);");
-      expect(resWithArgs.code).toContain("const msg = t(178, { count: 1 });");
+      const expectedIndex = [...keys].sort().indexOf("common.add");
+      expect(resDouble.code).toContain(`const msg = t(${expectedIndex});`);
+      expect(resSingle.code).toContain(`const msg = t(${expectedIndex});`);
+      expect(resWithArgs.code).toContain(`const msg = t(${expectedIndex}, { count: 1 });`);
     });
 
     it("ignores files in i18n directory with POSIX or Windows separators", () => {

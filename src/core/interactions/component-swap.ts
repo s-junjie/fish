@@ -23,9 +23,8 @@ import { instanceScaleOf } from "../geometry/scale-geometry";
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 import { elementPivot, elementTransformMatrix } from "../geometry/transforms";
 import { deepEqual } from "../deep-equal";
-import { collectComponents, findMasterComponent, groupComponentSets, propertyValue, type ComponentEntry } from "./component-inventory";
+import { collectComponents, findMasterComponent, findVariantMember, groupComponentSets, isDerivedNode, propertyValue, type ComponentEntry } from "./component-inventory";
 import { commitInstanceOverrides, resolveInstanceChildren, resolveInstanceSelection } from "./instance-resolve";
-import { variantName } from "./variant-naming";
 
 /**
  * Re-pointing an instance at another component: which components a swap may pick,
@@ -425,9 +424,44 @@ export function swapInstanceComponent(
  * current master has to stay in the list or the control would read as empty, and
  * seeing WHY a neighbour cannot be picked beats it silently missing.
  */
+/**
+ * One row of the swap list: a component SET or a standalone COMPONENT.
+ *
+ * Figma's swap list is not a variant list. A set is one candidate — "make this a
+ * Button" — and which cell of the Button matrix the instance lands in is the
+ * second question, answered by its own variant rows. Flattening every member into
+ * the list turned a 3×4 set into twelve `Button · Size=Small, State=Hover` rows
+ * and put the two different operations in one control.
+ *
+ * `id` is still the MEMBER the picker commits, because that is what a swap
+ * writes; a set's row carries the member its coordinates already match, or the
+ * set's default when the other set has no such cell.
+ */
+export interface ComponentSwapOption {
+  id: string;
+  label: string;
+  /** What the picker draws beside the label: a set's frame, or one component. */
+  kind: "set" | "component";
+  /** The set this row stands for, when it stands for one. */
+  setId?: string;
+  disabled?: boolean;
+  refusal?: SwapRefusal;
+}
+
+/** The coordinates a component sits at inside its own set, or none. */
+function coordinatesOf(
+  sets: ReturnType<typeof groupComponentSets>["sets"],
+  componentId: string
+): Record<string, string> {
+  for (const set of sets) {
+    const member = set.members.find((m) => m.id === componentId);
+    if (member) return member.variantProperties ?? {};
+  }
+  return {};
+}
+
 export function componentSwapOptions(
   doc: DesignDocument,
-  defaultVariantLabel: string,
   swapNodeId?: string,
   /**
    * The inventory, when the caller already has it.
@@ -438,25 +472,91 @@ export function componentSwapOptions(
    * makes one walk serve all three.
    */
   entries?: ComponentEntry[]
-): { id: string; label: string; disabled?: boolean; refusal?: SwapRefusal }[] {
+): ComponentSwapOption[] {
   const { sets, singles } = groupComponentSets(doc, entries ?? collectComponents(doc));
-  const options = [
-    // The member's own name IS its coordinates in Figma — `Size=Small, State=Hover`
-    // — so the label is assembled from the set name and that, and never re-derives
-    // the `Property=Value` string from the map a second time.
-    ...sets.flatMap((set) =>
-      set.members.map((member) => ({
-        id: member.id,
-        label: `${set.name} · ${variantName(member.variantProperties, defaultVariantLabel)}`
-      }))
-    ),
-    ...singles.map((entry) => ({ id: entry.id, label: entry.name }))
+  const node = swapNodeId ? findNodeById(doc, swapNodeId) : null;
+  const currentComponentId = node && node.type === "instance" ? (node as InstanceElement).componentId : null;
+  const current = currentComponentId ? coordinatesOf(sets, currentComponentId) : {};
+
+  const options: ComponentSwapOption[] = [
+    ...sets.map((set) => {
+      // The set this instance is ALREADY a member of points at that very member.
+      // Matching by coordinates instead answers with the FIRST member sitting at
+      // them, and two members can share a cell — every set born from slash-less
+      // names starts with all of them on `Property 1=Default`. The picker then
+      // held an id the instance is not, so the row read as a different component
+      // and the control announced "Missing component".
+      if (currentComponentId && set.members.some((m) => m.id === currentComponentId)) {
+        return { id: currentComponentId, label: set.name, kind: "set" as const, setId: set.setId };
+      }
+      // Only the axes BOTH sets declare can carry over: a Button's `Size` says
+      // nothing about a Chip, and asking the Chip for a cell that mentions `Size`
+      // matches nothing and silently reset the swap to its top-left. What both
+      // sets do declare is kept, so `State=Hover` stays hover.
+      const shared: Record<string, string> = {};
+      for (const property of set.properties) {
+        if (property.property in current) shared[property.property] = current[property.property];
+      }
+      const member = findVariantMember(set, shared) ?? set.defaultMember;
+      return { id: member.id, label: set.name, kind: "set" as const, setId: set.setId };
+    }),
+    ...singles.map((entry) => ({ id: entry.id, label: entry.name, kind: "component" as const }))
   ];
   if (!swapNodeId) return options;
   return options.map((option) => {
     const refusal = swapRefusal(doc, swapNodeId, option.id);
     return refusal ? { ...option, disabled: true, refusal } : option;
   });
+}
+
+/** An instance a drop can land on: a real one, or a clone inside another. */
+export interface SwapTarget {
+  kind: "instance" | "nested";
+  id: string;
+}
+
+/**
+ * The instance a world point lands on, descending through instance clones.
+ *
+ * `findInstanceAtPoint` deliberately stops at the outer instance, because for an
+ * INSERT that is the right answer. For a swap the nested case is the interesting
+ * one: replacing the icon inside a card is a real gesture, and it needs the
+ * clone's id — the same derived id the canvas selects with.
+ *
+ * The deepest hit wins, and a drop on the card but beside the icon still resolves
+ * to the card, so the gesture never falls through to inserting on top of it.
+ */
+export function findSwapTargetAtPoint(
+  doc: DesignDocument,
+  x: number,
+  y: number
+): SwapTarget | null {
+  const enter = (el: DesignElement, ox: number, oy: number): SwapTarget | null => {
+    if (el.type === "instance") {
+      const inst = el as InstanceElement;
+      const master = findMasterComponent(doc, inst.componentId);
+      if (master) {
+        const deeper = findIn(resolveInstanceChildren(inst, master), ox + inst.x, oy + inst.y);
+        if (deeper) return deeper;
+      }
+      return { kind: isDerivedNode(el) ? "nested" : "instance", id: el.id };
+    }
+    return isContainer(el) && el.children?.length ? findIn(el.children, ox + el.x, oy + el.y) : null;
+  };
+  const findIn = (elements: DesignElement[], ox: number, oy: number): SwapTarget | null => {
+    for (let i = elements.length - 1; i >= 0; i--) {
+      const el = elements[i];
+      // A master is a definition, not scenery — the same refusal
+      // `findInstanceAtPoint` makes.
+      if (el.type === "component") continue;
+      const inside = x >= ox + el.x && x <= ox + el.x + el.width && y >= oy + el.y && y <= oy + el.y + el.height;
+      if (!inside) continue;
+      const target = enter(el, ox, oy);
+      if (target) return target;
+    }
+    return null;
+  };
+  return findIn(getActivePage(doc).children || [], 0, 0);
 }
 
 /**
