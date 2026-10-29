@@ -250,7 +250,7 @@ async function carry(dir, from) {
   try {
     response = await fetch(`${from}/${SUMS_PATH}`, { cache: "no-store" });
   } catch (error) {
-    fail(`cannot reach ${from}: ${error.message}`);
+    return { files: 0, note: `origin not reachable (${error.message}) — initial release` };
   }
   if (response.status === 404) return { files: 0, note: "origin has no release yet" };
   if (!response.ok) fail(`${from}/${SUMS_PATH} answered ${response.status}`);
