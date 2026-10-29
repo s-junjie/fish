@@ -5,7 +5,8 @@
   "workers_dev": false,
   "assets": {
     "directory": "../release-site",
-    "not_found_handling": "404-page"
+    "not_found_handling": "404-page",
+    "html_handling": "none"
   },
   "routes": [
     {

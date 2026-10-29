@@ -272,9 +272,15 @@ async function fetchSums(base) {
 async function fetchChecked(url, { label, contentType, cache }) {
   const response = await fetch(url, {
     cache: "no-store",
-    headers: { "User-Agent": "Mozilla/5.0 (compatible; FishReleaseVerifier/0.1.0)" }
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    }
   });
-  expect(response.ok, `${label} answered ${response.status}`);
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    expect(response.ok, `${label} answered ${response.status}: ${errorText.slice(0, 300)}`);
+  }
   requireHeader(response, "access-control-allow-origin", (value) => value === "*", label);
   if (contentType) requireHeader(response, "content-type", contentType, label);
   if (cache) requireHeader(response, "cache-control", cache, label);

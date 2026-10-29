@@ -253,7 +253,10 @@ function finish(version, extra) {
 }
 
 async function carry(dir, from) {
-  const headers = { "User-Agent": "Mozilla/5.0 (compatible; FishReleaseAssembler/0.1.0)" };
+  const headers = {
+    "User-Agent":
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+  };
   let response;
   try {
     response = await fetch(`${from}/${SUMS_PATH}`, { cache: "no-store", headers });
