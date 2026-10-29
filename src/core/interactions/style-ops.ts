@@ -14,7 +14,9 @@ import {
   TextElement,
   TextStyle,
   TextStyleDeclaration,
-  TextStyleDefinition
+  TextStyleDefinition,
+  getActivePage,
+  updateActivePageElements
 } from "../dsl/types";
 import { topPaint } from "../dsl/paint-stack";
 import { toTextStyleDeclaration } from "../dsl/text-style-declarations";
@@ -203,6 +205,63 @@ export function updateTokenInDoc(doc: DesignDocument, token: DesignToken): Desig
   );
   const textMoved = styles.some((s, i) => s !== rawStyles[i] && s.styleType === "text");
   return syncDocument(doc, styles, tokens, token.type === "number" || textMoved);
+}
+
+/**
+ * Write a DRAFT style into the document for a live preview.
+ *
+ * The canvas paints materialised values, never style ids, so "show the draft"
+ * means running what a save runs: an existing style is updated and every layer
+ * wearing it follows. A style that does not exist yet has nothing wearing it —
+ * the selection the save would bind is bound here instead, because the draft
+ * changing that selection is the only preview it can give.
+ *
+ * Undo is deliberately not this function's business: the caller writes the
+ * result transiently and puts the document back when the editor closes without
+ * saving.
+ */
+export function previewStyleInDoc(
+  doc: DesignDocument,
+  style: DesignStyle,
+  elementIds: readonly string[] = []
+): DesignDocument {
+  const tokens = doc.tokens ?? [];
+  // A draft is authored against tokens, so the preview reads the resolved value
+  // exactly as the saved style will — binding the raw draft would paint the
+  // colour the token had when the editor opened.
+  const resolved = cascadeTokensIntoStyles(
+    [style],
+    tokens,
+    getActiveTheme(doc),
+    undefined,
+    getActiveNumberMode(doc)
+  )[0];
+  const exists = (doc.styles ?? []).some((s) => s.id === resolved.id);
+  const withStyle = exists ? updateStyleInDoc(doc, resolved) : addStyleToDoc(doc, resolved);
+  if (elementIds.length === 0) return withStyle;
+
+  const ids = new Set(elementIds);
+  const page = getActivePage(withStyle);
+  const elements = mapElements(page.children ?? [], (el) =>
+    ids.has(el.id) ? bindDraftStyle(el, resolved) : el
+  );
+  // Type changes the box: a previewed text style that skipped layout would show
+  // the new size in the old box until the save relaid it out.
+  const laid = resolved.styleType === "text" ? relayoutDocumentTree(elements) : elements;
+  return updateActivePageElements(withStyle, laid);
+}
+
+function bindDraftStyle(el: DesignElement, style: DesignStyle): DesignElement {
+  switch (style.styleType) {
+    case "paint":
+      return bindFillStyle(el, style as PaintStyle);
+    case "stroke":
+      return bindCompositeStrokeStyle(el, style as StrokeStyle);
+    case "effect":
+      return bindEffectStyle(el, style as EffectStyle);
+    case "text":
+      return el.type === "text" ? bindTextStyle(el as TextElement, style as TextStyleDefinition) : el;
+  }
 }
 
 /**

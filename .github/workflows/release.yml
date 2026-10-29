@@ -153,7 +153,7 @@ jobs:
           set -euo pipefail
           VERSION="${{ steps.version.outputs.value }}"
           mkdir -p release-assets
-          cp "release-site/shell/${VERSION}/index.html" release-assets/fish.fish.html
+          cp "release-site/shell/${VERSION}/index.html" release-assets/blank.fish.html
           cp "release-site/manifests/${VERSION}.json" release-assets/manifest.json
           cp "release-site/kit/fish-agent-kit-${VERSION}.zip" release-assets/
           cp release-site/catalog.json release-assets/

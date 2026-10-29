@@ -47,12 +47,19 @@ if (targets.length === 0) {
  * that unpacks them. Identified by behaviour, not by position — a build may emit
  * one stylesheet or two, and only the loader knows how to inflate what it finds.
  */
+function isLoader(el) {
+  return (
+    el.tag === "script" &&
+    (el.text.includes(LOADER_MARK) || el.text.includes(`script[type="${PAYLOAD_TYPE}"]`))
+  );
+}
+
 function runtimeOf(html, source) {
   const elements = [...scanElements(html)];
   const payloads = elements
     .filter((el) => el.tag === "script" && el.attr("type") === PAYLOAD_TYPE)
     .map((el) => source.slice(el.start, el.end));
-  const loader = elements.find((el) => el.tag === "script" && el.text.includes(LOADER_MARK));
+  const loader = elements.find(isLoader);
   if (payloads.length === 0 || !loader) return null;
   return { payloads, loader: source.slice(loader.start, loader.end), elements };
 }
@@ -67,7 +74,14 @@ function verifyPayloads(payloads) {
 }
 
 function reshell(file) {
-  const original = readFileSync(file, "utf-8");
+  let original = readFileSync(file, "utf-8");
+  // Discard any trailing garbage past </html> if the file was written without truncation
+  const endTag = "</html>";
+  const endIdx = original.indexOf(endTag);
+  if (endIdx > 0 && endIdx + endTag.length < original.length) {
+    original = original.slice(0, endIdx + endTag.length);
+  }
+
   const doc = blockById(original, "design-doc");
   const assets = blockById(original, "fish-assets");
   if (!doc) return { file, ok: false, reason: "no #design-doc block — not a saved FISH file" };
@@ -82,16 +96,12 @@ function reshell(file) {
   // Everything the old engine consisted of, by span, newest-first so the splices
   // do not shift each other.
   const stale = current.elements
-    .filter(
-      (el) =>
-        (el.tag === "script" && el.attr("type") === PAYLOAD_TYPE) ||
-        (el.tag === "script" && el.text.includes(LOADER_MARK))
-    )
+    .filter((el) => (el.tag === "script" && el.attr("type") === PAYLOAD_TYPE) || isLoader(el))
     .sort((a, b) => b.start - a.start);
 
   let next = original;
   for (const el of stale) next = next.slice(0, el.start) + next.slice(el.end);
-  const bodyClose = next.lastIndexOf("</body>");
+  const bodyClose = next.indexOf("</body>");
   if (bodyClose < 0) return { file, ok: false, reason: "no </body>" };
   const injected = [...shell.payloads, shell.loader].join("\n  ");
   next = next.slice(0, bodyClose) + injected + "\n  " + next.slice(bodyClose);

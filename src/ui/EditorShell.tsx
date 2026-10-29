@@ -34,6 +34,7 @@ import { getLanguage } from "../i18n";
 import { useUpdateStatus } from "./hooks/useUpdateStatus";
 import { setImageCropTarget, useImageCropTarget } from "./hooks/image-crop-edit";
 import { MutateContext, MutateSelected } from "./inspector/mutate-channel";
+import { StylePreviewContext, useStylePreviewController } from "./inspector/style-preview-channel";
 import type { AlignmentType } from "../core/interactions/alignment";
 import type { BooleanOp } from "../core/geometry/boolean-ops";
 import type { SmartSelectionInfo } from "../core/geometry/smart-selection";
@@ -228,6 +229,9 @@ export function EditorShell(p: EditorShellProps) {
   // One hook for the whole shell: the title bar's badge, the panel, and the
   // notice that announces a launch find are three readers of the same check.
   const updates = useUpdateStatus(doc);
+  // The style editors' live preview writes here: a draft is materialised into
+  // the document transiently and put back when the editor closes unsaved.
+  const stylePreview = useStylePreviewController(docRef, setDoc);
   const { selectedIds, setSelectedIds, selectedElements, primarySelected, multiBounds } = p.selection;
 
   /*
@@ -600,49 +604,51 @@ export function EditorShell(p: EditorShellProps) {
             the same edge, so the inspector slides out and the comment list
             slides in. Both stay mounted — the inspector is expensive to rebuild
             and a comment is not a reason to forget its fold state. */}
-        <InspectorPanel
-          hidden={!isUiVisible || commentsMode}
-          doc={doc}
-          setDoc={setDoc}
-          docRef={docRef}
-          selectedElements={selectedElements}
-          primarySelected={primarySelected || null}
-          selectedIds={selectedIds}
-          setSelectedIds={setSelectedIds}
-          multiBounds={multiBounds}
-          is4Corners={is4Corners}
-          onToggle4Corners={setIs4Corners}
-          showMorphLines={morphLines}
-          onToggleMorphLines={setMorphLines}
-          onHoverMorphPair={setHoverPairId}
-          onToggleLock={handleToggleSelectionLock}
-          onToggleVisibility={handleToggleSelectionVisibility}
-          onAlign={handleAlignment}
-          onSelectByColor={selectByColor}
-          isScaleToolActive={tool.isScaleTool}
-          isFrameToolActive={tool.activeTool === "frame"}
-          onCreateFramePreset={handleCreateFramePreset}
-          scaleAnchor={tool.scaleTool.anchor}
-          onScaleAnchorChange={tool.scaleTool.setAnchor}
-          scaleReference={tool.scaleTool.reference}
-          onLeaveScaleTool={tool.scaleTool.leave}
-          onBooleanAction={handleBooleanAction}
-          penMode={pen.penMode}
-          onPenModeChange={pen.setPenMode}
-          onCommitSnapshot={commitSnapshot}
-          onLocateComponent={handleLocateComponent}
-          onHint={hint.showHint}
-          onDragStart={startDragGesture}
-          onDragEnd={endDragGesture}
-          canvasContainerRef={canvasContainerRef}
-          editingPathElement={editingPathElement}
-          selectedAnchorIdxs={inline.selectedAnchorIdxs}
-          onSelectOnlyAnchor={inline.selectOnlyAnchor}
-          onCommitPathEdit={inline.commitPathEdit}
-          onCommitPathTransient={inline.commitPathEditTransient}
-          onExitPathEdit={inline.exitPathEdit}
-          activeTextSelection={inline.activeTextSelection}
-        />
+        <StylePreviewContext.Provider value={stylePreview}>
+          <InspectorPanel
+            hidden={!isUiVisible || commentsMode}
+            doc={doc}
+            setDoc={setDoc}
+            docRef={docRef}
+            selectedElements={selectedElements}
+            primarySelected={primarySelected || null}
+            selectedIds={selectedIds}
+            setSelectedIds={setSelectedIds}
+            multiBounds={multiBounds}
+            is4Corners={is4Corners}
+            onToggle4Corners={setIs4Corners}
+            showMorphLines={morphLines}
+            onToggleMorphLines={setMorphLines}
+            onHoverMorphPair={setHoverPairId}
+            onToggleLock={handleToggleSelectionLock}
+            onToggleVisibility={handleToggleSelectionVisibility}
+            onAlign={handleAlignment}
+            onSelectByColor={selectByColor}
+            isScaleToolActive={tool.isScaleTool}
+            isFrameToolActive={tool.activeTool === "frame"}
+            onCreateFramePreset={handleCreateFramePreset}
+            scaleAnchor={tool.scaleTool.anchor}
+            onScaleAnchorChange={tool.scaleTool.setAnchor}
+            scaleReference={tool.scaleTool.reference}
+            onLeaveScaleTool={tool.scaleTool.leave}
+            onBooleanAction={handleBooleanAction}
+            penMode={pen.penMode}
+            onPenModeChange={pen.setPenMode}
+            onCommitSnapshot={commitSnapshot}
+            onLocateComponent={handleLocateComponent}
+            onHint={hint.showHint}
+            onDragStart={startDragGesture}
+            onDragEnd={endDragGesture}
+            canvasContainerRef={canvasContainerRef}
+            editingPathElement={editingPathElement}
+            selectedAnchorIdxs={inline.selectedAnchorIdxs}
+            onSelectOnlyAnchor={inline.selectOnlyAnchor}
+            onCommitPathEdit={inline.commitPathEdit}
+            onCommitPathTransient={inline.commitPathEditTransient}
+            onExitPathEdit={inline.exitPathEdit}
+            activeTextSelection={inline.activeTextSelection}
+          />
+        </StylePreviewContext.Provider>
 
         {commentsMode && p.commentsPanelProps && (
           <CommentsRail

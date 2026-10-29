@@ -11,14 +11,19 @@
  * The rules are deliberately few, and each one is a claim that can be false
  * rather than a restatement of the renderer's own code:
  *
- * - `align-not-applied` — the file asked for an alignment and the computed style
- *   disagrees. This is the rendered twin of the silent-drop class that made
- *   `style.textAlign` vanish with `repairs: 0`: it is measured against the RAW
- *   block, so it holds even if the normalizer is the thing that ate the value.
- * - `ink-not-centred` / `ink-not-right` — the alignment was applied, and the
- *   glyphs still are not in the middle / against the right edge. Legal CSS that
- *   produces the wrong frame: a container narrower than the box, a transform
- *   that moved the line, tracking the browser reserves but the ink does not fill.
+ * - `align-not-applied` / `vertical-align-not-applied` — the file asked for an
+ *   alignment and the computed style disagrees. This is the rendered twin of the
+ *   silent-drop class that made `style.textAlign` vanish with `repairs: 0`: it is
+ *   measured against the RAW block, so it holds even if the normalizer is the
+ *   thing that ate the value. The vertical axis is stored as `vertical-align` and
+ *   painted as `justify-content` on the line container, so the comparison is
+ *   between two spellings of one statement, exactly like `start` / `left`.
+ * - `ink-not-centred` / `ink-not-right` / `ink-not-centred-y` — the alignment was
+ *   applied, and the glyphs still are not in the middle / against the right edge.
+ *   Legal CSS that produces the wrong frame: a container narrower than the box, a
+ *   transform that moved the line, tracking the browser reserves but the ink does
+ *   not fill. The y rule only fires when the file CLAIMED the middle, because a
+ *   box taller than its line is top-aligned by default and that is not a defect.
  * - `group-not-centred` — a label and the icon beside it do not share a centre.
  * - `no-ink` — the box has text and paints none of it.
  *
@@ -49,6 +54,12 @@ export interface TextInkSample {
   authored: AuthoredAlignment;
   /** `getComputedStyle(textContainer).textAlign`. */
   computedAlign: string;
+  /**
+   * `getComputedStyle(textContainer).justifyContent` — how the renderer paints
+   * `vertical-align`: the line container is a column flex box, so the authored
+   * value lands here rather than on a CSS `vertical-align`.
+   */
+  computedJustify?: string;
   /** The element's frame box. Same coordinate space as `ink` — only offsets between them are read. */
   box: Rect;
   /** Union of the glyph rects, or null when the browser painted no line. */
@@ -61,8 +72,10 @@ export interface TextInkSample {
 
 export type InkRule =
   | "align-not-applied"
+  | "vertical-align-not-applied"
   | "ink-not-centred"
   | "ink-not-right"
+  | "ink-not-centred-y"
   | "group-not-centred"
   | "no-ink";
 
@@ -77,14 +90,16 @@ export interface AuditTolerance {
   /** Horizontal: the ink centre / edge, against the box. */
   x: number;
   /**
-   * Vertical: the text's BOX against its group, not its ink.
+   * Vertical: the centre of the LINE BLOCK, against the box or against its group.
    *
-   * A line box carries descender space the glyphs do not fill, so a label that a
-   * flex row centres perfectly still has ink a couple of pixels above the centre
-   * — measured against the icon, a correct row reports itself. What can be stated
-   * exactly is where the box lands, so that is what this axis grades; where the
-   * glyphs sit inside their own line box is a `line-height` question, not an
-   * alignment one.
+   * The rects a browser reports for a range are line boxes, not tight glyph
+   * bounds, so this axis is arithmetic rather than an opinion about a face's
+   * ascender: a 24px box holding one 17px line places that line 3.5px below its
+   * own centre, and nothing about the font changes the number. That is why the
+   * axis can be graded at 1px — and why it is graded against a group's centre
+   * only when the row states one, and against the box only when the file claims
+   * the middle. A box TALLER than its line is top-aligned by default, which is a
+   * legitimate document; calling that a defect would be guessing intent.
    */
   y: number;
 }
@@ -160,6 +175,28 @@ const physical = (value: string | undefined): string =>
   value === undefined ? "" : (PHYSICAL[canonicalKey(value)] ?? canonicalKey(value));
 
 /**
+ * The same reduction for the vertical axis, whose two sides are spelled in two
+ * different languages: the DSL stores `vertical-align` (`middle` / `top` /
+ * `bottom`), the renderer paints it as a column flex box's `justify-content`
+ * (`center` / `flex-start` / `flex-end`). Comparing the raw strings would report
+ * every text that asks for the middle, which is the one thing this map prevents.
+ */
+const VERTICAL: Record<string, string> = {
+  top: "start",
+  start: "start",
+  "flex-start": "start",
+  middle: "center",
+  center: "center",
+  centre: "center",
+  bottom: "end",
+  end: "end",
+  "flex-end": "end"
+};
+
+const vertical = (value: string | undefined): string =>
+  value === undefined ? "" : (VERTICAL[canonicalKey(value)] ?? canonicalKey(value));
+
+/**
  * Whether `sibling` is the thing `own` was laid out BESIDE.
  *
  * The group rule compares centres, and a centre is only meaningful between two
@@ -210,6 +247,17 @@ export function auditSample(sample: TextInkSample, tolerance: AuditTolerance = D
     });
   }
 
+  const wantsVertical = vertical(sample.authored.verticalAlign);
+  const gotVertical = vertical(sample.computedJustify);
+  if (wantsVertical && gotVertical && wantsVertical !== gotVertical) {
+    findings.push({
+      level: "error",
+      elementId,
+      rule: "vertical-align-not-applied",
+      message: `vertical-align "${sample.authored.verticalAlign}" is not applied (the line is justified ${sample.computedJustify ?? "elsewhere"})`
+    });
+  }
+
   if (!ink || ink.width <= 0.5 || ink.height <= 0.5) {
     if (sample.content.trim() !== "") {
       findings.push({
@@ -245,6 +293,26 @@ export function auditSample(sample: TextInkSample, tolerance: AuditTolerance = D
     }
   }
 
+  /**
+   * The vertical twin of `ink-not-centred`, and it is gated on the FILE, not on
+   * the picture: only a text that asked for the middle can fail to be in it.
+   * Without that gate every generous text box in every document would report
+   * itself, because a box taller than its line is top-aligned by default — the
+   * reason a seal's "04" sat 8px high was that nobody had claimed the centre, not
+   * that the centre was missed.
+   */
+  if (wantsVertical === "center" && gotVertical === "center") {
+    const offset = centreY(ink) - centreY(box);
+    if (Math.abs(offset) > tolerance.y) {
+      findings.push({
+        level: "error",
+        elementId,
+        rule: "ink-not-centred-y",
+        message: `line centre is ${round1(Math.abs(offset))}px ${offset < 0 ? "above" : "below"} the box centre (${round1(box.height)}px box, ${round1(ink.height)}px of line)`
+      });
+    }
+  }
+
   const anchor = sample.group
     ? { id: sample.group.elementId, y: centreY(sample.group.box), x: centreX(sample.group.box) }
     : sample.parent && /center/.test(sample.parent.alignItems)
@@ -273,8 +341,10 @@ export function auditTextInk(samples: TextInkSample[], tolerance: AuditTolerance
 /** One line per rule, so a caller can say what it looked for, not only what it found. */
 export const AUDITED_RULES: readonly InkRule[] = [
   "align-not-applied",
+  "vertical-align-not-applied",
   "ink-not-centred",
   "ink-not-right",
+  "ink-not-centred-y",
   "group-not-centred",
   "no-ink"
 ];

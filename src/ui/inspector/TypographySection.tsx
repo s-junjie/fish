@@ -8,7 +8,8 @@ import { Select } from "../Select";
 import { FontFamilyPicker } from "./FontFamilyPicker";
 import { NumeralsMark } from "./NumeralsMark";
 import { t } from "../../i18n";
-import { AlignLeft, AlignCenter, AlignRight, AlignVerticalJustifyStart, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, Italic, Underline, Strikethrough, Minus, ArrowDownFromLine } from "lucide-react";
+import { AlignLeft, AlignCenter, AlignRight, AlignVerticalJustifyStart, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, Italic, Underline, Strikethrough, Minus, ArrowDownFromLine, Unlink } from "lucide-react";
+import { Button } from "../Button";
 import { StylePill } from "./StylePill";
 import { DEFAULT_FONT_FAMILY } from "../../core/font-stack";
 import { renderStylePreview } from "./StylePreview";
@@ -120,10 +121,10 @@ export function TypographySection({
   const contentLength = (textElement.content || "").length;
   const clampedRange = hasRangeSelection
     ? {
-        elementId: activeSelection!.elementId,
-        start: Math.min(activeSelection!.start, contentLength),
-        end: Math.min(activeSelection!.end, contentLength)
-      }
+      elementId: activeSelection!.elementId,
+      start: Math.min(activeSelection!.start, contentLength),
+      end: Math.min(activeSelection!.end, contentLength)
+    }
     : null;
   const rangeSelection = clampedRange && clampedRange.start < clampedRange.end ? clampedRange : null;
 
@@ -593,18 +594,24 @@ export function TypographySection({
         <div className="pt-2 border-t border-rule-strong space-y-1.5">
           <div className={ROW_SPREAD_CLASS}>
             <span className={SUB_LABEL_CLASS}>{t("typography.pathOffset")}</span>
-            <button
-              type="button"
+            {/* A row's control is an icon button, like the instance's own detach:
+                a `text-ui` label beside a 9.5px sub-label read as a heading, and
+                `danger` is hover-only — coral at rest is a panel of errors. */}
+            <Button
+              variant="danger"
+              size="icon"
+              data-path-detach="true"
+              title={t("typography.detachFromPath")}
+              aria-label={t("typography.detachFromPath")}
               onClick={() => {
                 onMutate((el) => {
                   const { onPath: _, ...rest } = el as TextElement;
                   return rest as TextElement;
                 }, true);
               }}
-              className="text-ui text-measure-coral hover:underline cursor-default"
             >
-              {t("typography.detachFromPath")}
-            </button>
+              <Unlink size={12} />
+            </Button>
           </div>
           <ScrubInput
             label="%"
@@ -642,12 +649,12 @@ export function TypographySection({
             tokenPicker.prop === "fontSize"
               ? currentSize
               : tokenPicker.prop === "letterSpacing"
-              ? typeof currentLetterSpacing === "number"
-                ? currentLetterSpacing
-                : parseFloat(String(currentLetterSpacing)) || 0
-              : typeof textElement.style?.lineHeight === "number"
-              ? textElement.style.lineHeight
-              : parseFloat(String(textElement.style?.lineHeight || currentSize)) || 0
+                ? typeof currentLetterSpacing === "number"
+                  ? currentLetterSpacing
+                  : parseFloat(String(currentLetterSpacing)) || 0
+                : typeof textElement.style?.lineHeight === "number"
+                  ? textElement.style.lineHeight
+                  : parseFloat(String(textElement.style?.lineHeight || currentSize)) || 0
           }
           onSelect={(token) => {
             if (!docRef.current.tokens?.some((t) => t.id === token.id)) {

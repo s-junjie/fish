@@ -94,8 +94,65 @@ describe("the reported case: a 72px tab label that rendered flush left", () => {
   });
 });
 
-describe("right alignment is measured against the right edge", () => {
-  const rightAligned = sample({ authored: { align: "right" }, computedAlign: "right", ink: rect(112, 44, 38, 17) });
+describe("the vertical axis, which the file has to claim before it can be missed", () => {
+  // A seal: 44px of box around one 28px line. With the middle asked for and
+  // applied, the line lands at y=8 and its centre is the box centre.
+  const seal = sample({
+    elementId: "seal_mark",
+    content: "04",
+    authored: { verticalAlign: "middle" },
+    computedAlign: "center",
+    computedJustify: "center",
+    box: rect(0, 0, 80, 44),
+    ink: rect(22, 8, 36, 28)
+  });
+
+  it("names the authored value when the renderer ignored it", () => {
+    const [finding] = auditSample({ ...seal, computedJustify: "flex-start" });
+    expect(finding.rule).toBe("vertical-align-not-applied");
+    expect(finding.level).toBe("error");
+    expect(finding.message).toBe('vertical-align "middle" is not applied (the line is justified flex-start)');
+  });
+
+  it("treats the two languages the two sides are written in as one statement", () => {
+    // The DSL stores `vertical-align: middle`; the renderer paints a column flex
+    // box, so the computed value is `justify-content: center`. Comparing them
+    // literally would report every text that asks for the middle.
+    expect(rules(seal)).toEqual([]);
+    expect(rules({ ...seal, authored: { verticalAlign: "top" }, computedJustify: "flex-start" })).toEqual([]);
+    expect(rules({ ...seal, authored: { verticalAlign: "bottom" }, computedJustify: "flex-end" })).toEqual([]);
+  });
+
+  it("reports a line that was centred on paper and is not in the middle", () => {
+    const finding = auditSample({ ...seal, ink: rect(22, 0, 36, 28) })[0];
+    expect(finding.rule).toBe("ink-not-centred-y");
+    expect(finding.level).toBe("error");
+    expect(finding.message).toBe("line centre is 8px above the box centre (44px box, 28px of line)");
+  });
+
+  it("stays quiet when the same box never asked for the middle", () => {
+    // The defect this rule exists for, minus the claim: a text box taller than
+    // its line, top-aligned, is a legitimate document. 8px is not reported
+    // because the file never said where the line should sit — silence is not a
+    // claim, and guessing one is what `align-not-applied` exists to avoid.
+    const topAligned = { ...seal, authored: {}, computedJustify: "flex-start", ink: rect(22, 0, 36, 28) };
+    expect(rules(topAligned)).toEqual([]);
+    expect(rules({ ...topAligned, computedJustify: "center" })).toEqual([]);
+  });
+
+  it("accepts the sub-pixel miss a flex line produces", () => {
+    expect(rules({ ...seal, ink: rect(22, 8.6, 36, 28) })).toEqual([]);
+  });
+
+  it("grades a multi-line block by the block, not by its first line", () => {
+    // Three 28px lines centred in a 96px box: the block is 84 tall at y=6.
+    const block = { ...seal, box: rect(0, 0, 200, 96), ink: rect(10, 6, 180, 84) };
+    expect(rules(block)).toEqual([]);
+    expect(rules({ ...block, ink: rect(10, 0, 180, 84) })).toEqual(["ink-not-centred-y"]);
+  });
+});
+
+describe("right alignment is measured against the right edge", () => {  const rightAligned = sample({ authored: { align: "right" }, computedAlign: "right", ink: rect(112, 44, 38, 17) });
 
   it("reports ink that stops short of the edge", () => {
     const finding = auditSample(rightAligned).find((f) => f.rule === "ink-not-right");

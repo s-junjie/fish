@@ -158,7 +158,12 @@ export function EffectPanel({
             onGestureStart={onGestureStart}
             onGestureEnd={onGestureEnd}
           />
-          <div className={`grid ${hasSpread ? "grid-cols-4" : "grid-cols-3"} gap-1`}>
+          {/* Two columns, never four: at four a field in this 268px popover is
+              59px wide, and the key, the well's padding and the token trigger
+              leave ~11px for the value — one and a half digits. Two columns give
+              X/Y and B/S one row each and ~118px per field, which holds a signed
+              four-digit offset with the trigger still in the flow. */}
+          <div className={`grid ${hasSpread ? "grid-cols-2" : "grid-cols-3"} gap-1`}>
             <ScrubInput
               label="X"
               value={effect.offset.x}

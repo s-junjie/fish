@@ -29,6 +29,8 @@ import { paintImageUri } from "./paint-preview";
 import { loadImageFromFile } from "../../core/interactions/image-loader";
 import { NEW_SOLID, DEFAULT_TEXT_STYLE, DEFAULT_STROKE_ROW } from "./style-draft-defaults";
 import { toTextStyleDeclaration } from "../../core/dsl/text-style-declarations";
+import { createId } from "../../core/id";
+import { useStylePreview } from "./style-preview-channel";
 import { ColorPanel } from "../ColorPanel";
 import { useAnchoredPosition, placementStyle } from "../hooks/useAnchoredPosition";
 import { useDismiss } from "../hooks/useDismiss";
@@ -56,6 +58,8 @@ export interface CurrentSelectionPreview {
   type: StyleType;
   /** The element being edited, so a saved style can bind itself in the same commit. */
   elementId?: string;
+  /** Every element a save would bind — a colour shared by several layers. */
+  elementIds?: string[];
   paints?: Paint[];
   strokes?: Stroke[];
   textStyle?: TextStyle;
@@ -67,6 +71,13 @@ const DEFAULT_STYLE_NAME: Record<string, string> = {
   stroke: "New stroke style",
   text: "New text style",
   effect: "New effect style"
+};
+
+const STYLE_ID_PREFIX: Record<StyleType, string> = {
+  paint: "style_paint",
+  stroke: "style_stroke",
+  text: "style_text",
+  effect: "style_effect"
 };
 
 interface StyleDraft {
@@ -104,9 +115,17 @@ function seedDrafts(
   return defaults;
 }
 
+/**
+ * The style the editor is holding, whether or not it has been saved.
+ *
+ * `styleId` is stable for the whole editing session — a new style is minted once,
+ * when the editor opens, because the live preview has to write the row the save
+ * will later replace. Minting a second id at submit would leave the preview's row
+ * behind as a ghost.
+ */
 function buildSavedStyle(
   styleType: StyleType,
-  editingStyleId: string | null,
+  styleId: string,
   name: string,
   drafts: StyleDraft
 ): DesignStyle {
@@ -118,7 +137,7 @@ function buildSavedStyle(
         : styleType === "text"
           ? createTextStyle(name, drafts.textStyle)
           : createEffectStyle(name, drafts.effects);
-  if (editingStyleId) (style as any).id = editingStyleId;
+  (style as any).id = styleId;
   return style;
 }
 
@@ -165,6 +184,7 @@ export function StylePickerPopover({
 }: StylePickerPopoverProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const editTarget = initialEditStyle ?? null;
+  const preview = useStylePreview();
 
   const [viewMode, setViewMode] = useState<"list" | "create">(
     editTarget || initialMode === "create" ? "create" : "list"
@@ -173,7 +193,19 @@ export function StylePickerPopover({
   const [editingStyleId, setEditingStyleId] = useState<string | null>(editTarget?.id ?? null);
   const [createName, setCreateName] = useState(editTarget?.name ?? "");
   const [createDescription, setCreateDescription] = useState(editTarget?.description ?? "");
-  const [drafts, setDrafts] = useState<StyleDraft>(() => seedDrafts(styleType, editTarget, currentSelection));
+  const [drafts, setDraftsRaw] = useState<StyleDraft>(() => seedDrafts(styleType, editTarget, currentSelection));
+  /**
+   * The id this editing session writes under. Fixed at open so the live preview
+   * and the save name the same row; a new style is minted once rather than per
+   * keystroke, which would leave every preview a separate row in the table.
+   */
+  const draftIdRef = useRef<string>(editTarget?.id ?? createId(STYLE_ID_PREFIX[styleType]));
+  /**
+   * Whether the user has touched anything yet. Merely OPENING the editor must not
+   * write: an untouched draft is not an edit, and a preview started on open would
+   * add a style row to the document before the user asked for one.
+   */
+  const touchedRef = useRef(false);
   // Which effect type a new layer gets is chosen when adding it, exactly like the
   // inspector's Add Effect menu — the rows themselves carry no type control.
   const [effectMenuAnchor, setEffectMenuAnchor] = useState<HTMLElement | null>(null);
@@ -256,6 +288,49 @@ export function StylePickerPopover({
     [availableStyles, styleType, filterText]
   );
 
+  /**
+   * Every draft change marks the session dirty and lands on the canvas through
+   * the preview channel.
+   *
+   * The rows in `StyleEditorView` all speak `(cur) => next`, so wrapping the one
+   * setter is what makes the preview complete: a colour scrub, an alpha edit, a
+   * font field and an added effect all arrive here.
+   */
+  const setDrafts = (updater: (cur: StyleDraft) => StyleDraft) => {
+    touchedRef.current = true;
+    setDraftsRaw(updater);
+  };
+
+  const previewElementIds = useMemo(
+    () =>
+      currentSelection?.elementIds ??
+      (currentSelection?.elementId ? [currentSelection.elementId] : []),
+    [currentSelection?.elementIds, currentSelection?.elementId]
+  );
+  const previewElementKey = previewElementIds.join("|");
+
+  /** The style as it stands in the editor, saved or not. */
+  const draftStyle = (): DesignStyle => {
+    const finalName = createName.trim() || DEFAULT_STYLE_NAME[styleType];
+    const style = buildSavedStyle(styleType, draftIdRef.current, finalName, drafts);
+    if (createDescription.trim()) style.description = createDescription.trim();
+    return style;
+  };
+
+  /**
+   * The live half of the editor: every change materialises the draft into the
+   * document transiently, so the canvas — which paints values, never style ids —
+   * shows the edit before it is saved. An untouched draft writes nothing.
+   */
+  useEffect(() => {
+    if (viewMode !== "create" || !touchedRef.current) return;
+    preview.preview(draftStyle(), previewElementIds);
+  }, [drafts, createName, createDescription, viewMode, previewElementKey]);
+
+  // Closing without saving is the cancel path, whichever way it closed: the
+  // Cancel button, Escape, or a click outside all end in an unmount.
+  useEffect(() => () => preview.discard(), [preview]);
+
   const startCreateMode = () => {
     // Some hosts own their own "create" surface (the Local Styles panel opens
     // straight into the editor); defer rather than duplicating the editor.
@@ -264,26 +339,34 @@ export function StylePickerPopover({
       onClose();
       return;
     }
+    preview.discard();
+    draftIdRef.current = createId(STYLE_ID_PREFIX[styleType]);
     setEditingStyleId(null);
     setCreateName("");
     setCreateDescription("");
-    setDrafts(seedDrafts(styleType, null, currentSelection));
+    setDraftsRaw(seedDrafts(styleType, null, currentSelection));
+    touchedRef.current = false;
     setViewMode("create");
   };
 
   const startEditMode = (style: DesignStyle) => {
+    preview.discard();
+    draftIdRef.current = style.id;
     setEditingStyleId(style.id);
     setCreateName(style.name);
     setCreateDescription(style.description || "");
-    setDrafts(seedDrafts(styleType, style, currentSelection));
+    setDraftsRaw(seedDrafts(styleType, style, currentSelection));
+    touchedRef.current = false;
     setViewMode("create");
   };
 
   const handleCreateSubmit = (e?: Event) => {
     e?.preventDefault();
-    const finalName = createName.trim() || DEFAULT_STYLE_NAME[styleType];
-    const saved = buildSavedStyle(styleType, editingStyleId, finalName, drafts);
-    if (createDescription.trim()) saved.description = createDescription.trim();
+    const saved = draftStyle();
+    // Back to the document the editor opened on BEFORE the host's save runs: the
+    // save records one undo step, and its baseline must be that document, not the
+    // last preview frame.
+    preview.discard();
     onSaveStyle?.(saved);
     onClose();
   };
@@ -300,7 +383,11 @@ export function StylePickerPopover({
     const index = activePaintPicker.index;
     try {
       const { asset } = await loadImageFromFile(file, 0, 0, file.name);
-      const live = doc ?? docRef?.current;
+      // The asset commit is a real document edit, so it is recorded against the
+      // saved document rather than the preview — dropping the draft first keeps
+      // the undo step's baseline clean.
+      preview.discard();
+      const live = docRef?.current ?? doc;
       if (live && !(live.assets ?? []).some((a) => a.id === asset.id)) {
         onCommitSnapshot?.({ ...live, assets: [...(live.assets ?? []), asset] });
       }
@@ -316,6 +403,12 @@ export function StylePickerPopover({
     } catch (err) {
       console.error("Failed to add image asset:", err);
     }
+  };
+
+  /** A token minted from the draft's type rows is a real edit for the same reason. */
+  const commitDraftTokenEdit = (nextDoc: DesignDocument) => {
+    preview.discard();
+    onCommitSnapshot?.(nextDoc);
   };
 
   return createPortal(
@@ -372,12 +465,20 @@ export function StylePickerPopover({
           setActivePaintPicker={setActivePaintPicker}
           effectMenuAnchor={effectMenuAnchor}
           setEffectMenuAnchor={setEffectMenuAnchor}
-          onNameChange={setCreateName}
-          onDescriptionChange={setCreateDescription}
+          onNameChange={(next) => {
+            touchedRef.current = true;
+            setCreateName(next);
+          }}
+          onDescriptionChange={(next) => {
+            touchedRef.current = true;
+            setCreateDescription(next);
+          }}
           onSubmit={handleCreateSubmit}
           showPreview={showPreview}
-          onCommitSnapshot={onCommitSnapshot}
+          onCommitSnapshot={commitDraftTokenEdit}
           onCancel={() => {
+            preview.discard();
+            touchedRef.current = false;
             if (initialMode === "create" || editTarget) onClose();
             else setViewMode("list");
           }}
