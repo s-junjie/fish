@@ -21,6 +21,9 @@ import { renderSkill, skillVariables } from "./lib/skill-render.mjs";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const kit = path.join(root, "dist", "fish-agent-kit");
 const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+// The other version axis: what stored values mean. `SKILL.md` names both so an
+// installed copy can be told apart from a newer one by reading it alone.
+const docVersion = JSON.parse(fs.readFileSync(path.join(root, "src/core/dsl/versions.json"), "utf8")).current;
 
 // One place to point the skill at its release. `kit.config.json` is the
 // committed default; `FISH_KIT_URL` overrides it in CI without editing a file.
@@ -142,6 +145,7 @@ const skillText = kitUrl
       skillVariables({
         origin: new URL(kitUrl).origin,
         version: pkg.version,
+        docVersion,
         kitFile: new URL(kitUrl).pathname.replace(/^\/+/, ""),
         kitUrl
       })
@@ -159,6 +163,10 @@ for (const { from, to } of BUNDLES) {
       platform: "node",
       format: "cjs",
       target: "node18",
+      // Without this the CLI reports `APP_VERSION` as "dev", and `--version`
+      // would be the one answer in the kit that cannot be checked against the
+      // `SKILL.md` shipped beside it.
+      define: { __FISH_APP_VERSION__: JSON.stringify(pkg.version) },
       legalComments: "none",
       logLevel: "warning"
     });

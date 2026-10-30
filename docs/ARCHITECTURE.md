@@ -157,7 +157,7 @@ External AI agents interact with FISH either by reading/writing the `#design-doc
 | `core/measure.ts` | Provides canvas-space bounding boxes for elements and resolved instance subtrees without relying on DOM queries. |
 | `core/cli/fish.ts` | CLI for running `check`, `apply`, and headless rendering/exporting outside the workbench UI. |
 | `build-fish-agent-kit.mjs` | Assembles `dist/fish-agent-kit/` from its hand-written source `agent-kit/` (`SKILL.md` + `references/`), plus the compiled schema, CLI, and blank container. |
-| `lib/skill-render.mjs` | Renders the one `SKILL.md` source twice: the archive copy (relative siblings) and the published page at `/skill.md` (absolute links plus the archive digest). |
+| `lib/skill-render.mjs` | Renders the one `SKILL.md` source twice: the archive copy (relative siblings) and the published page at `/skill.md` (absolute links plus the archive digest), and injects the app version and document dialect from their single sources. |
 
 ---
 

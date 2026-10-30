@@ -28,9 +28,16 @@ function onlineReferences(origin, version) {
   return ["Read this without a shell? The same files are published beside this page:", "", ...links].join("\n");
 }
 
-export function skillVariables({ origin, version, kitFile, kitUrl, kitSha256 = "", hosted = false }) {
+export function skillVariables({ origin, version, docVersion, kitFile, kitUrl, kitSha256 = "", hosted = false }) {
   if (hosted && !kitSha256) throw new Error("hosted SKILL.md cannot be rendered without the archive digest");
+  // The skill has no version of its own: it is published under the app version
+  // and describes one document dialect. Both are read from their single source
+  // here rather than typed into the prose, so a stale number cannot ship.
+  if (!version) throw new Error("SKILL.md cannot be rendered without an app version");
+  if (!docVersion) throw new Error("SKILL.md cannot be rendered without a document dialect");
   return {
+    SKILL_VERSION: version,
+    DOC_VERSION: docVersion,
     KIT_URL: kitUrl || `${trimOrigin(origin)}/${kitFile}`,
     KIT_STABLE_URL: `${trimOrigin(origin)}/${STABLE_KIT}`,
     SKILL_PAGE_URL: `${trimOrigin(origin)}/${STABLE_SKILL}`,

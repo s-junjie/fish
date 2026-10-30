@@ -44,6 +44,7 @@ import { buildCatalog, readPlugins } from "./lib/plugin-catalog.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+const docVersion = JSON.parse(fs.readFileSync(path.join(root, "src/core/dsl/versions.json"), "utf8")).current;
 
 const opts = {
   out: "release-site",
@@ -257,6 +258,7 @@ async function release() {
     skillVariables({
       origin,
       version,
+      docVersion,
       kitFile: kitPath(version),
       kitSha256: sha256(kitBytes),
       hosted: true

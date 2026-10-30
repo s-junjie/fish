@@ -65,4 +65,12 @@ whenBuilt("the downloaded kit runs on its own", () => {
     expect(result.status).toBe(2);
     expect(result.stderr).toContain("unknown asset source");
   });
+
+  // The kit's `SKILL.md` tells an agent to compare this number against the one
+  // it was written for. If the bundle is not stamped, that instruction is a dead
+  // end — the CLI would print "dev".
+  it("answers --version with the version the skill was written for", () => {
+    const pkg = JSON.parse(fs.readFileSync(path.join(REPO, "package.json"), "utf-8"));
+    expect(run(["--version"]).trim()).toBe(`fish ${pkg.version}`);
+  });
 });
