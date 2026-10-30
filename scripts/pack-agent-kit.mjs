@@ -42,6 +42,37 @@ if (!fs.existsSync(source)) {
   process.exit(1);
 }
 
+/**
+ * The archive's entry point is written at build time from placeholders, and the
+ * build is happy to run without a release URL — a local build has none. Packing
+ * is the moment that becomes permanent, so it is the moment to refuse: a zip
+ * whose `SKILL.md` says `curl -L "{{KIT_URL}}"` is broken in a way nothing
+ * downstream checks, because assembly renders its own copy of the page from the
+ * source rather than from these bytes.
+ */
+const skillFile = path.join(source, "SKILL.md");
+if (fs.existsSync(skillFile)) {
+  const skillText = fs.readFileSync(skillFile, "utf8");
+  const unresolved = [...new Set(skillText.match(/\{\{[A-Z0-9_]+\}\}/g) ?? [])];
+  if (unresolved.length > 0) {
+    console.error(
+      `error: ${path.relative(root, skillFile)} still carries ${unresolved.join(", ")}\n` +
+        `       set FISH_KIT_URL="https://<origin>/kit/fish-agent-kit-${pkg.version}.zip" and re-run "npm run build"`
+    );
+    process.exit(1);
+  }
+  // A dist left over from the previous version would ship a skill that tells the
+  // reader to download a kit that is not the one they are holding.
+  const named = skillText.match(/kit\/fish-agent-kit-([0-9][^/"\s]*)\.zip/);
+  if (named && named[1] !== pkg.version) {
+    console.error(
+      `error: ${path.relative(root, skillFile)} names kit ${named[1]} but this is ${pkg.version}\n` +
+        `       re-run "npm run build" so the skill and the archive agree`
+    );
+    process.exit(1);
+  }
+}
+
 function walk(dir) {
   return fs
     .readdirSync(dir, { withFileTypes: true })

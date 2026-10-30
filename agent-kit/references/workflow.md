@@ -24,6 +24,8 @@ Both working modes use the same document and the same CLI. Fast stops at the str
 
 Reuse what the document already carries. Ask only what neither the document nor the user's prompt can answer.
 
+The one answer no document can give you is what the user already has: a moodboard, a brand kit, product screenshots, the real logo, photography. Ask for that before you search for a substitute (§4).
+
 Project categories guide the DSL choices:
 
 - `ui`: app screens, dashboards, landing pages → frames, auto-layout, 8px rhythm, components.
@@ -123,7 +125,16 @@ Choose by scope: surgical tweaks → `patch`; section redesign → `replace`; gr
 
 ## 4. Source real assets
 
-Never approximate a photo, portrait or logo with hand-coded paths. The full source table, credentials, licences and link-vs-embed rules are in `assets.md`. The short version:
+Never approximate a photo, portrait or logo with hand-coded paths. But the first question is not *which source* — it is whether the user already has the material.
+
+**Ask before you search.** A moodboard, brand kit, product screenshots, the real logo, licensed photography or a chosen typeface all outrank anything a stock source can return, and no search can guess them. Ask once, early, in the same message as your other questions: *“Do you have reference images or a moodboard for the direction, and any assets I should use — logo, product shots, fonts?”*
+
+- **Yes** → `./tools/fish assets import` each file and place it. Their material sets the direction; do not search for a lookalike beside it.
+- **No, or “you pick”** → search the sources below, then say what you picked and why.
+
+Never substitute stock imagery for material the user might already have without saying so, and do not spend a search round before that answer. Fast mode (§6) does not block on it: draft with a labelled placeholder and ask in the handover block instead.
+
+The full source table, credentials, licences and link-vs-embed rules are in `assets.md`. The short version:
 
 ```bash
 ./tools/fish assets search "modern workspace" --source openverse --add-to design.fish.html --embed --to hero_rect
@@ -172,12 +183,12 @@ Nothing installs it and nothing needs to: it is a per-run override, not a settin
 Fast is draft-first: reach a viewable document quickly, then refine against feedback. It deliberately spends no time on browser-backed verification until the draft is accepted or the picture is the deliverable.
 
 1. **Zero upfront questions.** Skip the blueprint gate.
-2. **Draft the skeleton first.** Canvas plus the key sections and placeholders, enough that the user can open it and react. Do not polish the whole document before the direction is confirmed.
+2. **Draft the skeleton first.** Canvas plus the key sections and placeholders, enough that the user can open it and react. Do not polish the whole document before the direction is confirmed. Image slots stay labelled placeholders (`hero image — yours or sourced?`) rather than a stock picture chosen on the user's behalf.
 3. **Create the value layer in the same pass.** Reuse the document's tokens, styles and components if it has them. If it has no token table, declare a minimal one as you author the skeleton — 5–7 colour roles (background, surface, ink, muted ink, accent, border, scrim), a spacing scale, radii, and the type sizes you actually use — and reference it from the elements (`fills[].tokenId`, `tokenBindings`). This is what turns a later “change the palette / tighten the spacing” into one edit instead of a per-element rebind. Defer `styles[]`, `modes[]` and `numberModes[]` to the system pass; do not build them speculatively. A value that repeats or is global becomes a token; a one-off decorative value stays a literal.
 4. Still make repeated cards/buttons components rather than copies.
 5. State every default as an assumption. An 8px rhythm is a safe fallback; palette values are derived from the canvas background or declared as assumptions, never presented as the project's colours.
-6. **One cheap gate, structure only:** `./tools/fish check <doc>` (Node, no browser, well under 100ms) so the file is guaranteed to open. Do **not** run `--geometry`, `--audit`, `shot.sh` or `--strict` in this pass — the browser-backed tiers cost seconds and belong to the full pass or an explicit request.
-7. **Hand over as a draft, with a way forward.** In one short block, say it is a first pass, not a final, list the assumptions, and give three ways to continue: point at a layer or leave a comment to change just that; name a dimension (spacing, type scale, palette, imagery, density) to steer it; say “polish it” / “make it production-ready” to trigger the full pass in §7. Do not make the user learn “Fast” / “Craft”; map their intent onto the mode.
+6. **One cheap gate, structure only:** `./tools/fish check <doc>` (Node, no browser, well under 100ms) so the file is guaranteed to open. Leave `--geometry`, `--audit`, `shot.sh` and `--strict` to the full pass or an explicit request: the skeleton still holds placeholders, so their verdicts describe boxes you are about to replace. `--geometry` is Node-only and costs nothing — it waits because its numbers are only worth reading once the layout is real, while `--audit` and `shot.sh` need a browser and cost seconds.
+7. **Hand over as a draft, with a way forward.** In one short block, say it is a first pass, not a final, list the assumptions, ask whether they have a moodboard or assets to drop in (logo, product shots, fonts), and give three ways to continue: point at a layer or leave a comment to change just that; name a dimension (spacing, type scale, palette, imagery, density) to steer it; say “polish it” / “make it production-ready” to trigger the full pass in §7. Do not make the user learn “Fast” / “Craft”; map their intent onto the mode.
 8. Iterate through the comment/`apply` loop as the user replies. Answer a comment with the smallest `patch`/`replace` that resolves it, and keep binding new work to the token table instead of duplicating a literal it already names.
 9. When the user asks for the full pass, or the picture is the deliverable, promote the draft with the §5 tiers: `--geometry`, then `--audit` and `shot.sh` when pixels matter, `--strict-assets` for offline.
 
@@ -193,7 +204,7 @@ Before writing final JSON, present a blueprint and get explicit approval:
 
 1. **Aesthetic direction** — a concrete posture (e.g. “precision dark instrumentation on #101010 with an amber signal”) and 5–7 colour roles.
 2. **Spatial and type hierarchy** — canvas, macro layout, type scale with ≥2.5× display-to-body contrast.
-3. **Asset manifest** — what the user supplies (`[by: user]`) and what comes from a source (`[by: ai]`). Never draw fake photos or logos.
+3. **Asset manifest** — what the user supplies (`[by: user]`) and what comes from a source (`[by: ai]`). Ask the user for their material before proposing this list; whatever they do not have becomes `[by: ai]` and is searched after approval. Never draw fake photos or logos.
 4. **Component architecture** — the reusable masters and sets.
 
 
@@ -282,7 +293,7 @@ Rules that matter more than the sequence:
 - [ ] Mode-dependent colours live on `tokens[].modes`; no style is duplicated per theme.
 - [ ] Fills and strokes are ordered bottom-first.
 - [ ] Every image fill points at a real `doc.assets[]` entry.
-- [ ] Real photos and icons come from the asset sources, not hand-drawn paths.
+- [ ] Real photos and icons come from the user's files or an asset source, never hand-drawn paths — and the user was asked for their own material before a source was searched.
 - [ ] Repeated values are tokens; repeated declaration sets are styles.
 - [ ] `fish check` reports 0 errors; before delivery (Craft), `--geometry` and, when relevant, `--audit` were read.
 - [ ] The file opens offline if that was promised (`--strict-assets`).

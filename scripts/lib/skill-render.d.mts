@@ -3,6 +3,7 @@ export declare const SKILL_REFERENCES: string[];
 export declare function skillVariables(input: {
   origin: string;
   version: string;
+  docVersion: string;
   kitFile: string;
   kitUrl?: string;
   kitSha256?: string;

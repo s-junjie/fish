@@ -32,6 +32,8 @@ When styling or processing imagery on canvas, the workbench provides built-in vi
 
 ## 2. Search and place
 
+Search is the fallback, not the first move. Ask the user for their own material first — moodboard, brand kit, logo, product shots, photography, fonts. A source result can approximate a look; it cannot be the thing they meant, and `import` (§4) is how their files enter the document. Search only when they have none or asked you to pick, and say what you picked.
+
 ```bash
 ./tools/fish assets search "modern workspace" --source openverse --limit 5
 ./tools/fish assets search "modern workspace" --source openverse --add-to design.fish.html --pick 0 --embed --to hero_rect

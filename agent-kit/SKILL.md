@@ -1,11 +1,16 @@
 ---
 name: fish-design
 description: Create, edit, and verify FISH vector designs (*.fish.html). Use for Figma-style layouts, posters, decks, icons, and component systems in the self-contained FISH document format.
+metadata:
+  version: "{{SKILL_VERSION}}"
+  documentDialect: "{{DOC_VERSION}}"
 ---
 
 # FISH Vector Design
 
-FISH is a single-file vector design engine. A `.fish.html` file carries its document in `<script id="design-doc" type="application/json">` (`DesignDocument v0.1`) and its runtime in the same file.
+FISH is a single-file vector design engine. A `.fish.html` file carries its document in `<script id="design-doc" type="application/json">` (`DesignDocument v{{DOC_VERSION}}`) and its runtime in the same file.
+
+**This skill is written for FISH {{SKILL_VERSION}}** (document dialect {{DOC_VERSION}}). The kit it ships with is the same release, and `tools/fish --version` prints the version of the copy you actually have — if the two numbers disagree, that copy is older: re-run the install command instead of trusting the references beside it.
 
 This skill is the entry point and index. The DSL reference, workflow and asset guide live in the kit, so they stay on the version that matches its tools.
 
@@ -52,8 +57,8 @@ The kit is self-contained: Node plus a local browser for rendering. There is no 
 ## Hard rules
 
 - **Never regex-replace a `.fish.html` file.** Edit through `./tools/fish apply` / `compose`, or modify only the `#design-doc` block (and `#fish-assets` when present). The runtime blocks `#fish-rt-css`, `#fish-rt` and the inline loader must stay untouched.
-- **Verify before handing over.** Run `./tools/fish check <doc> --geometry`; render with `./tools/shot.sh` (`shot.ps1` on Windows) when the picture matters.
-- **Never hand-draw photos, logos or portraits.** Source a real asset or ask the user for one.
+- **Verify before handing over.** Always `./tools/fish check <doc>` — structure, Node only, no browser. Add `--geometry`, and `./tools/shot.sh` (`shot.ps1` on Windows) when the picture is the deliverable, once the draft is promoted to a full pass: Fast mode hands over after the structure gate alone (`references/workflow.md` §6).
+- **Never hand-draw photos, logos or portraits.** Ask the user for their own material first (moodboard, brand files, product shots, fonts); source a real asset only when they have none.
 - **Do not invent a separate design-system document.** The document's `tokens[]` and `styles[]` are the system; `./tools/fish brief` reports what already exists.
 - **Repeated structure is a component.** If a card, button, row or nav item appears more than once, make one `component` master and place `instance`s; do not duplicate frames.
 - **Theme changes live on tokens.** Declare `modes[]` + `activeTheme`, put per-mode values on colour tokens (`tokens[].modes`); number tokens have their own axis (`numberModes[]` + `activeNumberMode`) for density variants; never duplicate styles per theme.

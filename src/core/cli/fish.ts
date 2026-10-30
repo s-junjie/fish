@@ -32,9 +32,11 @@ import { countElements } from "../geometry/tree-ops";
 import type { DesignDocument, DesignElement } from "../dsl/types";
 import { auditToleranceOf, screenshotPlan } from "../export-request";
 import { commentsCommand } from "./fish-comments";
+import { APP_VERSION } from "../version";
 
 const USAGE = `fish — the FISH agent CLI (nothing to install)
 
+  ./fish --version
   ./fish check <doc.fish.html | doc.json> [--json] [--strict] [--geometry] [--audit] [--audit-tolerance N] [--strict-assets]
   ./fish brief <doc.fish.html | doc.json> [--json]
   ./fish compact <doc.fish.html | doc.json> [-o|--out FILE]
@@ -594,6 +596,12 @@ function exportDocument(
 // ---------------------------------------------------------------------------
 
 function main(argv: string[]): number | Promise<number> {
+  // Answered before anything else: the kit's `SKILL.md` tells an agent to compare
+  // this against the version it was written for, so it must cost nothing to ask.
+  if (argv[0] === "--version" || argv[0] === "-v" || argv[0] === "version") {
+    console.log(`fish ${APP_VERSION}`);
+    return 0;
+  }
   if (argv.length === 0 || argv.includes("--help") || argv.includes("-h") || argv.includes("help")) {
     console.log(USAGE);
     return 0;
