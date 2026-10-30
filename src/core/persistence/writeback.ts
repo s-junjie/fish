@@ -73,16 +73,17 @@ export async function pickWritebackFile(): Promise<{
   const startIn = pickerStartIn();
   let handles: FileSystemFileHandleLike[];
   try {
+    // No `types` filter here on purpose: `verifyPickedFile` already refuses
+    // every file except the exact one open in this tab, and passing `types`
+    // makes Chromium set `_dialog.allowedFileTypes` on macOS `NSOpenPanel` —
+    // where `openAndSavePanelService` intermittently greys out the very
+    // `.fish.html` just launched from Finder on the first open while leaving
+    // sibling `.html` files enabled. Without `types`, `_dialog.allowedFileTypes`
+    // is `nil` and every file in the folder stays selectable.
     handles = await picker({
       multiple: false,
       id: "fish-document",
-      ...(startIn ? { startIn } : {}),
-      types: [
-        {
-          description: "FISH Single-File Design Document (*.fish.html)",
-          accept: { "text/html": [".html", ".htm"] }
-        }
-      ]
+      ...(startIn ? { startIn } : {})
     });
   } catch (e) {
     if ((e as { name?: string }).name === "AbortError") return { ok: false, reason: "aborted" };

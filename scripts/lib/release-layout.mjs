@@ -17,6 +17,9 @@ export const STABLE_MANIFEST = "stable/manifest.json";
 export const STABLE_SHELL = "stable/fish.html";
 export const CATALOG_PATH = "catalog.json";
 export const KIT_DIR = "kit";
+export const SKILL_DIR = "skill";
+export const STABLE_SKILL = "skill.md";
+export const STABLE_KIT = "stable/fish-agent-kit.zip";
 export const SUMS_PATH = "sha256sums.txt";
 export const HEADERS_PATH = "_headers";
 
@@ -30,6 +33,22 @@ export function manifestPath(version) {
 
 export function kitPath(version) {
   return `${KIT_DIR}/fish-agent-kit-${version}.zip`;
+}
+
+/**
+ * The skill as a readable page, not only as an archive member.
+ *
+ * A `*`-splat in `_headers` cannot also be a pointer, so the versioned copy is
+ * immutable and the unversioned `skill.md` sits at the root where it gets its
+ * own `no-store` rule. The page is what a user @-mentions; the zip is what an
+ * installer downloads.
+ */
+export function skillPath(version) {
+  return `${SKILL_DIR}/${version}/SKILL.md`;
+}
+
+export function skillRefPath(version, name) {
+  return `${SKILL_DIR}/${version}/references/${name}`;
 }
 
 export function pluginPath(id, version) {
@@ -64,8 +83,14 @@ export const HEADERS = `# FISH update origin. Read by Workers static assets; the
 /kit/*
   Cache-Control: public, max-age=31536000, immutable
 
+/skill/*
+  Cache-Control: public, max-age=31536000, immutable
+
 # Pointers are read on every check and must never be served stale.
 /stable/*
+  Cache-Control: no-store
+
+/skill.md
   Cache-Control: no-store
 
 /catalog.json

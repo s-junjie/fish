@@ -156,6 +156,7 @@ jobs:
           cp "release-site/shell/${VERSION}/index.html" release-assets/blank.fish.html
           cp "release-site/manifests/${VERSION}.json" release-assets/manifest.json
           cp "release-site/kit/fish-agent-kit-${VERSION}.zip" release-assets/
+          cp release-site/skill.md release-assets/SKILL.md
           cp release-site/catalog.json release-assets/
           cp release-site/sha256sums.txt release-assets/
           gh release view "v${VERSION}" >/dev/null 2>&1 ||

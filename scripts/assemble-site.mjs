@@ -10,8 +10,8 @@
 //   node scripts/assemble-site.mjs --promote 0.1.0 --origin https://dl.fish.themindstudio.cc
 //
 // Versioned paths are write-once: a second run with different bytes refuses
-// instead of silently replacing a published artifact. Pointers under `stable/`
-// are the only files allowed to change between deploys.
+// instead of silently replacing a published artifact. `stable/` and `skill.md`
+// are the only paths allowed to change between deploys.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -22,8 +22,10 @@ import {
   DEFAULT_ORIGIN,
   HEADERS,
   HEADERS_PATH,
+  STABLE_KIT,
   STABLE_MANIFEST,
   STABLE_SHELL,
+  STABLE_SKILL,
   SUMS_PATH,
   assertSafeRelative,
   kitPath,
@@ -32,8 +34,11 @@ import {
   pluginPath,
   sha256,
   shellPath,
+  skillPath,
+  skillRefPath,
   toPosix
 } from "./lib/release-layout.mjs";
+import { SKILL_REFERENCES, renderSkill, skillVariables } from "./lib/skill-render.mjs";
 import { assertPayload, parseEnvelope, verifyManifest } from "./lib/release-manifest.mjs";
 import { buildCatalog, readPlugins } from "./lib/plugin-catalog.mjs";
 
@@ -84,8 +89,8 @@ function usage() {
   --promote <semver>   Re-point stable/ at an already published version
   --public-key <jwk>   Verify the manifest signature (env FISH_UPDATE_PUBLIC_KEY)
 
-A publish is additive: versioned paths are write-once, and stable/ is the only
-part that moves.`);
+A publish is additive: versioned paths are write-once, and the pointers
+(stable/ and skill.md) are the only part that moves.`);
   process.exit(0);
 }
 
@@ -155,6 +160,19 @@ function parseManifestText(text) {
   return JSON.parse(parseEnvelope(text).payload);
 }
 
+/**
+ * The page is only useful if it is self-sufficient: a `{{TOKEN}}` would be a
+ * dead instruction, and a page that names the wrong archive or digest sends an
+ * agent to bytes that are not the ones this release published.
+ */
+function assertSkillPage(text, { version, kitBytes }) {
+  const unresolved = text.match(/\{\{[A-Z0-9_]+\}\}/);
+  if (unresolved) fail(`${skillPath(version)} left ${unresolved[0]} unrendered`);
+  const archiveUrl = `${origin}/${kitPath(version)}`;
+  if (!text.includes(archiveUrl)) fail(`${skillPath(version)} does not name ${archiveUrl}`);
+  if (!text.includes(sha256(kitBytes))) fail(`${skillPath(version)} does not pin the archive digest`);
+}
+
 function assertSignatureKey() {
   if (opts.publicKey) return;
   console.warn("! FISH_UPDATE_PUBLIC_KEY is unset — the manifest signature was not verified");
@@ -188,8 +206,21 @@ function promote(version) {
     sha256: sha256(bytes)
   });
   assertSignatureKey();
+  const skillFile = path.join(outDir, skillPath(version));
+  const kitFile = path.join(outDir, kitPath(version));
+  if (!fs.existsSync(skillFile) || !fs.existsSync(kitFile)) {
+    fail(
+      `${skillPath(version)} or ${kitPath(version)} is not on the origin and not in the carry set.\n` +
+        `       Restore them from the GitHub Release archive first, then promote.`
+    );
+  }
+  const skillText = fs.readFileSync(skillFile, "utf8");
+  const kitBytes = fs.readFileSync(kitFile);
+  assertSkillPage(skillText, { version, kitBytes });
   writePointer(STABLE_MANIFEST, fs.readFileSync(manifestFile));
   writePointer(STABLE_SHELL, bytes);
+  writePointer(STABLE_SKILL, Buffer.from(skillText));
+  writePointer(STABLE_KIT, kitBytes);
   finish(version, { mode: "promote" });
 }
 
@@ -221,17 +252,34 @@ async function release() {
   const kitFile = path.resolve(root, opts.kit || `dist/fish-agent-kit-${version}.zip`);
   if (!fs.existsSync(kitFile)) fail(`${path.relative(root, kitFile)} not found — run "npm run release:kit" first`);
   const kitBytes = fs.readFileSync(kitFile);
+  const skillText = renderSkill(
+    fs.readFileSync(path.join(root, "agent-kit/SKILL.md"), "utf8"),
+    skillVariables({
+      origin,
+      version,
+      kitFile: kitPath(version),
+      kitSha256: sha256(kitBytes),
+      hosted: true
+    })
+  );
+  assertSkillPage(skillText, { version, kitBytes });
 
-  // Immutable artifacts first; the catalog next; the two pointers last.
+  // Immutable artifacts first; the catalog next; the pointers last.
   writeVersioned(shellPath(version), bytes);
   writeVersioned(manifestPath(version), Buffer.from(manifestText));
   for (const entry of plugins) {
     writeVersioned(pluginPath(entry.manifest.id, entry.manifest.version), fs.readFileSync(entry.file));
   }
+  writeVersioned(skillPath(version), Buffer.from(skillText));
+  for (const name of SKILL_REFERENCES) {
+    writeVersioned(skillRefPath(version, name), fs.readFileSync(path.join(root, "agent-kit/references", name)));
+  }
   writePointer(CATALOG_PATH, Buffer.from(`${JSON.stringify(buildCatalog(version, plugins), null, 2)}\n`));
   writeVersioned(kitPath(version), kitBytes);
   writePointer(STABLE_MANIFEST, Buffer.from(manifestText));
   writePointer(STABLE_SHELL, bytes);
+  writePointer(STABLE_SKILL, Buffer.from(skillText));
+  writePointer(STABLE_KIT, kitBytes);
 
   if (opts.carryFrom !== "off") {
     carried = await carry(outDir, opts.carryFrom.replace(/\/+$/, ""));

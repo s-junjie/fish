@@ -20,16 +20,21 @@ import {
   CATALOG_PATH,
   DEFAULT_ORIGIN,
   HEADERS_PATH,
+  STABLE_KIT,
   STABLE_MANIFEST,
   STABLE_SHELL,
+  STABLE_SKILL,
   SUMS_PATH,
   kitPath,
   manifestPath,
   parseSums,
   pluginPath,
   sha256,
-  shellPath
+  shellPath,
+  skillPath,
+  skillRefPath
 } from "./lib/release-layout.mjs";
+import { SKILL_REFERENCES } from "./lib/skill-render.mjs";
 import { parseEnvelope, verifyManifest } from "./lib/release-manifest.mjs";
 import { splitSigned } from "./lib/plugin-sign.mjs";
 
@@ -113,6 +118,27 @@ function isJson(value) {
 
 function isZip(value) {
   return /zip/i.test(value);
+}
+
+function isText(value) {
+  return /text\/(markdown|plain)/i.test(value);
+}
+
+/**
+ * A skill page whose links or digest do not describe this release is worse than
+ * a 404: an agent follows it and installs something else.
+ */
+function assertSkillPage(text, { label, digest, version = opts.expect }) {
+  const unresolved = text.match(/\{\{[A-Z0-9_]+\}\}/);
+  expect(!unresolved, `${label} still carries ${unresolved?.[0]}`);
+  expect(text.includes(digest), `${label} does not pin the archive digest`);
+  expect(
+    text.includes(`${opts.origin.replace(/\/+$/, "")}/${STABLE_SKILL}`),
+    `${label} does not name the unversioned page address`
+  );
+  for (const name of SKILL_REFERENCES) {
+    expect(text.includes(skillRefPath(version, name)), `${label} does not link ${skillRefPath(version, name)}`);
+  }
 }
 
 function payloadFrom(text) {
@@ -230,15 +256,63 @@ async function verifyOrigin(base) {
     return `${catalog.plugins.length} verified`;
   });
 
+  let kit;
   await check("agent kit", async () => {
     const kitRel = kitPath(opts.expect);
-    const kit = await fetchChecked(`${base}/${kitRel}`, {
+    kit = await fetchChecked(`${base}/${kitRel}`, {
       label: kitRel,
       contentType: isZip,
       cache: (value) => /immutable/.test(value)
     });
     sums.assertFile(kitRel, kit.bytes);
     return `${(kit.bytes.length / 1024).toFixed(1)} KB`;
+  });
+  if (!kit) return;
+
+  let skill;
+  await check("skill page", async () => {
+    const rel = skillPath(opts.expect);
+    skill = await fetchChecked(`${base}/${rel}`, {
+      label: rel,
+      contentType: isText,
+      cache: (value) => /immutable/.test(value)
+    });
+    sums.assertFile(rel, skill.bytes);
+    assertSkillPage(skill.text, { label: rel, digest: sha256(kit.bytes) });
+    return `${(skill.bytes.length / 1024).toFixed(1)} KB`;
+  });
+  if (!skill) return;
+
+  await check("skill references", async () => {
+    for (const name of SKILL_REFERENCES) {
+      const rel = skillRefPath(opts.expect, name);
+      const res = await fetchChecked(`${base}/${rel}`, {
+        label: rel,
+        contentType: isText,
+        cache: (value) => /immutable/.test(value)
+      });
+      sums.assertFile(rel, res.bytes);
+    }
+    return `${SKILL_REFERENCES.length} files`;
+  });
+
+  await check("stable download aliases", async () => {
+    const page = await fetchChecked(`${base}/${STABLE_SKILL}`, {
+      label: STABLE_SKILL,
+      contentType: isText,
+      cache: (value) => /no-store/.test(value)
+    });
+    expect(page.bytes.equals(skill.bytes), `${STABLE_SKILL} is not the current skill page`);
+    sums.assertFile(STABLE_SKILL, page.bytes);
+
+    const archive = await fetchChecked(`${base}/${STABLE_KIT}`, {
+      label: STABLE_KIT,
+      contentType: isZip,
+      cache: (value) => /no-store/.test(value)
+    });
+    expect(archive.bytes.equals(kit.bytes), `${STABLE_KIT} is not the current archive`);
+    sums.assertFile(STABLE_KIT, archive.bytes);
+    return "skill.md and stable/fish-agent-kit.zip";
   });
 
   await check("_headers is not served", async () => {
@@ -369,15 +443,42 @@ async function verifyDirectory(dir) {
     return `${(fs.statSync(file).size / 1024).toFixed(1)} KB`;
   });
 
+  await check("skill page", () => {
+    const rel = skillPath(opts.expect);
+    const file = path.join(dir, rel);
+    expect(fs.existsSync(file), `${rel} is missing`);
+    const text = fs.readFileSync(file, "utf8");
+    assertSkillPage(text, { label: rel, digest: sha256(fs.readFileSync(path.join(dir, kitPath(opts.expect)))) });
+    return `${(fs.statSync(file).size / 1024).toFixed(1)} KB`;
+  });
+
+  await check("skill references", () => {
+    for (const name of SKILL_REFERENCES) {
+      const rel = skillRefPath(opts.expect, name);
+      expect(fs.existsSync(path.join(dir, rel)), `${rel} is missing`);
+    }
+    return `${SKILL_REFERENCES.length} files`;
+  });
+
+  await check("stable download aliases", () => {
+    const page = fs.readFileSync(path.join(dir, STABLE_SKILL));
+    expect(page.equals(fs.readFileSync(path.join(dir, skillPath(opts.expect)))), `${STABLE_SKILL} is not the current page`);
+    const archive = fs.readFileSync(path.join(dir, STABLE_KIT));
+    expect(archive.equals(fs.readFileSync(path.join(dir, kitPath(opts.expect)))), `${STABLE_KIT} is not the current archive`);
+    return "skill.md and stable/fish-agent-kit.zip";
+  });
+
   await check("_headers policy", () => {
     const text = fs.readFileSync(path.join(dir, HEADERS_PATH), "utf8");
     for (const [rule, header] of [
       ["/*", "Access-Control-Allow-Origin: *"],
       ["/stable/*", "Cache-Control: no-store"],
+      ["/skill.md", "Cache-Control: no-store"],
       ["/catalog.json", "Cache-Control: no-store"],
       ["/shell/*", "immutable"],
       ["/plugins/*", "immutable"],
-      ["/kit/*", "immutable"]
+      ["/kit/*", "immutable"],
+      ["/skill/*", "immutable"]
     ]) {
       expect(text.includes(rule), `_headers has no rule for ${rule}`);
       expect(text.includes(header), `_headers has no "${header}"`);
