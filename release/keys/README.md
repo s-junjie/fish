@@ -40,5 +40,5 @@ They live in the `release` GitHub environment as `FISH_UPDATE_PRIVATE_JWK` and
 commit them, never paste them into an issue, and never sign a public plugin with
 the development key (`.fish-plugin-key.json`).
 
-Rotating either key costs a shell rebuild on every user's disk. See
-[`docs/RELEASING.md`](../../docs/RELEASING.md) § Key rotation.
+Rotating either key costs a shell rebuild on every user's disk. The rotation
+runbook is maintainer-only and is not part of this repository.

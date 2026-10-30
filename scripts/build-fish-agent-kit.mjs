@@ -16,10 +16,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { renderSkill, skillVariables } from "./lib/skill-render.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const kit = path.join(root, "dist", "fish-agent-kit");
-const skillOutput = path.join(root, "dist", "skill");
+const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 
 // One place to point the skill at its release. `kit.config.json` is the
 // committed default; `FISH_KIT_URL` overrides it in CI without editing a file.
@@ -119,7 +120,6 @@ if (missing.length > 0) {
 }
 
 fs.rmSync(kit, { recursive: true, force: true });
-fs.rmSync(skillOutput, { recursive: true, force: true });
 fs.mkdirSync(kit, { recursive: true });
 
 for (const { from, to } of FILES) {
@@ -136,12 +136,18 @@ for (const { from, to } of DIRS) {
 }
 
 const skillSource = fs.readFileSync(path.join(root, "agent-kit/SKILL.md"), "utf-8");
-const skillText = kitUrl ? skillSource.replaceAll("{{KIT_URL}}", kitUrl) : skillSource;
+const skillText = kitUrl
+  ? renderSkill(
+      skillSource,
+      skillVariables({
+        origin: new URL(kitUrl).origin,
+        version: pkg.version,
+        kitFile: new URL(kitUrl).pathname.replace(/^\/+/, ""),
+        kitUrl
+      })
+    )
+  : skillSource;
 fs.writeFileSync(path.join(kit, "SKILL.md"), skillText);
-if (kitUrl) {
-  fs.mkdirSync(skillOutput, { recursive: true });
-  fs.writeFileSync(path.join(skillOutput, "SKILL.md"), skillText);
-}
 
 for (const { from, to } of BUNDLES) {
   const dest = path.join(kit, to);
@@ -196,6 +202,6 @@ console.log(
 );
 console.log(
   kitUrl
-    ? `  skill  dist/skill/SKILL.md  (KIT_URL configured)\n`
-    : `  skill  KIT_URL unset — SKILL.md keeps {{KIT_URL}}\n`
+    ? `  skill  SKILL.md pinned to ${kitUrl}\n`
+    : `  skill  KIT_URL unset — SKILL.md keeps its placeholders\n`
 );

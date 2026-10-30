@@ -52,17 +52,19 @@ afterEach(() => {
 });
 
 describe("file picker accept lists", () => {
-  it("offers only single-dot HTML extensions when picking a write-back target", async () => {
-    // `.fish.html` is not a legal extension: macOS reads only the segment after
-    // the last dot, so the double-dot entry made Chromium build a `dyn.*` UTI
-    // that matches no file on disk and greyed the list out.
+  it("omits `types` when picking a write-back target so macOS NSOpenPanel never greys out the open .fish.html", async () => {
+    // Passing `types` makes Chromium's `SelectFileDialogBridge` set
+    // `_dialog.allowedFileTypes` on `NSOpenPanel`, which intermittently greys
+    // out a `.fish.html` just opened from Finder on first launch while leaving
+    // other `.html` files enabled. `verifyPickedFile` already enforces exact
+    // identity, so the OS picker must leave `allowedFileTypes = nil`.
     let opts: PickerOptions | undefined;
     (globalThis as any).showOpenFilePicker = async (o: PickerOptions) => {
       opts = o;
       return [fakeHandle("my.fish.html")];
     };
     await pickWritebackFile();
-    expect(opts?.types?.[0]?.accept).toEqual({ "text/html": [".html", ".htm"] });
+    expect(opts?.types).toBeUndefined();
   });
 
   it("offers the same single-dot HTML extensions on save-as", async () => {

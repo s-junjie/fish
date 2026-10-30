@@ -11,21 +11,37 @@ This skill is the entry point and index. The DSL reference, workflow and asset g
 
 ## Get the kit
 
-Download the kit release that matches this skill and unpack it into the workspace:
+Two ways in; use whichever your runtime can do.
+
+**Install it as a skill** — one command, into any agent that reads `SKILL.md`:
+
+```bash
+npx skills add "{{KIT_STABLE_URL}}" --skill fish-design -y
+```
+
+**Or download and unpack it by hand**, into the directory you will work in:
 
 ```bash
 curl -L "{{KIT_URL}}" -o fish-agent-kit.zip
-unzip -q fish-agent-kit.zip -d .fish-agent-kit
+{{KIT_CHECKSUM_BLOCK}}
+unzip -q fish-agent-kit.zip -d .
+chmod +x tools/fish tools/shot.sh
 ```
 
 If `references/` and `tools/` are already beside this file, the kit is already present.
 
-The URL is versioned, never `latest`: `sha256sums.txt` in the same release lists the
-zip's SHA-256, so check the download before unzipping.
+`./tools/fish` is a launcher for `tools/fish.cjs`. If an installer did not preserve the
+executable bit, run `node tools/fish.cjs` (or `bash tools/fish`) instead.
+
+`{{SKILL_PAGE_URL}}` is this page at its unversioned address; `{{KIT_STABLE_URL}}`
+is the installer's pointer to the current archive. Both move with a release; the
+versioned files they name never do.
 
 The kit is self-contained: Node plus a local browser for rendering. There is no `npm install`, no package manager step, and no network requirement beyond the asset sources you choose to use.
 
 ## Read in this order
+
+{{SKILL_REFERENCES_ONLINE}}
 
 1. **`references/workflow.md`** — how to work: `/fast` vs `/craft`, HTML import vs compact JSON, ops, verification, and the pre-flight checklist.
 2. **`references/dsl.md`** — the document model, tokens and styles, element primitives, CSS deltas, paint, typography, components, and silent traps. Read it before writing JSON.
