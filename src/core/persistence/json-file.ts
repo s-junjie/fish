@@ -74,6 +74,12 @@ export interface PickedJson {
   repairs: NormalizationRepair[];
 }
 
+/** Normalise an already-parsed payload, so a dropped file lands on this reader too. */
+export function pickedJsonFromRaw(raw: unknown, fileName: string): PickedJson {
+  const { document, repairs } = normalizeDesignDocument(raw);
+  return { fileName, doc: document as DesignDocument, repairs };
+}
+
 /**
  * Read a `.fish.json` off disk and run it through the same reader a stored
  * document went through, so what the dialog reports is what will land.
@@ -128,8 +134,7 @@ export async function readDocumentJsonFile(file: File): Promise<
   } catch (e) {
     return { ok: false, reason: e instanceof Error ? e.message : "not-json" };
   }
-  const { document, repairs } = normalizeDesignDocument(raw);
-  return { ok: true, picked: { fileName: file.name, doc: document as DesignDocument, repairs } };
+  return { ok: true, picked: pickedJsonFromRaw(raw, file.name) };
 }
 
 function downloadBlob(blob: Blob, filename: string): void {

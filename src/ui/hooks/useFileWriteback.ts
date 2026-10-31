@@ -79,6 +79,22 @@ function commentsChanged(loaded: unknown, recovered: unknown): boolean {
   return normalize(loaded) !== normalize(recovered);
 }
 
+/**
+ * How a save result should read in the title bar: still running, landed, or
+ * did not land. All three used to arrive as one amber string, so a failure
+ * looked like a success and both competed with the zoom readout for the bar's
+ * single hot cell.
+ */
+export type SaveStatusKind = "busy" | "ok" | "error";
+
+export interface SaveStatusState {
+  text: string;
+  kind: SaveStatusKind;
+}
+
+/** Long enough to read once, short enough that it is gone before it nags. */
+const SAVE_STATUS_MS = 3000;
+
 export function useFileWriteback(
   store: EditorStore,
   viewportRef?: { current: PageViewport },
@@ -89,7 +105,11 @@ export function useFileWriteback(
    */
   comments?: { get: () => unknown; loaded: unknown }
 ) {
-  const [saveStatus, setSaveStatus] = useState<string>("");
+  const [saveStatus, setSaveStatus] = useState<SaveStatusState | null>(null);
+  // The pending clear. Without cancelling it, a second flash is taken off the
+  // screen by the first one's timer — ⌘S twice and the second "Saving…" is
+  // gone while the write is still running.
+  const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showActivateAutosave, setShowActivateAutosave] = useState(false);
   // Which file write-back actually lands in. Without it a save-as leaves the
   // tab showing file A while every auto-save quietly rewrites file B.
@@ -155,6 +175,24 @@ export function useFileWriteback(
     () => (viewportRef ? withActivePageViewport(store.getDoc(), viewportRef.current) : store.getDoc()),
     [store]
   );
+
+  /** Put a result in the title bar and take it down again on its own timer. */
+  const flashSaveStatus = useCallback((text: string, kind: SaveStatusKind = "ok") => {
+    if (statusTimerRef.current !== null) clearTimeout(statusTimerRef.current);
+    setSaveStatus({ text, kind });
+    statusTimerRef.current = setTimeout(() => {
+      statusTimerRef.current = null;
+      setSaveStatus(null);
+    }, SAVE_STATUS_MS);
+  }, []);
+
+  /** A cancelled picker is not a result, so nothing is reported — not even a
+      lingering "Saving…" from the attempt it replaced. */
+  const clearSaveStatus = useCallback(() => {
+    if (statusTimerRef.current !== null) clearTimeout(statusTimerRef.current);
+    statusTimerRef.current = null;
+    setSaveStatus(null);
+  }, []);
 
   const urlName = openedFileName() ?? null;
   const openedName = docNameOverride ?? urlName;
@@ -491,7 +529,7 @@ export function useFileWriteback(
       await activateAutosave();
       return;
     }
-    setSaveStatus(t("app.saving"));
+    flashSaveStatus(t("app.saving"), "busy");
     const doc = fileDoc();
     // The document the write is about to serialize. Captured here, not read
     // after the await: an edit during the write must leave the guard saying
@@ -515,10 +553,10 @@ export function useFileWriteback(
         // The save named the file it wrote — a picker name this tab had no other
         // way to learn, and on the download path the only file the work now has.
         applyDocumentTitle(res.filename, store.getDoc().name);
-        setSaveStatus(t("app.saved"));
+        flashSaveStatus(t("app.saved"));
       } else {
         console.error("FISH: save failed:", res.error ?? "unknown");
-        setSaveStatus(t("app.saveFailed"));
+        flashSaveStatus(t("app.saveFailed"), "error");
       }
     } catch (err) {
       // The download fallback serializes unguarded, so a throw is a real
@@ -526,13 +564,12 @@ export function useFileWriteback(
       // leaves the status on "Saving…" — a save that never happened then reads
       // as one that is merely slow.
       console.error("FISH: save threw:", err);
-      setSaveStatus(t("app.saveFailed"));
+      flashSaveStatus(t("app.saveFailed"), "error");
     }
-    setTimeout(() => setSaveStatus(""), 3000);
-  }, [activateAutosave, showActivateAutosave, store, fileDoc]);
+  }, [activateAutosave, showActivateAutosave, store, fileDoc, flashSaveStatus]);
 
   const triggerSaveAs = useCallback(async () => {
-    setSaveStatus(t("app.saving"));
+    flashSaveStatus(t("app.saving"), "busy");
     const doc = fileDoc();
     // Same capture as `triggerSave`: the new file holds this document, whatever
     // is committed while the picker and the write are open is not in it.
@@ -563,20 +600,19 @@ export function useFileWriteback(
         lastSavedDocRef.current = sourceDoc;
         setWritebackTarget(res.name ?? writebackTargetName() ?? null);
         applyDocumentTitle(res.name, store.getDoc().name);
-        setSaveStatus(t("app.saved"));
+        flashSaveStatus(t("app.saved"));
       } else if (res.reason === "aborted") {
-        setSaveStatus("");
+        clearSaveStatus();
         return;
       } else {
         console.error("FISH: save-as failed:", res.reason ?? "unknown");
-        setSaveStatus(t("app.saveFailed"));
+        flashSaveStatus(t("app.saveFailed"), "error");
       }
     } catch (err) {
       console.error("FISH: save-as threw:", err);
-      setSaveStatus(t("app.saveFailed"));
+      flashSaveStatus(t("app.saveFailed"), "error");
     }
-    setTimeout(() => setSaveStatus(""), 3000);
-  }, [openedName, store, fileDoc]);
+  }, [openedName, store, fileDoc, clearSaveStatus, flashSaveStatus]);
 
   /**
    * Reset the current document to a clean blank canvas (Bento style).
@@ -596,9 +632,8 @@ export function useFileWriteback(
       }
     }
     store.commit(createEmptyDocument());
-    setSaveStatus(t("autosave.startedFromScratch"));
-    setTimeout(() => setSaveStatus(""), 3000);
-  }, [store]);
+    flashSaveStatus(t("autosave.startedFromScratch"));
+  }, [store, flashSaveStatus]);
 
   /**
    * Opening the panel is entering history mode: the panel open IS the mode, so
@@ -647,7 +682,7 @@ export function useFileWriteback(
 
   return {
     saveStatus,
-    setSaveStatus,
+    flashSaveStatus,
     pendingRecovery,
     setPendingRecovery,
     recoveredComments,

@@ -262,7 +262,7 @@ The palette is a **monochrome obsidian stack lit by a single amber signal**. Nea
 
 Titles are **400**. A title names a layer, and at 11px anything heavier stops describing it and starts competing with the thing it labels; 400 is also the only weight this system calls real on every face, which matters now that the stack is one we can guarantee.
 
-**Title-bar readouts are `row` (10.5px), not `ui`.** The autosave status word and the zoom percentage sit in the 48px title bar next to a 13px document name; at 12px they read as headings rather than as readouts.
+**Title-bar readouts are `row` (10.5px), not `ui`.** The autosave status word and the zoom percentage sit in the 48px title bar next to a 13px document name; at 12px they read as headings rather than as readouts. The transient save result (`SaveStatus.tsx`) is the third of these: a `row` line in `ink-dim` that borrows the centre slot — the auto-save badge's own spot, crossfaded with it rather than laid beside it, so both subjects of "what is happening to this file" speak from one place and the bar never reflows for either. It is never in `brand`, because the zoom readout is the bar's one hot cell.
 
 ### Font weights: 400, 500 (sans), 600 (sans), 700 (mono marks)
 

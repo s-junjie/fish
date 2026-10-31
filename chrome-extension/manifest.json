@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FISH Capture — HTML to Vector",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Capture any web element or page and paste directly into FISH as editable vector design layers.",
   "permissions": [
     "activeTab",

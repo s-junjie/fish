@@ -334,6 +334,14 @@ export function SvgTextNode({
       )}
     </>
   ) : (
+    // WebKit drops every ancestor `transform` for a `foreignObject`'s HTML
+    // content the moment ONE descendant establishes a containing block or a
+    // paint layer — `position: relative`, a CSS `transform`, `will-change`,
+    // `isolation` and `contain` all do it. Measured: the text then paints at the
+    // SVG origin instead of inside its frame, a page-wide mislayout in Safari
+    // while Chromium looks right. So this wrapper carries no positioning and no
+    // CSS transform, and the tracking nudge is a margin: it moves the line
+    // without shrinking the width the browser wraps into.
     <foreignObject
       x={el.x}
       y={el.y}
@@ -359,10 +367,9 @@ export function SvgTextNode({
           flexDirection: "column",
           justifyContent: isEditingText ? "flex-start" : verticalAlign,
           paddingTop: editingOffset ? `${editingOffset}px` : undefined,
+          marginLeft: alignShift ? `${alignShift}px` : undefined,
           width: "100%",
-          height: "100%",
-          position: "relative",
-          transform: alignShift ? `translateX(${alignShift}px)` : undefined
+          height: "100%"
         }}
       >
         <EditableTextContent
@@ -377,10 +384,11 @@ export function SvgTextNode({
           patternBackground={patternBackground}
           textFill={textFill ?? "transparent"}
           caretColor={caretColor}
-          primaryStroke={Boolean(primaryStroke)}
-          textStrokeWidth={textStrokeWidth}
-          textStrokeColor={textStrokeCssColor}
-        />
+            primaryStroke={Boolean(primaryStroke)}
+            textStrokeWidth={textStrokeWidth}
+            textStrokeColor={textStrokeCssColor}
+            noSoftWrap={el.sizing?.width === "max-content"}
+          />
       </div>
     </foreignObject>
   );

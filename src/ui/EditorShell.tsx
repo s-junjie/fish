@@ -586,6 +586,7 @@ export function EditorShell(p: EditorShellProps) {
           onCropRotatePointerDown={gestures.handleCropRotatePointerDown}
           onInsertImage={handleInsertImage}
           onAssetDrop={handleAssetDropJson}
+          onImportFiles={documentJson.importDroppedFiles}
           frameResizeKey={frameResizeKey}
           onContextMenu={openCanvasContextMenu}
           commentsOverlayProps={p.commentsOverlayProps}

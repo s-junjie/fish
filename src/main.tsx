@@ -139,7 +139,7 @@ export function App() {
   );
 
   const file = useFileWriteback(store, viewportRef, commentWriteback);
-  const documentJsonActions = useDocumentJsonActions(store, file.setSaveStatus);
+  const documentJsonActions = useDocumentJsonActions(store, file.flashSaveStatus);
 
   // The cover snapshot a save pastes into the file. Kept warm here because the
   // save path is synchronous and cannot wait for a decode — and held off while a

@@ -4,8 +4,10 @@ import { compactDocumentJson } from "../../core/document-json";
 import { mergeDocumentPages } from "../../core/document-import";
 import { pickDocumentJson, readDocumentJsonFile, saveDocumentJson, type PickedJson } from "../../core/persistence/json-file";
 import { relayoutDocumentTree } from "../../core/compile";
+import { readDroppedDocument } from "../../core/import/dropped-intake";
 import type { DesignDocument } from "../../core/dsl/types";
 import type { EditorStore } from "../../core/store/editor-store";
+import type { SaveStatusKind } from "./useFileWriteback";
 
 interface DocumentJsonActions {
   exportJson: () => Promise<boolean>;
@@ -20,6 +22,8 @@ interface DocumentJsonActions {
   pickImportFile: () => Promise<void>;
   /** The same door for a browser without the File System Access API. */
   importFromFile: (file: File) => void;
+  /** One or more files dropped on the app: `.fish.json`, `.fish.html`, or a plugin zip. */
+  importDroppedFiles: (files: readonly File[]) => Promise<void>;
   replaceWith: (doc: DesignDocument) => void;
   mergeWith: (doc: DesignDocument) => void;
 }
@@ -36,48 +40,40 @@ interface DocumentJsonActions {
  */
 export function useDocumentJsonActions(
   store: EditorStore,
-  setSaveStatus: (message: string) => void
+  flashSaveStatus: (message: string, kind?: SaveStatusKind) => void
 ): DocumentJsonActions {
   const [pendingImport, setPendingImport] = useState<PickedJson | null>(null);
-
-  const flash = useCallback(
-    (message: string) => {
-      setSaveStatus(message);
-      setTimeout(() => setSaveStatus(""), 3000);
-    },
-    [setSaveStatus]
-  );
 
   const canUseFilePicker = typeof (globalThis as { showOpenFilePicker?: unknown }).showOpenFilePicker === "function";
 
   const exportJson = useCallback(async () => {
     const res = await saveDocumentJson(store.getDoc());
-    if (res.ok) flash(t("documentJson.exported"));
+    if (res.ok) flashSaveStatus(t("documentJson.exported"));
     // A cancelled picker is the user changing their mind, not something to report.
-    else if (res.reason !== "aborted") flash(t("documentJson.exportFailed"));
+    else if (res.reason !== "aborted") flashSaveStatus(t("documentJson.exportFailed"), "error");
     return res.ok;
-  }, [store, flash]);
+  }, [store, flashSaveStatus]);
 
   const copyCompact = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(compactDocumentJson(store.getDoc()));
-      flash(t("documentJson.copiedCompact"));
+      flashSaveStatus(t("documentJson.copiedCompact"));
       return true;
     } catch {
-      flash(t("documentJson.copyFailed"));
+      flashSaveStatus(t("documentJson.copyFailed"), "error");
       return false;
     }
-  }, [store, flash]);
+  }, [store, flashSaveStatus]);
 
   const closeImport = useCallback(() => setPendingImport(null), []);
 
   const adopt = useCallback((res: { ok: true; picked: PickedJson } | { ok: false; reason: string }) => {
     if (!res.ok) {
-      if (res.reason !== "aborted") flash(t("documentJson.importUnreadable"));
+      if (res.reason !== "aborted") flashSaveStatus(t("documentJson.importUnreadable"), "error");
       return;
     }
     setPendingImport(res.picked);
-  }, [flash]);
+  }, [flashSaveStatus]);
 
   const pickImportFile = useCallback(async () => {
     adopt(await pickDocumentJson());
@@ -93,6 +89,44 @@ export function useDocumentJsonActions(
   const openImport = useCallback(() => pickImportFile(), [pickImportFile]);
 
   /**
+   * A dropped file asks nothing first — there was no picker to imply "this file
+   * will open here" — so it wants its shape read before it can be offered, and a
+   * file the reader does not recognise gets the sentence instead of nothing.
+   *
+   * Only the first file is taken: a document IMPORT has exactly one subject, and
+   * inventing an order-pages-by-drop-position rule would be a second feature
+   * nobody asked for. The rest are named rather than quietly dropped.
+   */
+  const importDroppedFiles = useCallback(
+    async (files: readonly File[]) => {
+      const [file, ...rest] = files;
+      if (!file) return;
+      const res = await readDroppedDocument(file, {
+        // `busy`, not `ok`: a Figma bundle spends seconds unpacking bitmaps, and
+        // the spinner is the only thing in the bar that says it is still working
+        // rather than finished. Each tick restarts the same 3s timer, so the line
+        // goes down on its own once the conversion stops reporting.
+        onProgress: (stage, done, total) => {
+          if (stage === "images" && total > 0)
+            flashSaveStatus(t("figmaImport.progressImages", { n: done, k: total }), "busy");
+        }
+      });
+      // A file this app cannot read is an outcome, not a no-op: the drop already
+      // looked accepted, so saying nothing here is the silent swallow this whole
+      // path exists to remove.
+      if (!res.ok) {
+        flashSaveStatus(res.message, "error");
+        return;
+      }
+      adopt({ ok: true, picked: res.picked });
+      // A note about the drop, not a failure — the one file that was handed over
+      // did open, which is what the tick reports.
+      if (rest.length > 0) flashSaveStatus(t("documentJson.dropSingleOnly"));
+    },
+    [adopt, flashSaveStatus]
+  );
+
+  /**
    * One undo step, and every page relaid out rather than just the active one:
    * the incoming JSON carries authored boxes, and a frame whose text reflowed on
    * the way out has to be measured before it is drawn again.
@@ -105,18 +139,18 @@ export function useDocumentJsonActions(
       };
       store.commit(doc);
       closeImport();
-      flash(t("documentJson.replaced"));
+      flashSaveStatus(t("documentJson.replaced"));
     },
-    [store, closeImport, flash]
+    [store, closeImport, flashSaveStatus]
   );
 
   const mergeWith = useCallback(
     (incoming: DesignDocument) => {
       store.commit(mergeDocumentPages(store.getDoc(), incoming));
       closeImport();
-      flash(t("documentJson.merged", { pages: incoming.pages?.length ?? 1 }));
+      flashSaveStatus(t("documentJson.merged", { pages: incoming.pages?.length ?? 1 }));
     },
-    [store, closeImport, flash]
+    [store, closeImport, flashSaveStatus]
   );
 
   return {
@@ -128,6 +162,7 @@ export function useDocumentJsonActions(
     closeImport,
     pickImportFile,
     importFromFile,
+    importDroppedFiles,
     replaceWith,
     mergeWith
   };

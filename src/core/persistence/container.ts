@@ -1,5 +1,6 @@
 import { DesignDocument, AssetRef } from "../dsl/types";
 import { normalizeDesignDocument } from "../dsl/normalize";
+import type { NormalizationRepair } from "../dsl/normalize/shared";
 import { parseLenientJson } from "../dsl/lenient-json";
 import { syncDocumentBindings } from "../interactions/style-ops";
 import { mintFileId } from "../id";
@@ -74,9 +75,21 @@ export function parseAssetsBlock(html: string): Record<string, string> {
  * differently and the identity check would refuse the user's own file.
  */
 export function readDocument(raw: unknown): DesignDocument {
+  return readDocumentWithRepairs(raw).document;
+}
+
+/**
+ * `readDocument` with the repairs kept.
+ *
+ * The drop import reads a `.fish.html` through here rather than through
+ * `documentFromHtml` because the dialog shows how many repairs were applied, and
+ * a second normalisation would be a second answer to "is this file intact".
+ */
+export function readDocumentWithRepairs(raw: unknown): { document: DesignDocument; repairs: NormalizationRepair[] } {
   // Materialised last, so a file that only names its styles still paints them:
   // the renderer reads `el.style` / `el.fills` and never resolves an id.
-  return syncDocumentBindings(normalizeDesignDocument(raw, { preserveUnknown: true }).document);
+  const { document, repairs } = normalizeDesignDocument(raw, { preserveUnknown: true });
+  return { document: syncDocumentBindings(document), repairs };
 }
 
 /**
@@ -258,15 +271,21 @@ export function serializeSelf(
  * a full shell, so it goes through the same reader as any other file.
  */
 export function documentFromHtml(html: string): DesignDocument | undefined {
+  return readDocumentFromHtml(html)?.document;
+}
+
+export interface ReadHtmlDocument {
+  document: DesignDocument;
+  repairs: NormalizationRepair[];
+}
+
+export function readDocumentFromHtml(html: string): ReadHtmlDocument | undefined {
   const match = DOC_BLOCK_RE.exec(html);
   const body = match?.[1]?.trim();
   if (!body) return undefined;
   try {
-    const parsed = mergeAssets(
-      parseLenientJson<DesignDocument>(body.replace(/\\u003c/g, "<")),
-      parseAssetsBlock(html)
-    );
-    return readDocument(parsed);
+    const read = readDocumentWithRepairs(parseLenientJson<DesignDocument>(body.replace(/\\u003c/g, "<")));
+    return { document: mergeAssets(read.document, parseAssetsBlock(html)), repairs: read.repairs };
   } catch {
     return undefined;
   }

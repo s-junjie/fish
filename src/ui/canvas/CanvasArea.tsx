@@ -23,7 +23,6 @@ import { ViewportBox } from "../../core/geometry/cull";
 import { ShapeDraftGeometry, isSelectingTool } from "../../core/geometry/shape-creation";
 import type { PenMode, ToolType } from "../../core/tools";
 import { ShapeDrawOverlay } from "./ShapeDrawOverlay";
-import { ASSET_MIME } from "../../core/plugins/types";
 import { elementAABB } from "../../core/geometry/element-bounds";
 import { findElementById, computeParentWorldMatrix, isContainer } from "../../core/geometry/tree-ops";
 import { elementTransformMatrix } from "../../core/geometry/transforms";
@@ -43,6 +42,7 @@ import { presentationFrames, nextSlideOf } from "../../core/presentation/frames"
 import { resolveSlide } from "../../core/presentation/slide";
 import { layoutOf } from "../../core/dsl/layout-flat";
 import { CommentsOverlay, type CommentsOverlayProps } from "./CommentsOverlay";
+import { useCanvasFileDrop } from "../hooks/useCanvasFileDrop";
 
 /** How long a zoom must hold before the invisible hit slop is re-sized to it. */
 const HIT_ZOOM_SETTLE_MS = 100;
@@ -151,6 +151,8 @@ interface CanvasAreaProps {
    * longer replaces the Dialog.
    */
   onAssetDrop?: (payloadJson: string, worldX: number, worldY: number, swap?: boolean) => void;
+  /** A dropped `.fish.json`, `.fish.html` or plugin zip, handed to the import dialog. */
+  onImportFiles?: (files: File[]) => void;
   onPathDragStart?: () => void;
   onPathDragChange?: (newD: string) => void;
   /** Cmd/Ctrl held: the resize handles of a frame mean "resize the frame only". */
@@ -240,6 +242,7 @@ export function CanvasArea({
   onCancelCanvasText,
   onInsertImage,
   onAssetDrop,
+  onImportFiles,
   onPathDragStart,
   onPathDragChange,
   frameResizeKey,
@@ -368,48 +371,21 @@ export function CanvasArea({
     if (p) evaluateSmartHover(p.x, p.y);
   }, [smartHoverKey]);
 
+  const { handleDragOver, handleDrop } = useCanvasFileDrop({
+    canvasContainerRef,
+    pan,
+    zoom,
+    enabled: !isCanvasOnlyView,
+    onInsertImage,
+    onAssetDrop,
+    onImportFiles
+  });
+
   const handleCanvasPointerMove = (e: any) => {
     if (typeof e.clientX === "number") {
       lastPointerRef.current = { x: e.clientX, y: e.clientY };
     }
     evaluateSmartHover(e.clientX, e.clientY);
-  };
-
-  const handleDragOver = (e: DragEvent) => {
-    const dt = e.dataTransfer;
-    if (dt && (dt.types.includes("Files") || dt.types.includes(ASSET_MIME))) {
-      e.preventDefault();
-      dt.dropEffect = "copy";
-    }
-  };
-
-  const handleDrop = (e: DragEvent) => {
-    const assetPayload = e.dataTransfer?.getData(ASSET_MIME);
-    if (assetPayload && onAssetDrop && canvasContainerRef.current) {
-      e.preventDefault();
-      e.stopPropagation();
-      const rect = canvasContainerRef.current.getBoundingClientRect();
-      const worldX = Math.round(((e.clientX - rect.left) - pan.x) / zoom);
-      const worldY = Math.round(((e.clientY - rect.top) - pan.y) / zoom);
-      onAssetDrop(assetPayload, worldX, worldY, e.altKey);
-      return;
-    }
-
-    const files = e.dataTransfer?.files;
-    if (!files || files.length === 0) return;
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const isMedia = file.type.startsWith("image/") || file.type.startsWith("video/") || /\.(png|jpe?g|webp|svg|gif|mp4|webm|ogg|mov|m4v)$/i.test(file.name || "");
-      if (isMedia && onInsertImage && canvasContainerRef.current) {
-        e.preventDefault();
-        e.stopPropagation();
-        const rect = canvasContainerRef.current.getBoundingClientRect();
-        const worldX = Math.round(((e.clientX - rect.left) - pan.x) / zoom);
-        const worldY = Math.round(((e.clientY - rect.top) - pan.y) / zoom);
-        onInsertImage(file, worldX, worldY);
-      }
-    }
   };
 
   const activePage = getActivePage(doc);

@@ -104,11 +104,13 @@ export function SvgHtmlEmbedNode({
     >
       {isMountLive && hasSource ? (
         <foreignObject x={0} y={0} width={el.width} height={el.height} style={commonStyle}>
+          {/* No `position: relative` here: WebKit drops the wrapping `<g>`'s
+              transform for a foreignObject whose HTML content establishes a
+              containing block, and paints the embed at the page origin. */}
           <div
             style={{
               width: "100%",
               height: "100%",
-              position: "relative",
               backgroundColor: "white",
               ...commonStyle
             }}

@@ -13,8 +13,11 @@ import path from "node:path";
 //
 // The box is NOT the thing to shrink: measured, `"Hello world"` at 24px tracked
 // by 4 laid out as ONE line in the reserved 162.7px box and as TWO in the 158.7px
-// ink-width one. So the fix is a translate on the painted line, and this spec
-// measures the ink (`Range.getBoundingClientRect` over the text node) against the
+// ink-width one. So the fix moves the painted line instead — a margin on the
+// wrapper, NOT a CSS transform: WebKit drops an ancestor `transform` for a
+// `foreignObject` whose HTML content creates a containing block, and a translate
+// there painted the whole text at the SVG origin in Safari. This spec measures
+// the ink (`Range.getBoundingClientRect` over the text node) against the
 // element's own box, which is the thing a person judges "centred" by.
 //
 // The untracked pair is the control: it has to stay put, or the fix has moved
@@ -155,7 +158,7 @@ const geometryOf = (id) =>
       inkLeft: first.left,
       inkRight: last.right - trail,
       inkCx: (first.left + last.right - trail) / 2,
-      wrapperTransform: getComputedStyle(wrapper).transform
+      wrapperShift: Number.parseFloat(getComputedStyle(wrapper).marginLeft) || 0
     };
   }, { id, tracking: TRACKING });
 
@@ -169,8 +172,8 @@ const rendered =
 check("all four texts render", rendered);
 check(
   "the tracked elements really carry the shift, so the test is not a no-op",
-  trackMid.wrapperTransform !== "none" && trackEnd.wrapperTransform !== "none",
-  `centre=${trackMid.wrapperTransform} right=${trackEnd.wrapperTransform}`
+  trackMid.wrapperShift !== 0 && trackEnd.wrapperShift !== 0,
+  `centre=${trackMid.wrapperShift} right=${trackEnd.wrapperShift}`
 );
 
 const TOL = 1;
