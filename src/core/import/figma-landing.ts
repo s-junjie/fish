@@ -26,6 +26,7 @@ import { FISH_CLIPBOARD_TAG } from "../interactions/clipboard-payload";
 import { relayoutDocumentTree } from "../compile";
 import { instanceSizeResolver } from "../interactions/instance-size";
 import type { ImportFigmaFileOutcome } from "./figma-import";
+import { createEmptyDocument } from "../data-bridge";
 
 export interface FigmaImportLanding {
   doc: DesignDocument;
@@ -168,6 +169,24 @@ function remintPages(
     cursor += lengths[i];
   });
   return { pages, assets: fragment.assets };
+}
+
+/**
+ * The same import, aimed at no document at all.
+ *
+ * A replace is handed a whole `DesignDocument`, but `landFigmaImport` is written
+ * to join the one already open — its pages are minted into that document's id
+ * space and its structures rebound against it. Landing on an EMPTY page list
+ * rather than on nothing is what keeps that machinery intact without inheriting
+ * anything: `pages: []` is a document with no names to clash with and no page
+ * to leave behind, so what comes back is the import and only the import.
+ */
+export function standaloneFigmaDocument(result: ImportFigmaFileOutcome): DesignDocument {
+  const landing = landFigmaImport({ ...createEmptyDocument(), pages: [] }, result, { paste: false });
+  // The base is "Untitled" because it is nothing; the import is the first board
+  // the file carried, and that is the name a replace should leave behind.
+  const name = result.pages[result.activePageIndex]?.name ?? result.pages[0]?.name;
+  return name ? { ...landing.doc, name } : landing.doc;
 }
 
 /**

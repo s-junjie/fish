@@ -1,9 +1,11 @@
 import { Play } from "lucide-react";
 import { t } from "../../i18n";
 import type { AutosaveStatus } from "../../core/persistence/autosave-controller";
+import type { SaveStatusState } from "../hooks/useFileWriteback";
 import { TITLE_BAR_HEIGHT } from "./titlebar-layout";
 import { AutosaveBadge } from "./AutosaveBadge";
 import { LogoMenu } from "./LogoMenu";
+import { SaveStatus } from "./SaveStatus";
 import type { UpdateStatus } from "../hooks/useUpdateStatus";
 import { ZoomControl } from "./ZoomControl";
 
@@ -13,7 +15,7 @@ interface TitleBarProps {
   /** Null until the auto-save controller reports; the bar says nothing rather than guessing. */
   autosaveStatus: AutosaveStatus | null;
   /** Transient result of a manual save, already localised by the write-back hook. */
-  saveStatus: string;
+  saveStatus: SaveStatusState | null;
   showActivateAutosave: boolean;
   writebackTarget: string | null;
   openedName: string | null;
@@ -101,32 +103,39 @@ export function TitleBar({
         </span>
       </div>
 
-      {/* Centered Auto-save / Document Hub */}
+      {/* Centered Auto-save / Document Hub. The save result borrows this slot
+          while it is up — both report on the same file, so both speak from one
+          place, and the crossfade swaps them without moving the bar. */}
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center">
-        <AutosaveBadge
-          autosaveStatus={autosaveStatus}
-          showActivateAutosave={showActivateAutosave}
-          writebackTarget={writebackTarget}
-          openedName={openedName}
-          filePath={filePath}
-          fileDirectory={fileDirectory}
-          savedAsCopyOf={savedAsCopyOf}
-          otherTabActive={otherTabActive}
-          onActivateAutosave={onActivateAutosave}
-          onSave={onSave}
-          onSaveAs={onSaveAs}
-          onNewFile={onNewFile}
-          onOpenHistory={onOpenHistory}
-          onExportJson={onExportJson}
-          onImportJson={onImportJson}
-          onImportFromFile={onImportFromFile}
-          canUseFilePicker={canUseFilePicker}
-        />
+        <span
+          className={`flex items-center transition-opacity duration-base ease-snap ${
+            saveStatus ? "pointer-events-none opacity-0" : "opacity-100"
+          }`}
+        >
+          <AutosaveBadge
+            autosaveStatus={autosaveStatus}
+            showActivateAutosave={showActivateAutosave}
+            writebackTarget={writebackTarget}
+            openedName={openedName}
+            filePath={filePath}
+            fileDirectory={fileDirectory}
+            savedAsCopyOf={savedAsCopyOf}
+            otherTabActive={otherTabActive}
+            onActivateAutosave={onActivateAutosave}
+            onSave={onSave}
+            onSaveAs={onSaveAs}
+            onNewFile={onNewFile}
+            onOpenHistory={onOpenHistory}
+            onExportJson={onExportJson}
+            onImportJson={onImportJson}
+            onImportFromFile={onImportFromFile}
+            canUseFilePicker={canUseFilePicker}
+          />
+        </span>
+        <SaveStatus status={saveStatus} />
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
-        {saveStatus && <span className="mr-1 text-ui text-brand font-semibold">{saveStatus}</span>}
-
         <div data-zoom-bar="true" className="flex items-center">
           <ZoomControl
             zoom={zoom}

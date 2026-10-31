@@ -1,6 +1,5 @@
 {
   "name": "FISH Export",
-  "id": "1200000000000000001",
   "api": "1.0.0",
   "editorType": ["figma", "slides"],
   "main": "plugin.js",

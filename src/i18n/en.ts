@@ -81,6 +81,8 @@ export const en = {
     merged: "Imported into {pages, plural, one {# new page} other {# new pages}}",
     replaceOverwriteWarning:
       "Auto-save is writing to {file}. Replacing here will overwrite that file.",
+    dropUnsupported: "That file is not a FISH document, a FISH file or a FISH Figma export",
+    dropSingleOnly: "Only the first file was opened — one file is one document",
     replaceRepairs: "{count, plural, one {# repair applied} other {# repairs applied}}",
     replaced: "Document replaced"
   },

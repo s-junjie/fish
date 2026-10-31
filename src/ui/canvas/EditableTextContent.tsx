@@ -33,6 +33,14 @@ export interface EditableTextContentProps {
   primaryStroke: boolean;
   textStrokeWidth: number;
   textStrokeColor: string;
+  /**
+   * Set by a `max-content` text, whose box was measured to hold its longest
+   * line unwrapped. Declared HERE, on the element that holds the characters:
+   * `white-space` is a shorthand for `text-wrap-mode`, so the `pre-line` this
+   * component already writes would reset an inherited `nowrap` — which is
+   * exactly how the first attempt at this fix did nothing.
+   */
+  noSoftWrap?: boolean;
 }
 
 /**
@@ -75,7 +83,8 @@ export function EditableTextContent({
   caretColor,
   primaryStroke,
   textStrokeWidth,
-  textStrokeColor
+  textStrokeColor,
+  noSoftWrap
 }: EditableTextContentProps) {
   const savedSelectionRef = useRef<{ start: number; end: number } | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -277,6 +286,16 @@ export function EditableTextContent({
       onDblClick={stopIfEditing}
       style={{
         ...typography,
+        // After `typography`, because `white-space` there is a shorthand for
+        // `text-wrap-mode` and would put the wrap back. A string with no
+        // authored break needs none of `pre-line`, so `nowrap` states both
+        // halves at once on every engine; one that has breaks keeps them and
+        // only lifts the soft wrap.
+        ...(noSoftWrap
+          ? String(el.content ?? "").includes("\n")
+            ? { textWrap: "nowrap" as const }
+            : { whiteSpace: "nowrap" as const }
+          : {}),
         lineHeight: `${resolveDynamicLineHeight(maxFontSize, el.style?.lineHeight)}px`,
         ...(patternBackground || (isGradientText && topFill)
           ? {

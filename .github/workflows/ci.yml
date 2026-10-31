@@ -102,6 +102,8 @@ jobs:
           export FISH_UPDATE_PRIVATE_JWK="$(cat .smoke/update.json)"
           export FISH_UPDATE_PUBLIC_KEY="$(node -p 'JSON.stringify(require("node:crypto").createPublicKey({ key: require("./.smoke/update.json"), format: "jwk" }).export({ format: "jwk" }))')"
           VERSION="$(node -p 'require("./package.json").version')"
+          export FISH_KIT_URL="https://dl.fish.themindstudio.cc/kit/fish-agent-kit-${VERSION}.zip"
+          node scripts/build-fish-agent-kit.mjs
           npm run release:catalog
           npm run release:kit
           npm run release:manifest -- --url "https://dl.fish.themindstudio.cc/shell/$VERSION/index.html" --shell dist/index.html --out .smoke/manifest.json

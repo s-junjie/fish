@@ -33,3 +33,12 @@ A Chrome extension to capture any web element or entire page and paste directly 
 4. Open your FISH design document (e.g. `dist/index.html` or your `.fish.html` file).
 5. Press **`⌘V`** (`Ctrl+V` on Windows) to paste.
 6. The captured element is converted into editable frames, text layers, vector rectangles, and styles!
+
+---
+
+## Versioning
+
+`manifest.json`'s `version` is the EXTENSION's own, not FISH's: it moves when this folder does, and an app release does not touch it. Nothing in the build or the release pipeline reads it (`scripts/build-chrome-extension.mjs` copies the folder verbatim), so the two numbers are expected to disagree — `chrome://extensions` shows this one.
+
+Chrome wants one to four dot-separated integers and, once the extension is published to the Web Store, a strictly increasing value. It is loaded unpacked today, so `1.0.0` is a clean start of that line rather than a claim about FISH.
+

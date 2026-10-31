@@ -1,13 +1,13 @@
 import { useCallback, useRef } from "preact/hooks";
 import { getActivePage } from "../../core/dsl/types";
 import type { DesignDocument, DesignElement } from "../../core/dsl/types";
-import { importFigmaFile as importFigmaJson, type ImportFigmaFileOutcome } from "../../core/import/figma-import";
+import { figmaImportErrorMessage, readFigmaImportFile } from "../../core/import/figma-file-read";
+import type { ImportFigmaFileOutcome } from "../../core/import/figma-import";
 import type { FigmaImportOptions } from "../../core/import/figma-types";
 import { landFigmaImport } from "../../core/import/figma-landing";
-import { FigmaExportError, parseFigmaExport } from "../../core/import/figma-export";
+import { FigmaExportError } from "../../core/import/figma-export";
 import { describeImportRefusal, refuseFile } from "../../core/import/import-limits";
-import { FigmaBundleError, looksLikeZip, readFigmaBundle } from "../../core/import/figma-bundle";
-import { blobsFromImageFills } from "../../core/import/figma-assets";
+import { FigmaBundleError } from "../../core/import/figma-bundle";
 import { withImportedDesignSystem } from "../../core/import/imported-tokens";
 import { t } from "../../i18n";
 
@@ -182,57 +182,10 @@ export function useFigmaImport({
         showHint?.(describeImportRefusal(oversize));
         return Promise.resolve();
       }
-      return guarded(async (existing, report) => {
-        const head = new Uint8Array(await file.slice(0, 4).arrayBuffer());
-        const bundle = looksLikeZip(head) ? await readFigmaBundle(file) : null;
-        let envelope: unknown;
-        if (bundle) {
-          envelope = bundle.manifest;
-        } else {
-          try {
-            envelope = JSON.parse(await file.text());
-          } catch {
-            throw new FigmaExportError(t("figmaImport.errNotExport"));
-          }
-        }
-
-        const parsed = parseFigmaExport(envelope);
-
-        // TWO PACKAGINGS, ONE POLICY. The folder hands its images over as bytes;
-        // the single-file form — and the clipboard copy, which can only be text —
-        // inlines them as data URIs. The difference used to end there: a data URI
-        // was registered verbatim, so the same photograph imported at 2.6MB as a
-        // `.json` and re-encoded as a folder. So the inline form is unpacked
-        // into bytes HERE and both take the blob path, which is where the app's
-        // image policy lives. Raw bytes go in as bytes, whichever box they came in.
-        const imageBlobs = bundle ? bundle.images : blobsFromImageFills(parsed.imageFills);
-
-        const result = await importFigmaJson(
-          // A bare node carries neither, and wrapping it in a response only to
-          // hold `undefined` would make `extractFigmaRoot` decide between two
-          // spellings of the same thing.
-          parsed.variables || parsed.styles
-            ? {
-                document: parsed.document,
-                variables: parsed.variables,
-                variableCollections: parsed.variableCollections,
-                styles: parsed.styles
-              }
-            : parsed.document,
-          { ...existing, onProgress: report, imageBlobs }
-        );
-
-        // Counted in LAYERS, not in kinds: "1 property could not be read" tells a
-        // designer nothing about whether their file is intact. A ref the manifest
-        // named but the archive does not carry counts here too — a gap said out
-        // loud, rather than a blank rectangle nobody can account for.
-        const lostLayers =
-          parsed.unreadable.reduce((sum, gap) => sum + gap.count, 0) + (bundle?.missing.length ?? 0);
-        return {
-          result,
-          notes: lostLayers > 0 ? [t("figmaImport.exportPartialNote", { n: lostLayers })] : []
-        };
-      }, options?.paste === true);
+      return guarded(
+        async (existing, report) => readFigmaImportFile(file, existing, { onProgress: report }),
+        options?.paste === true
+      );
     },
     [guarded, showHint]
   );
@@ -299,18 +252,4 @@ function contentBounds(elements: DesignElement[]): { minX: number; minY: number;
   };
   walk(elements, 0, 0);
   return Number.isFinite(minX) ? { minX, minY, maxX, maxY } : null;
-}
-
-/**
- * Turn a read failure into the sentence the notice shows.
- *
- * Both file-level failures are named explicitly because being handed the wrong
- * file is the expected mistake — a designer has a folder of zips — and each
- * already comes with a sentence that says what to do about it. The fall-through
- * is for an unexpected failure, and it still says something rather than nothing.
- */
-export function figmaImportErrorMessage(err: unknown): string {
-  if (err instanceof FigmaExportError || err instanceof FigmaBundleError) return err.message;
-  if (err instanceof SyntaxError) return t("figmaImport.errNotExport");
-  return err instanceof Error && err.message ? err.message : t("figmaImport.failed");
 }

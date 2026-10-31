@@ -1,6 +1,6 @@
 {
   "name": "fish-design",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "FISH \u2014 Figma In a Single Html. High-performance, self-contained vector canvas in a single HTML file.",
   "license": "Apache-2.0",
   "type": "module",
