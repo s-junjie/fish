@@ -39,6 +39,9 @@ import { useInlineEditing } from "./ui/hooks/useInlineEditing";
 import { useToolState } from "./ui/hooks/useToolState";
 import { useHint } from "./ui/hooks/useHint";
 import { CanvasOnlyView } from "./ui/canvas/CanvasOnlyView";
+import { ViewerShell } from "./ui/viewer/ViewerShell";
+import { currentViewMode } from "./ui/viewer/viewer-mode";
+import { readOnlyFromShell } from "./core/persistence/file-policy";
 import { usePresentation } from "./ui/present/usePresentation";
 import { useCanvasViewport } from "./ui/hooks/useCanvasViewport";
 import { useElementSize } from "./ui/hooks/useElementSize";
@@ -104,6 +107,10 @@ export function App() {
   } = useCanvasViewport();
   useBlockBrowserZoom();
 
+  // Read once, with the shell it came in: the policy is a property of the file,
+  // and nothing this session does changes what the file said when it opened.
+  const readOnly = useMemo(() => readOnlyFromShell(), []);
+
   // The live camera, for everything that has to read it without re-rendering:
   // the page switch that files it away, the bridge an agent drives, and the save
   // that stamps it into the file. Panning would otherwise rebuild every consumer.
@@ -124,6 +131,14 @@ export function App() {
     setPan({ x: v.x, y: v.y });
     setZoom(v.zoom);
   });
+
+  // The store's own gate, for everything that is not routed through a shell: the
+  // reader renders no editing UI, and this is what makes a stray shortcut, a
+  // restored gesture or a plugin call unable to reach the document anyway. The
+  // reason is the one the store already names for a file handed over read-only.
+  useEffect(() => {
+    if (readOnly) store.setReadOnly("shared-file");
+  }, [readOnly, store]);
 
   /* The comment block, readable by the file writer without depending on the
      render that created it: auto-save is built once, and a recovery snapshot
@@ -389,8 +404,8 @@ export function App() {
     canvasContainerRef,
     handleUndo,
     handleRedo,
-    triggerSave: file.triggerSave,
-    triggerSaveAs: file.triggerSaveAs,
+    triggerSave: readOnly ? undefined : file.triggerSave,
+    triggerSaveAs: readOnly ? undefined : file.triggerSaveAs,
     startRenaming: inline.startRenaming,
     startCanvasTextEdit: inline.startCanvasTextEdit,
     setHintMessage: hint.showHint,
@@ -701,7 +716,10 @@ export function App() {
     showHint: hint.showHint
   });
 
-  const isCanvasOnlyView = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("view") === "canvas";
+  // Read once per load: a shell must not change under a rotation, and the query
+  // string cannot change without a reload anyway.
+  const viewMode = useMemo(() => currentViewMode(readOnly), [readOnly]);
+  const isCanvasOnlyView = viewMode === "canvas";
 
   const headlessOrigin = useHeadlessReport(doc, docRef, canvasContainerRef);
 
@@ -763,6 +781,16 @@ export function App() {
         canvasTextInputRef={inline.canvasTextInputRef}
       />
     );
+  }
+
+  // A phone opens the reader, not the editor: the two side panels are 568px of
+  // fixed-width chrome and the screen is 390, so both open covers the canvas
+  // completely. `?view=editor` is the door out, and it is a reload on purpose —
+  // the two shells mount different hook trees. A read-only file arrives here too,
+  // on every device: the reader is the only shell that cannot write, so it is
+  // the only honest host for a document that must not be edited.
+  if (viewMode === "viewer") {
+    return <ViewerShell doc={doc} docRef={docRef} readOnly={readOnly} />;
   }
 
   const findElementBounds = useCallback(

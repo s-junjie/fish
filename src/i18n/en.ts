@@ -11,6 +11,8 @@ export const en = {
     saving: "Saving...",
     saved: "Saved successfully",
     saveAs: "Save As…",
+    saveReadOnly: "Save Read-Only Copy…",
+    savedReadOnly: "Saved a read-only copy",
     saveFailed: "Failed to save"
   },
   autosave: {
@@ -23,7 +25,6 @@ export const en = {
     popoverDescOff: "Grant access to {file} to enable auto-save.",
     popoverDescOn: "Changes save automatically to your local file.",
     popoverDescLocal: "Changes are saved in browser recovery storage, but not written to disk.",
-    popoverDescLocalOff: "Grant access to {file} to enable auto-save.",
     fileInThisTab: "the file open in this tab",
     popoverDescPaused: "Another tab is currently editing this file. Auto-save is paused here.",
     popoverDescError: "Your changes could not be saved: {message}",
@@ -63,7 +64,6 @@ export const en = {
   documentJson: {
     exportAction: "Export JSON Document…",
     importAction: "Import JSON Document…",
-    copyCompact: "Copy compact JSON (for agents)",
     exported: "JSON document exported",
     exportFailed: "Could not write the JSON file",
     copiedCompact: "Compact JSON copied",
@@ -128,6 +128,15 @@ export const en = {
   view: {
     uiHidden: "UI hidden — press Tab or ⌘. to restore"
   },
+  viewer: {
+    desktopMode: "Desktop mode",
+    readOnly: "Read only",
+    pages: "Pages",
+    present: "Present",
+    zoomIn: "Zoom in",
+    zoomOut: "Zoom out",
+    fit: "Fit to screen"
+  },
   titlebar: {
     untitled: "Untitled",
     present: "Present (⌘↵)",
@@ -141,13 +150,17 @@ export const en = {
     actualSize: "Actual size (100%)",
     responsive: "Responsive",
     otherScalingOptions: "Other scaling options",
+    viewOptions: "View options",
     fitWidth: "Fit width",
     fitWidthAndHeight: "Fit width and height",
     fillScreen: "Fill screen",
     fullscreen: "Full screen",
     exitFullscreen: "Exit full screen",
     prev: "Previous",
-    next: "Next"
+    next: "Next",
+    pages: "Pages",
+    canvasBackground: "Use canvas background",
+    canvasBackgroundHint: "Paint this page's canvas colour behind every slide, instead of the paper surface"
   },
   slide: {
     section: "Slide",
@@ -234,7 +247,6 @@ export const en = {
     comment: "Comment"
   },
   comments: {
-    tool: "Comment",
     tab: "Comments",
     exit: "Exit comment mode",
     filterAll: "All",
@@ -264,7 +276,6 @@ export const en = {
     previewUnavailable: "Nothing to preview",
     appliedSuccess: "Applied suggestion to canvas",
     appliedPartial: "Applied {n} of {total} ops. Failed: {detail}",
-    empty: "No comments yet",
     /** Diff row keys come from `src/core/comments/diff.ts`; a new one falls back to its key. */
     field: {
       x: "X",
@@ -503,8 +514,7 @@ export const en = {
     editStyle: "This colour comes from a style — click to use another style, or unlink it",
     selectUsing: "Select item using this color",
     noneOnCanvas: "No layer on this page uses that color",
-    kind: { solid: "Solid", gradient: "Gradient", pattern: "Pattern" },
-    channel: { fill: "Fill", stroke: "Stroke" }
+    kind: { solid: "Solid", gradient: "Gradient", pattern: "Pattern" }
   },
   scale: {
     title: "Scale",
@@ -598,7 +608,6 @@ export const en = {
     invertHint: "Read the luminance as its negative: dark pixels reveal, bright ones hide."
   },
   tear: {
-    title: "Tear",
     profileHint: "Which break this is. Each one is a different shape along the same side; every other control below follows from it.",
     profile: {
       torn: "Torn",
@@ -614,12 +623,6 @@ export const en = {
       edge: "One side of the layer is replaced by the break.",
       hole: "The break closes into a loop and the sheet keeps everything outside it, so whatever sits behind shows through the hole.",
       scrap: "The break closes into a loop and only the piece inside it is kept — the other half of a torn-out hole."
-    },
-    side: {
-      top: "Top edge",
-      right: "Right edge",
-      bottom: "Bottom edge",
-      left: "Left edge"
     },
     scale: "Scale",
     scaleHint: "Wavelength of the coarsest ripple, in px — the size of the break itself. For a scallop or a zigzag this is the pitch of one scallop or tooth. 0 cuts a perfectly straight edge.",
@@ -948,7 +951,6 @@ export const en = {
   component: {
     instance: "Instance",
     header: "Component",
-    instanceOf: "Instance of",
     createComponent: "Create Component",
     createComponents: "Create Multiple Components",
     resetNodeOverrides: "Reset this node",
@@ -1001,7 +1003,6 @@ export const en = {
     swapNested: "Swap nested instance",
     swapNotPossible: "This component cannot replace that instance",
     variantAxes: "Variant",
-    swapInstance: "Swap Instance",
     swapSearch: "Search components",
     // Figma's own vocabulary, deliberately including the parts that read oddly.
     // `Property 1` is not a placeholder bug: Figma shipped it (after trying
@@ -1015,8 +1016,6 @@ export const en = {
     addVariant: "Add variant",
     addProperty: "Add property",
     combineAsVariants: "Combine as variants",
-    /** What an instance becomes when nothing was configured — Figma's `defaultVariant`. */
-    defaultVariantLabel: "Default variant",
     removeVariant: "Remove variant",
     removeVariantValue: "Remove unused value",
     removeVariantProperty: "Remove variant property",
@@ -1150,7 +1149,6 @@ export const en = {
     themeMode: "Theme Mode",
     colorMode: "Color Mode",
     numberMode: "Number Mode",
-    containerTheme: "Theme",
     inheritedTheme: "Inherited ({name})",
     addMode: "New mode",
     addModeTitle: "New Theme Mode",
@@ -1199,15 +1197,11 @@ export const en = {
     pickNumber: "Number tokens"
   },
   fonts: {
-    missing: "Missing font",
     missingDetail: "{family} is not installed on this machine.",
     panelTitle: "Missing fonts",
     panelIntro:
       "Some fonts used in this file are not installed. Replace them with installed fonts to edit.",
     panelEmpty: "All fonts in this file are installed.",
-    blockedTitle: "This text can't be edited",
-    blockedBody:
-      "{layer} is set in {family}, which is not installed. Replace the font to edit this text.",
     usageTexts: "{n} text layers",
     usageTextsOne: "1 text layer",
     usageRuns: "{n} runs",
@@ -1219,12 +1213,11 @@ export const en = {
     scopeDocument: "Document",
     scopeSelectionHint: "Only the selected layers. A layer bound to a text style is detached from it.",
     scopeSelectionEmpty: "Nothing selected uses a missing family",
-    replace: "Replace…",
     replaceWith: "Select font…",
     replaceAction: "Replace fonts"
   },
   resources: {
-    searchPlaceholder: "Search plugins and assets...",
+    searchPlaceholder: "Search plugins...",
     noResults: "No matching plugins found",
   },
   plugins: {
@@ -1233,11 +1226,12 @@ export const en = {
     install: "Install",
     installed: "Installed",
     available: "Available",
-    downloadFailed: "Failed to download plugin",
     loadFile: "Load plugin file…",
     loading: "Loading plugin…",
     failed: "This plugin could not be loaded",
     crashed: "This plugin stopped working",
+    update: "Update",
+    updating: "Updating…",
     remove: "Remove plugin"
   }
 };

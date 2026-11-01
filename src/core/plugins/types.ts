@@ -124,10 +124,12 @@ export interface AssetInsertPayload {
   providerId?: string;
   result?: AssetSearchResult;
   /**
-   * A plugin-owned source has no entry in `OFFICIAL_PROVIDERS`, so it asks the
-   * host to insert the result through the generic remote-image path instead.
+   * Generic insertion path:
+   * - "remote-image": probe and link a remote bitmap asset.
+   * - "element": insert a pre-constructed element (e.g. icon PathElement).
    */
-  insert?: "remote-image";
+  insert?: "remote-image" | "element";
+  element?: DesignElement;
   assetId?: string;
   /** Document component to place as a new instance. */
   componentId?: string;

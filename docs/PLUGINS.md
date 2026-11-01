@@ -100,8 +100,7 @@ at module evaluation:
   shell's own helpers, because where a page's tree lives and how ids are minted must
   not be copied. `mapElements` is the deep map: a nested selection is not a page child,
   so a plugin edits the tree with it rather than mapping the top level;
-- `lucideProvider` / `remixProvider` / `openverseProvider` / `dragPayload` — the
-  host-owned provider instances the canvas drop handler looks up by `providerId`;
+- `dragPayload` — helper to attach payload data to HTML5 drag events under the shell's asset MIME type;
 - `insertRemoteImage` — the generic probe-and-link insert a plugin-owned image source
   uses for both the panel and a drag whose payload says `insert: "remote-image"`.
   The starting box is the source's decision: set `displayMaxDimension` on each

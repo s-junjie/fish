@@ -26,7 +26,36 @@ Open it in Chrome, create professional vector designs, save directly to your loc
 
 ## Quick Start
 
-to be added
+### 1. Instant Start (Zero Installation)
+
+FISH requires no installation, accounts, or cloud setup:
+
+1. **Open the editor**: Open [`fish.html`](https://dl.fish.themindstudio.cc/stable/fish.html) directly in **Google Chrome** (or Chromium-based browsers).
+2. **Enable auto-save**: Click the **"Grant Access"** button in the top toolbar to authorize writing to your `.fish.html` file.
+   > **Why?** Due to browser sandbox security policies, Chromium's File System Access API requires explicit user consent before allowing a local page to modify files on your disk. Granting permission allows FISH to save changes directly back to your file in place and auto-save silently as you edit — zero duplicate downloads, zero cloud upload, and completely private.
+3. **Create & Save**: Press `F` to create Frames, `R` for Rectangles, `T` for Typography, or drag and drop SVGs, images, and HTML files onto the canvas. Press `Cmd + S` (macOS) or `Ctrl + S` (Windows/Linux) to save in place anytime.
+
+### 2. Design with AI Agents (Agent Kit)
+
+FISH is built to be agent-native. AI coding agents (Claude Code, ChatGPT, Cursor, etc.) can inspect, generate, and verify `.fish.html` vector documents programmatically.
+
+#### Install the Skill
+
+Add the FISH skill to your agent environment:
+
+```bash
+npx skills add https://dl.fish.themindstudio.cc/skill.md --skill fish-design -y
+```
+
+*(Alternatively, paste `https://fish.themindstudio.cc/skill.md` into ChatGPT, Claude, or any chat that can read a link. Or download the kit from [Releases](https://github.com/s-junjie/fish/releases/latest)).*
+
+#### Sample Prompt for Your Agent
+
+Once the skill is installed, simply point your agent at what you have and tell it which file to make:
+
+> *"Use the fish-design skill. Read brand.md and the photos in assets/shots/. Design a pricing page for a two-person photo studio, three plans, the middle one highlighted. Save it as pricing.fish.html."*
+
+The agent will read the DSL guidelines, construct the vector document, validate the layout headlessly, and hand over a ready-to-open `pricing.fish.html` file.
 
 ---
 
@@ -44,18 +73,6 @@ Other Chromium browsers — Edge, Brave, Arc, Opera — expose the same APIs and
 Without the font API the menu offers the built-in presets, and any preset whose face is not installed falls back to your system font.
 
 Everything else — the canvas, vector editing, components, auto-layout, effects, import and export — is plain web platform and works in all four.
-
----
-
-## Build From Source
-
-```bash
-npm install
-npm run dev      # start the dev server
-npm run build    # emit the single-file shell into dist/
-```
-
-The build produces the standalone editor shell (`dist/index.html`), which is itself a runnable `*.fish.html` container.
 
 ---
 

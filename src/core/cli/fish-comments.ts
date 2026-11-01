@@ -12,9 +12,9 @@
 import fs from "node:fs";
 import type { DesignDocument, DesignElement } from "../dsl/types";
 import { parseCommentsBlock, spliceCommentsBlock } from "../data-bridge";
-import { parseLenientJson } from "../dsl/lenient-json";
 import type { CommentThread, FishCommentsDocument, SuggestedMacroOp } from "../comments/types";
 import { AI_AUTHOR } from "../comments/types";
+import { readDocument } from "./doc-source";
 
 export interface CommentsCommandOptions {
   summary?: string;
@@ -42,16 +42,6 @@ function readFile(path: string): string | undefined {
     return fs.readFileSync(path, "utf-8");
   } catch {
     console.error(`Error: cannot read ${path}`);
-    return undefined;
-  }
-}
-
-function documentOf(html: string): DesignDocument | undefined {
-  const match = /<script\s+id=["']design-doc["'][^>]*>([\s\S]*?)<\/script>/i.exec(html);
-  if (!match || !match[1].trim()) return undefined;
-  try {
-    return parseLenientJson<DesignDocument>(match[1].trim());
-  } catch {
     return undefined;
   }
 }
@@ -147,8 +137,15 @@ export function commentsCommand(args: string[], opts: CommentsCommandOptions = {
   }
 
   if (action === "context") {
-    const doc = documentOf(html);
-    const page = doc?.pages?.find((p) => p.id === thread.pageId) ?? doc?.pages?.[0];
+    // Through `readDocument`, not the block: a document from another dialect
+    // reads without complaint and answers with ids that mean something else.
+    const read = readDocument(filePath);
+    if ("error" in read) {
+      console.error(read.error);
+      return read.code;
+    }
+    const doc = read.value as DesignDocument;
+    const page = doc.pages?.find((p) => p.id === thread.pageId) ?? doc.pages?.[0];
     const elements = page?.children;
     const target = thread.target.elementId ? findElement(elements, thread.target.elementId) : null;
     const parent = thread.target.elementId ? findParent(elements, thread.target.elementId) : null;
@@ -182,7 +179,7 @@ export function commentsCommand(args: string[], opts: CommentsCommandOptions = {
             .filter((sibling) => sibling.id !== thread.target.elementId)
             .map((sibling) => ({ id: sibling.id, type: sibling.type, name: sibling.name })),
           tokens: {
-            colors: doc?.tokens?.filter((token) => token.type === "color").map((token) => token.name) ?? [],
+            colors: doc.tokens?.filter((token) => token.type === "color").map((token) => token.name) ?? [],
             radii: ["4px", "8px", "12px", "16px", "24px", "9999px"]
           },
           status: thread.status

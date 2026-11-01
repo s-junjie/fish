@@ -10,7 +10,11 @@ metadata:
 
 FISH is a single-file vector design engine. A `.fish.html` file carries its document in `<script id="design-doc" type="application/json">` (`DesignDocument v{{DOC_VERSION}}`) and its runtime in the same file.
 
-**This skill is written for FISH {{SKILL_VERSION}}** (document dialect {{DOC_VERSION}}). The kit it ships with is the same release, and `tools/fish --version` prints the version of the copy you actually have — if the two numbers disagree, that copy is older: re-run the install command instead of trusting the references beside it.
+**This skill is written for FISH {{SKILL_VERSION}}** (document dialect {{DOC_VERSION}}), and the kit beside it is the same release — `./tools/fish --version` prints the copy you actually have. The tool compares that number with this frontmatter before every command and exits non-zero instead of running when they disagree: the prose and the engine are then two releases wearing one directory. Never edit either number and never work around the refusal — re-run the install command.
+
+It refuses a `.fish.html` whose document dialect is not {{DOC_VERSION}} for the same reason a dialect does not migrate: that file belongs to a different FISH. Re-install rather than translating the document.
+
+`./tools/fish --version --check` asks the release origin whether a newer FISH is published. Run it when a document or a request uses something this kit does not have — an op it rejects, a key it does not know — rather than concluding the document is wrong.
 
 This skill is the entry point and index. The DSL reference, workflow and asset guide live in the kit, so they stay on the version that matches its tools.
 
@@ -42,7 +46,7 @@ executable bit, run `node tools/fish.cjs` (or `bash tools/fish`) instead.
 is the installer's pointer to the current archive. Both move with a release; the
 versioned files they name never do.
 
-The kit is self-contained: Node plus a local browser for rendering. There is no `npm install`, no package manager step, and no network requirement beyond the asset sources you choose to use.
+The kit is self-contained: Node plus a local browser for rendering. There is no `npm install`, no package manager step, and no network requirement beyond the asset sources you choose to use — the tool asks its own origin for a newer release at most once a day, and behaves identically when it cannot reach it.
 
 ## Read in this order
 

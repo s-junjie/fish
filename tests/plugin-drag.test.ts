@@ -21,10 +21,10 @@ describe("asset drag payload", () => {
       }
     };
 
-    dragPayload(fakeEvent as never, { providerId: "lucide", result: { id: "zap", name: "Zap" } });
+    dragPayload(fakeEvent as never, { insert: "element", element: { type: "path", id: "zap" } as never });
 
     expect(mimeSet).toBe(ASSET_MIME);
-    expect(JSON.parse(dataSet)).toEqual({ providerId: "lucide", result: { id: "zap", name: "Zap" } });
+    expect(JSON.parse(dataSet)).toEqual({ insert: "element", element: { type: "path", id: "zap" } });
     expect(fakeEvent.dataTransfer.effectAllowed).toBe("copy");
   });
 });

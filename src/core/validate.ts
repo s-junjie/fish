@@ -9,91 +9,11 @@ import { AXIS_DOWNGRADE_MESSAGES, resolveAxisDetail, type SizingAxis } from "./g
 import { hexToRgb, parseColorAlpha } from "./geometry/color-utils";
 import { getGradientStops } from "./geometry/gradient-utils";
 import { validateTokenRefs } from "./validate-tokens";
+import { overrideProblem } from "./interactions/override-audit";
 import { DEFAULT_FONT_SIZE } from "./dsl/normalize/text-sizing";
+import { computePathBounds, parsePathData } from "./geometry/path-data";
 
 const PAINT_TYPES: ReadonlySet<string> = new Set(PAINT_TYPE_LIST);
-
-interface Box {
-  minX: number;
-  minY: number;
-  maxX: number;
-  maxY: number;
-}
-
-/**
- * Conservative extent scan of path data in LOCAL coordinates: tracks every
- * endpoint plus C/S/Q/T control points. Arc bulges beyond their chord are not
- * measured, so this can under-report — acceptable for a warning-level check
- * whose main target is path data authored in the wrong coordinate space.
- */
-function pathLocalExtents(d: string): Box | null {
-  const tokens = d.match(/[MmLlHhVvCcSsQqTtAaZz]|-?\d*\.?\d+(?:[eE][-+]?\d+)?/g);
-  if (!tokens) return null;
-  const arity: Record<string, number> = { M: 2, L: 2, H: 1, V: 1, C: 6, S: 4, Q: 4, T: 2, A: 7, Z: 0 };
-  let cx = 0, cy = 0, sx = 0, sy = 0;
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  let cmd = "", firstCommand = true;
-  const add = (x: number, y: number) => {
-    if (!isFinite(x) || !isFinite(y)) return;
-    minX = Math.min(minX, x); minY = Math.min(minY, y);
-    maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
-  };
-  let i = 0;
-  while (i < tokens.length) {
-    const tok = tokens[i];
-    if (/[A-Za-z]/.test(tok)) {
-      cmd = tok;
-      i++;
-      if (cmd === "Z" || cmd === "z") { cx = sx; cy = sy; continue; }
-    }
-    const n = arity[cmd.toUpperCase()];
-    if (!n) { i++; continue; }
-    const p: number[] = [];
-    for (let k = 0; k < n && i < tokens.length && !/[A-Za-z]/.test(tokens[i]); k++) p.push(parseFloat(tokens[i++]));
-    if (p.length < n) break;
-    const rel = cmd === cmd.toLowerCase() && cmd !== "z";
-    const abs = (v: number, base: number) => (rel ? base + v : v);
-    switch (cmd.toUpperCase()) {
-      case "M":
-        cx = abs(p[0], cx); cy = abs(p[1], cy);
-        sx = cx; sy = cy;
-        add(cx, cy);
-        firstCommand = false;
-        if (n > 2) { /* implicit lineto pairs fall through next loop as M repeats */ }
-        break;
-      case "L":
-        cx = abs(p[0], cx); cy = abs(p[1], cy); add(cx, cy);
-        break;
-      case "H":
-        cx = abs(p[0], cx); add(cx, cy);
-        break;
-      case "V":
-        cy = abs(p[0], cy); add(cx, cy);
-        break;
-      case "C":
-        add(abs(p[0], cx), abs(p[1], cy)); add(abs(p[2], cx), abs(p[3], cy));
-        cx = abs(p[4], cx); cy = abs(p[5], cy); add(cx, cy);
-        break;
-      case "S":
-        add(abs(p[0], cx), abs(p[1], cy));
-        cx = abs(p[2], cx); cy = abs(p[3], cy); add(cx, cy);
-        break;
-      case "Q":
-        add(abs(p[0], cx), abs(p[1], cy));
-        cx = abs(p[2], cx); cy = abs(p[3], cy); add(cx, cy);
-        break;
-      case "T":
-        cx = abs(p[0], cx); cy = abs(p[1], cy); add(cx, cy);
-        break;
-      case "A":
-        cx = abs(p[5], cx); cy = abs(p[6], cy); add(cx, cy);
-        break;
-    }
-    if (firstCommand && cmd.toUpperCase() === "M") { /* start recorded */ }
-  }
-  if (!isFinite(minX)) return null;
-  return { minX, minY, maxX, maxY };
-}
 
 function checkPaints(paints: Paint[] | undefined, elementId: string, out: CompileDiagnostic[]) {
   for (const paint of paints ?? []) {
@@ -214,7 +134,8 @@ function checkElement(el: DesignElement, parent: ContainerElement | null, out: C
   checkPaints(strokePaintsOf(el), el.id, out);
 
   if (el.type === "path" && el.width > 0 && el.height > 0) {
-    const ext = pathLocalExtents(el.d);
+    const parsed = parsePathData(el.d);
+    const ext = parsed && parsed.anchors.length > 0 ? computePathBounds(parsed) : null;
     if (ext) {
       const tol = 0.5;
       if (ext.minX < -tol || ext.minY < -tol || ext.maxX > el.width + tol || ext.maxY > el.height + tol) {
@@ -441,6 +362,13 @@ function coversBox(outer: DesignElement, inner: DesignElement, boxes: Map<string
   );
 }
 
+/** Do the two boxes share any area? Both are `boxOf` answers, so one space. */
+function intersectsBox(a: DesignElement, b: DesignElement, boxes: Map<string, PlacedBox>): boolean {
+  const p = boxOf(a, boxes);
+  const q = boxOf(b, boxes);
+  return p.x < q.x + q.w && p.x + p.w > q.x && p.y < q.y + q.h && p.y + p.h > q.y;
+}
+
 /**
  * What a child is painted on, given the siblings painted before it.
  *
@@ -471,8 +399,20 @@ function backdropOver(
     const any = rawOf(sibling);
     if (any.visible === false) continue;
     if (!BOX_PAINTERS.has(String(any.type ?? ""))) continue;
-    if (!coversBox(sibling, target, boxes)) continue;
     const fills = (Array.isArray(any.fills) ? (any.fills as Paint[]) : []).filter((p) => p && p.enabled !== false);
+    if (!coversBox(sibling, target, boxes)) {
+      // A surface that only OVERLAPS still paints under some of the glyphs — a
+      // photograph the text runs past, a cover image larger than its label. When
+      // that surface cannot be reduced to a colour the answer is UNKNOWN, not the
+      // canvas: falling through here reported white text on a photo at 1.0:1
+      // against #FFFFFF, which is a wrong conclusion and not a missing one. A
+      // partially covering SOLID is left alone — a badge over a corner of the box
+      // says nothing about the colour behind the glyphs.
+      if (fills.length > 0 && paintableColors(fills) === undefined && intersectsBox(sibling, target, boxes)) {
+        return null;
+      }
+      continue;
+    }
     // A wrapper that paints nothing of its own is not the backdrop; whatever it
     // contains is, and this walk resolves that when it descends into the wrapper.
     if (fills.length === 0) continue;
@@ -554,13 +494,22 @@ function checkOverlappingTextChildren(parent: ContainerElement, out: CompileDiag
     const span = estimateTextSpan(t);
     const x = typeof t.x === "number" ? t.x : 0;
     const y = typeof t.y === "number" ? t.y : 0;
-    return { el: t, x, y, width: span.width, height: span.height };
+    // A height the layout pass derives is the MEASURER's opinion of the text, not
+    // an edge anyone painted: on a real cover it read 137px where the browser
+    // painted 92, and the pair below was reported as 58% overlapping. Grading a
+    // derived axis grades the estimator, so a pair that involves one is not a
+    // collision claim this check can make.
+    // `height` has no `max-content` spelling (it is a width mode), so a derived
+    // height is exactly `fit-content`.
+    const derived = t.sizing?.height === "fit-content";
+    return { el: t, x, y, width: span.width, height: span.height, derived };
   });
 
   for (let i = 0; i < boxes.length; i++) {
     for (let j = i + 1; j < boxes.length; j++) {
       const a = boxes[i];
       const b = boxes[j];
+      if (a.derived || b.derived) continue;
       const interX = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x));
       const interY = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
       const interArea = interX * interY;
@@ -764,6 +713,32 @@ export function validateDocument(input: DesignDocument): CompileDiagnostic[] {
     out.push({
       level: "warning",
       message: `Instance "${instance.name || instance.id}" has a ${instance.width}×${instance.height} box while master "${master.name || master.id}" is ${master.width}×${master.height}. An omitted width/height inherits the master's box; this explicit 0 is kept. Set the axis you want, or use sizeOverride for a deliberately different size`,
+      elementId: instance.id
+    });
+  }
+
+  // An override is addressed by id into the master's subtree, and neither a wrong
+  // id nor a misspelled property is refused anywhere: the resolution walks past it,
+  // the canvas paints the master's value, and the one text the author meant to
+  // change is the one that stays silent. The document is still "valid", so this is
+  // the only place that can name it.
+  for (const inst of instances) {
+    const instance = inst as InstanceElement;
+    const overrides = instance.overrides ?? [];
+    if (overrides.length === 0) continue;
+    const master = componentById.get(instance.componentId);
+    // A broken `componentId` is already an error above; without a master there is
+    // no subtree to address and a second finding would only repeat the first.
+    if (!master) continue;
+    const bad = overrides
+      .map((override) => overrideProblem(master, override, doc))
+      .filter((problem): problem is string => problem !== null);
+    if (bad.length === 0) continue;
+    out.push({
+      level: "warning",
+      message:
+        `Instance "${instance.name || instance.id}" carries ${bad.length} override(s) that can never apply: ${bad.slice(0, 3).join("; ")}` +
+        `${bad.length > 3 ? `; and ${bad.length - 3} more` : ""}. An override is not graded at paint time — it is skipped, and the master's value shows instead`,
       elementId: instance.id
     });
   }

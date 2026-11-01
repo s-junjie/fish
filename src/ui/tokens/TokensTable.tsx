@@ -18,11 +18,9 @@ import {
   getColorTokenModeColor,
   getNumberTokenModeValue,
   renameDocumentMode,
-  renameDocumentNumberMode,
-  updateColorTokenWithModes,
-  updateNumberTokenWithModes,
-  type ColorModePatch
+  renameDocumentNumberMode
 } from "../../core/interactions/mode-ops";
+import { writeColorToken, writeNumberToken, type ColorTokenPatch, type NumberTokenPatch } from "./token-mode-patch";
 import {
   colorTokensOf,
   createColorToken,
@@ -179,6 +177,166 @@ function NumberModeCell({
   );
 }
 
+/** The grip that resizes a column — the name column and every mode column. */
+function ColumnResizer({
+  colKey,
+  active,
+  onStart
+}: {
+  colKey: string;
+  active: boolean;
+  onStart: (colKey: string, e: PointerEvent) => void;
+}) {
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      onPointerDown={(e) => onStart(colKey, e)}
+      className="absolute top-0 -right-1.5 w-3 h-full cursor-col-resize z-20 group/resize flex justify-center items-center"
+      aria-hidden="true"
+    >
+      <div
+        className={`w-[2px] h-full transition-colors ${
+          active ? "bg-brand" : "group-hover/resize:bg-brand/70"
+        }`}
+      />
+    </div>
+  );
+}
+
+/** One mode's header: its name (double-click renames), its delete, its width grip. */
+function ModeHeaderCell({
+  mode,
+  width,
+  singleMode,
+  showDelete,
+  editing,
+  editingName,
+  inputRef,
+  resizing,
+  onStartResize,
+  onStartRename,
+  onChangeName,
+  onCommitName,
+  onCancelRename,
+  onDelete
+}: {
+  mode: DocumentMode;
+  width: number;
+  /** One mode is not a choice, so the column is titled by what it holds. */
+  singleMode: boolean;
+  showDelete: boolean;
+  editing: boolean;
+  editingName: string;
+  inputRef: { current: HTMLInputElement | null };
+  resizing: boolean;
+  onStartResize: (colKey: string, e: PointerEvent) => void;
+  onStartRename: (mode: DocumentMode) => void;
+  onChangeName: (next: string) => void;
+  onCommitName: () => void;
+  onCancelRename: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <th
+      className="px-3 py-2 shrink-0 group/col relative border-l border-rule"
+      style={{ width: `${width}px`, minWidth: `${width}px` }}
+    >
+      <div className="flex items-center justify-between gap-1.5 min-w-0 pr-1">
+        {editing ? (
+          <input
+            ref={inputRef}
+            name="token-mode-name"
+            value={editingName}
+            onInput={(e) => onChangeName((e.currentTarget as HTMLInputElement).value)}
+            onBlur={onCommitName}
+            onKeyDown={(e) => {
+              if (e.isComposing || (e as any).keyCode === 229) return;
+              if (e.key === "Enter") onCommitName();
+              if (e.key === "Escape") onCancelRename();
+            }}
+            className="w-full bg-inset rounded-swatch px-1 text-ui text-ink focus:outline-none ring-1 ring-brand"
+          />
+        ) : singleMode ? (
+          <span className="truncate" title={t("tokens.columnValue")}>
+            {t("tokens.columnValue")}
+          </span>
+        ) : (
+          <span
+            onDblClick={() => onStartRename(mode)}
+            className="truncate cursor-text hover:text-ink transition-colors"
+            title={mode.name}
+          >
+            {mode.name}
+          </span>
+        )}
+        {showDelete && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            className="opacity-0 group-hover/col:opacity-100 p-0.5 rounded-ctl text-ink-muted hover:text-measure-coral transition-opacity shrink-0"
+            title={t("tokens.deleteMode")}
+            aria-label={t("tokens.deleteMode")}
+          >
+            <Trash2 size={11} />
+          </button>
+        )}
+      </div>
+      <ColumnResizer colKey={mode.id} active={resizing} onStart={onStartResize} />
+    </th>
+  );
+}
+
+/** A `bg/…` group's own row: collapse toggle, count, and "add token here". */
+function GroupRow({
+  name,
+  count,
+  collapsed,
+  colSpan,
+  onToggle,
+  onAdd
+}: {
+  name: string;
+  count: number;
+  collapsed: boolean;
+  colSpan: number;
+  onToggle: () => void;
+  onAdd: () => void;
+}) {
+  return (
+    <tr
+      className="bg-surface/70 hover:bg-surface transition-colors cursor-pointer"
+      onClick={onToggle}
+    >
+      <td colSpan={colSpan} className="px-3 py-1.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 font-medium text-ink">
+            {collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+            <span className="text-ui font-medium">{name}</span>
+            <span className="text-micro text-ink-muted font-normal">({count})</span>
+          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onAdd();
+            }}
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded-ctl text-micro text-ink-dim hover:text-ink hover:bg-raised transition-colors"
+            title={t("tokens.addToken")}
+            aria-label={t("tokens.addToken")}
+          >
+            <Plus size={11} />
+            <span>{t("tokens.addToken")}</span>
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 export function TokensTable({
   variant,
   doc,
@@ -314,66 +472,27 @@ export function TokensTable({
     const clean = editingNameValue.trim();
     setEditingNameId(null);
     if (!clean || clean === token.name) return;
-    const current = docRef.current;
     const latest = findLatest(token.id);
     if (!latest) return;
-
-    if (latest.type === "color") {
-      const baseColor = parseColorAlpha(getColorTokenModeColor(latest, baseModeId)).hex6;
-      const baseOpacity = tokenAlphaPct(latest, baseModeId) / 100;
-      const modePatches: Record<string, ColorModePatch | undefined> = {};
-      if (latest.modes) {
-        for (const m of modes) {
-          if (m.id !== baseModeId && latest.modes[m.id]) {
-            modePatches[m.id] = {
-              color: parseColorAlpha(getColorTokenModeColor(latest, m.id)).hex6,
-              opacity: tokenAlphaPct(latest, m.id) / 100
-            };
-          }
-        }
-      }
-      const updated = updateColorTokenWithModes(
-        latest,
-        clean,
-        baseColor,
-        modePatches,
-        latest.description,
-        baseOpacity,
-        baseModeId
-      );
-      commitSnapshot(updateTokenInDoc(current, updated));
-    } else {
-      const baseVal = getNumberTokenModeValue(latest, baseModeId);
-      const updated = updateNumberTokenWithModes(
-        latest,
-        clean,
-        latest.category,
-        baseVal,
-        latest.modes ? { ...latest.modes } : undefined,
-        latest.description,
-        baseModeId
-      );
-      commitSnapshot(updateTokenInDoc(current, updated));
-    }
+    commitSnapshot(
+      updateTokenInDoc(
+        docRef.current,
+        latest.type === "color"
+          ? writeColorToken(latest, modes, baseModeId, { name: clean })
+          : writeNumberToken(latest, modes, baseModeId, { name: clean })
+      )
+    );
   };
 
   const handleCategoryChange = (token: NumberToken, newCat: NumberTokenCategory) => {
-    const current = docRef.current;
-    const latest = (current.tokens || []).find(
-      (entry): entry is NumberToken => entry.type === "number" && entry.id === token.id
+    const latest = findLatest(token.id);
+    if (!latest || latest.type !== "number") return;
+    commitSnapshot(
+      updateTokenInDoc(
+        docRef.current,
+        writeNumberToken(latest, modes, baseModeId, { category: newCat })
+      )
     );
-    if (!latest) return;
-    const baseVal = getNumberTokenModeValue(latest, baseModeId);
-    const updated = updateNumberTokenWithModes(
-      latest,
-      latest.name,
-      newCat,
-      baseVal,
-      latest.modes ? { ...latest.modes } : undefined,
-      latest.description,
-      baseModeId
-    );
-    commitSnapshot(updateTokenInDoc(current, updated));
   };
 
   const handleStartRenameMode = (mode: DocumentMode) => {
@@ -404,79 +523,38 @@ export function TokensTable({
       }
       return;
     }
-    const current = docRef.current;
-    const latest = (current.tokens || []).find(
-      (entry): entry is ColorToken => entry.type === "color" && entry.id === token.id
-    );
-    if (!latest) return;
+    const latest = findLatest(token.id);
+    if (!latest || latest.type !== "color") return;
 
     const cleanHex = parseColorAlpha(hex).hex6;
-    const baseColor =
+    const patch: ColorTokenPatch =
       modeId === baseModeId
-        ? cleanHex
-        : parseColorAlpha(getColorTokenModeColor(latest, baseModeId)).hex6;
-    const baseOpacity = modeId === baseModeId ? opacity : tokenAlphaPct(latest, baseModeId) / 100;
-
-    const modePatches: Record<string, ColorModePatch | undefined> = {};
-    if (latest.modes) {
-      for (const m of modes) {
-        if (m.id !== baseModeId && latest.modes[m.id]) {
-          modePatches[m.id] = {
-            color: parseColorAlpha(getColorTokenModeColor(latest, m.id)).hex6,
-            opacity: tokenAlphaPct(latest, m.id) / 100
+        ? /* The cell always reports an alpha; an absent one means the typed hex
+             replaced the whole value, so the base mode goes opaque. */
+          { color: cleanHex, opacity: opacity ?? 1 }
+        : {
+            mode: {
+              id: modeId,
+              patch: {
+                color: cleanHex,
+                opacity: opacity !== undefined ? opacity : tokenAlphaPct(latest, modeId) / 100
+              }
+            }
           };
-        }
-      }
-    }
-    if (modeId !== baseModeId) {
-      modePatches[modeId] = {
-        color: cleanHex,
-        opacity: opacity !== undefined ? opacity : tokenAlphaPct(latest, modeId) / 100
-      };
-    }
-
-    const updated = updateColorTokenWithModes(
-      latest,
-      latest.name,
-      baseColor,
-      modePatches,
-      latest.description,
-      baseOpacity,
-      baseModeId
-    );
-    commitSnapshot(updateTokenInDoc(current, updated));
+    commitSnapshot(updateTokenInDoc(docRef.current, writeColorToken(latest, modes, baseModeId, patch)));
   };
 
   const handleResetColorMode = (token: ColorToken, modeId: string) => {
     if (modeId === baseModeId) return;
-    const current = docRef.current;
-    const latest = (current.tokens || []).find(
-      (entry): entry is ColorToken => entry.type === "color" && entry.id === token.id
+    const latest = findLatest(token.id);
+    if (!latest || latest.type !== "color") return;
+    if (!latest.modes || !(modeId in latest.modes)) return;
+    commitSnapshot(
+      updateTokenInDoc(
+        docRef.current,
+        writeColorToken(latest, modes, baseModeId, { mode: { id: modeId } })
+      )
     );
-    if (!latest || !latest.modes || !(modeId in latest.modes)) return;
-
-    const modePatches: Record<string, ColorModePatch | undefined> = {};
-    for (const m of modes) {
-      if (m.id !== baseModeId && m.id !== modeId && latest.modes[m.id]) {
-        modePatches[m.id] = {
-          color: parseColorAlpha(getColorTokenModeColor(latest, m.id)).hex6,
-          opacity: tokenAlphaPct(latest, m.id) / 100
-        };
-      }
-    }
-
-    const baseColor = parseColorAlpha(getColorTokenModeColor(latest, baseModeId)).hex6;
-    const baseOpacity = tokenAlphaPct(latest, baseModeId) / 100;
-    const updated = updateColorTokenWithModes(
-      latest,
-      latest.name,
-      baseColor,
-      modePatches,
-      latest.description,
-      baseOpacity,
-      baseModeId
-    );
-    commitSnapshot(updateTokenInDoc(current, updated));
   };
 
   const handleNumberValueChange = (token: NumberToken, modeId: string, val: number) => {
@@ -486,63 +564,24 @@ export function TokensTable({
       }
       return;
     }
-    const current = docRef.current;
-    const latest = (current.tokens || []).find(
-      (entry): entry is NumberToken => entry.type === "number" && entry.id === token.id
-    );
-    if (!latest) return;
-    const baseVal = modeId === baseModeId ? val : getNumberTokenModeValue(latest, baseModeId);
-
-    const modePatches: Record<string, number | undefined> = {};
-    if (latest.modes) {
-      for (const m of modes) {
-        if (m.id !== baseModeId && latest.modes[m.id] !== undefined) {
-          modePatches[m.id] = getNumberTokenModeValue(latest, m.id);
-        }
-      }
-    }
-    if (modeId !== baseModeId) {
-      modePatches[modeId] = val;
-    }
-
-    const updated = updateNumberTokenWithModes(
-      latest,
-      latest.name,
-      latest.category,
-      baseVal,
-      modePatches,
-      latest.description,
-      baseModeId
-    );
-    commitSnapshot(updateTokenInDoc(current, updated));
+    const latest = findLatest(token.id);
+    if (!latest || latest.type !== "number") return;
+    const patch: NumberTokenPatch =
+      modeId === baseModeId ? { value: val } : { mode: { id: modeId, value: val } };
+    commitSnapshot(updateTokenInDoc(docRef.current, writeNumberToken(latest, modes, baseModeId, patch)));
   };
 
   const handleResetNumberMode = (token: NumberToken, modeId: string) => {
     if (modeId === baseModeId) return;
-    const current = docRef.current;
-    const latest = (current.tokens || []).find(
-      (entry): entry is NumberToken => entry.type === "number" && entry.id === token.id
+    const latest = findLatest(token.id);
+    if (!latest || latest.type !== "number") return;
+    if (!latest.modes || !(modeId in latest.modes)) return;
+    commitSnapshot(
+      updateTokenInDoc(
+        docRef.current,
+        writeNumberToken(latest, modes, baseModeId, { mode: { id: modeId } })
+      )
     );
-    if (!latest || !latest.modes || !(modeId in latest.modes)) return;
-
-    const modePatches: Record<string, number | undefined> = {};
-    for (const m of modes) {
-      if (m.id !== baseModeId && m.id !== modeId && latest.modes[m.id] !== undefined) {
-        modePatches[m.id] = getNumberTokenModeValue(latest, m.id);
-      }
-    }
-
-    const baseVal = getNumberTokenModeValue(latest, baseModeId);
-    const updated = updateNumberTokenWithModes(
-      latest,
-      latest.name,
-      latest.category,
-      baseVal,
-      modePatches,
-      latest.description,
-      baseModeId
-    );
-    commitSnapshot(updateTokenInDoc(current, updated));
   };
 
   const handleDeleteToken = (tokenId: string) => {
@@ -607,92 +646,31 @@ export function TokensTable({
                 style={{ width: `${nameColW}px`, minWidth: `${nameColW}px` }}
               >
                 <span>{t("tokens.columnName")}</span>
-                <div
-                  role="separator"
-                  aria-orientation="vertical"
-                  onPointerDown={(e) => startColResize("name", e)}
-                  className="absolute top-0 -right-1.5 w-3 h-full cursor-col-resize z-20 group/resize flex justify-center items-center"
-                  aria-hidden="true"
-                >
-                  <div
-                    className={`w-[2px] h-full transition-colors ${
-                      resizingColKey === "name" ? "bg-brand" : "group-hover/resize:bg-brand/70"
-                    }`}
-                  />
-                </div>
+                <ColumnResizer
+                  colKey="name"
+                  active={resizingColKey === "name"}
+                  onStart={startColResize}
+                />
               </th>
-              {modes.map((mode) => {
-                const modeW = modeColW(mode.id);
-                const isEditingThisMode = editingModeId === mode.id;
-
-                return (
-                  <th
-                    key={mode.id}
-                    className="px-3 py-2 shrink-0 group/col relative border-l border-rule"
-                    style={{ width: `${modeW}px`, minWidth: `${modeW}px` }}
-                  >
-                    <div className="flex items-center justify-between gap-1.5 min-w-0 pr-1">
-                      {isEditingThisMode ? (
-                        <input
-                          ref={editModeInputRef}
-                          name="token-mode-name"
-                          value={editingModeName}
-                          onInput={(e) => setEditingModeName((e.currentTarget as HTMLInputElement).value)}
-                          onBlur={() => handleCommitRenameMode(mode.id)}
-                          onKeyDown={(e) => {
-                            if (e.isComposing || (e as any).keyCode === 229) return;
-                            if (e.key === "Enter") handleCommitRenameMode(mode.id);
-                            if (e.key === "Escape") setEditingModeId(null);
-                          }}
-                          className="w-full bg-inset rounded-swatch px-1 text-ui text-ink focus:outline-none ring-1 ring-brand"
-                        />
-                      ) : singleMode ? (
-                        // One mode is not a choice, so the column is titled by
-                        // what it holds. Renaming it would name a switch nobody
-                        // can flip.
-                        <span className="truncate" title={t("tokens.columnValue")}>
-                          {t("tokens.columnValue")}
-                        </span>
-                      ) : (
-                        <span
-                          onDblClick={() => handleStartRenameMode(mode)}
-                          className="truncate cursor-text hover:text-ink transition-colors"
-                          title={mode.name}
-                        >
-                          {mode.name}
-                        </span>
-                      )}
-                      {modes.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteMode(mode.id);
-                          }}
-                          className="opacity-0 group-hover/col:opacity-100 p-0.5 rounded-ctl text-ink-muted hover:text-measure-coral transition-opacity shrink-0"
-                          title={t("tokens.deleteMode")}
-                          aria-label={t("tokens.deleteMode")}
-                        >
-                          <Trash2 size={11} />
-                        </button>
-                      )}
-                    </div>
-                    <div
-                      role="separator"
-                      aria-orientation="vertical"
-                      onPointerDown={(e) => startColResize(mode.id, e)}
-                      className="absolute top-0 -right-1.5 w-3 h-full cursor-col-resize z-20 group/resize flex justify-center items-center"
-                      aria-hidden="true"
-                    >
-                      <div
-                        className={`w-[2px] h-full transition-colors ${
-                          resizingColKey === mode.id ? "bg-brand" : "group-hover/resize:bg-brand/70"
-                        }`}
-                      />
-                    </div>
-                  </th>
-                );
-              })}
+              {modes.map((mode) => (
+                <ModeHeaderCell
+                  key={mode.id}
+                  mode={mode}
+                  width={modeColW(mode.id)}
+                  singleMode={singleMode}
+                  showDelete={modes.length > 1}
+                  editing={editingModeId === mode.id}
+                  editingName={editingModeName}
+                  inputRef={editModeInputRef}
+                  resizing={resizingColKey === mode.id}
+                  onStartResize={startColResize}
+                  onStartRename={handleStartRenameMode}
+                  onChangeName={setEditingModeName}
+                  onCommitName={() => handleCommitRenameMode(mode.id)}
+                  onCancelRename={() => setEditingModeId(null)}
+                  onDelete={() => handleDeleteMode(mode.id)}
+                />
+              ))}
               {/* Placeholder column with New mode button */}
               <th className="px-3 py-1.5 shrink-0 min-w-[110px] text-left border-l border-rule">
                 {onAddMode && (
@@ -725,36 +703,15 @@ export function TokensTable({
                 return (
                   <>
                     {isGrouped && (
-                      <tr
+                      <GroupRow
                         key={`group-${group.groupName}`}
-                        className="bg-surface/70 hover:bg-surface transition-colors cursor-pointer"
-                        onClick={() => toggleGroup(group.groupName)}
-                      >
-                        <td colSpan={totalCols} className="px-3 py-1.5">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5 font-medium text-ink">
-                              {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
-                              <span className="text-ui font-medium">{group.groupName}</span>
-                              <span className="text-micro text-ink-muted font-normal">
-                                ({group.items.length})
-                              </span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleCreateTokenInGroup(group.groupName);
-                              }}
-                              className="flex items-center gap-1 px-1.5 py-0.5 rounded-ctl text-micro text-ink-dim hover:text-ink hover:bg-raised transition-colors"
-                              title={t("tokens.addToken")}
-                              aria-label={t("tokens.addToken")}
-                            >
-                              <Plus size={11} />
-                              <span>{t("tokens.addToken")}</span>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
+                        name={group.groupName}
+                        count={group.items.length}
+                        collapsed={isCollapsed}
+                        colSpan={totalCols}
+                        onToggle={() => toggleGroup(group.groupName)}
+                        onAdd={() => handleCreateTokenInGroup(group.groupName)}
+                      />
                     )}
 
                     {!isCollapsed &&
@@ -781,22 +738,7 @@ export function TokensTable({
                                 >
                                   <Trash2 size={12} />
                                 </button>
-                                {token.type === "color" ? (
-                                  <div
-                                    style={PAINT_SWATCH_CHECKER}
-                                    className={`${PAINT_SWATCH_CLASS} shrink-0`}
-                                  >
-                                    <span
-                                      className="block w-full h-full"
-                                      style={{
-                                        backgroundColor: parseColorAlpha(
-                                          getColorTokenModeColor(token, baseModeId)
-                                        ).hex6,
-                                        opacity: tokenAlphaPct(token, baseModeId) / 100
-                                      }}
-                                    />
-                                  </div>
-                                ) : (
+                                {token.type === "number" && (
                                   <div
                                     className="relative group/cat shrink-0 flex items-center justify-center cursor-pointer"
                                     title={`${t("tokens.category")}: ${t(`tokens.categories.${token.category ?? "spacing"}`)}`}

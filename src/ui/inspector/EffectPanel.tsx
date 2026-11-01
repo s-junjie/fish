@@ -13,14 +13,11 @@ import { Button } from "../Button";
 import { PanelHeader } from "../PanelHeader";
 import { effectLabel } from "../EffectRows";
 import { NumberTokenPicker } from "./NumberTokenPicker";
-import { useAnchoredPosition, placementStyle } from "../hooks/useAnchoredPosition";
+import { useAnchoredPosition, placementStyle, sidePanelCompute } from "../hooks/useAnchoredPosition";
 import { useDismiss } from "../hooks/useDismiss";
 import { t } from "../../i18n";
 
 const PANEL_WIDTH = 268;
-const VIEWPORT_MARGIN = 8;
-const ANCHOR_GAP = 10;
-const BOTTOM_MARGIN = 20;
 
 export interface EffectPanelProps {
   effect: Effect;
@@ -66,27 +63,7 @@ export function EffectPanel({
     anchorRef,
     panelRef,
     deps: [anchor, effect.type],
-    compute: (anchorEl, panel) => {
-      const a = anchorEl.getBoundingClientRect();
-      if (a.width === 0 && a.height === 0 && a.top === 0 && a.left === 0) return null;
-      const host = anchorEl.closest("[data-host-popover], [data-style-picker-popover]");
-      const bounds = host ? host.getBoundingClientRect() : a;
-      let left = bounds.left - PANEL_WIDTH - ANCHOR_GAP;
-      if (left < VIEWPORT_MARGIN) {
-        left = Math.min(bounds.right + ANCHOR_GAP, window.innerWidth - PANEL_WIDTH - VIEWPORT_MARGIN);
-      }
-      left = Math.max(VIEWPORT_MARGIN, left);
-
-      const height = panel.offsetHeight || 300;
-      const fitsBelow = a.top + height <= window.innerHeight - BOTTOM_MARGIN;
-      const fitsAbove = a.top - height >= VIEWPORT_MARGIN;
-      const top = fitsBelow
-        ? a.top
-        : fitsAbove
-          ? a.top - height
-          : Math.max(VIEWPORT_MARGIN, window.innerHeight - height - BOTTOM_MARGIN);
-      return { left, top };
-    }
+    compute: sidePanelCompute(PANEL_WIDTH, 300)
   });
 
   useDismiss(true, onClose, panelRef, anchorRef, [

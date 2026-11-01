@@ -58,14 +58,14 @@ These are measurements, not verdicts: each names the DSL way to say "I meant tha
 
 - **align-not-applied** / **vertical-align-not-applied**: the file asks for one alignment and the computed style returns another. This is read from the RAW `#design-doc` block, so it still fires when normalization — not the renderer — is what ate the value. The vertical axis is stored as `vertical-align` and painted as `justify-content` on the line container, so the two are compared through one map (`middle` ↔ `center`, `top` ↔ `flex-start`) rather than literally.
 - **ink-not-centred** / **ink-not-right** / **ink-not-centred-y**: the alignment was applied and the glyphs still miss the box centre / right edge / vertical centre by more than 1px. Legal CSS that produces the wrong frame: a container narrower than the box, a transform that moved the line, tracking the browser reserves but the ink does not fill. The y rule is gated on the file: it fires only when the layer CLAIMED the middle, because a box taller than its line is top-aligned by default and that is a legitimate document.
-- **group-not-centred** (`warning`): a label does not share a centre with the icon beside it. "Beside" is a stated relationship, not a nearest-neighbour search: the two boxes must be on one line, within a gutter of each other horizontally, comparable in height, and not a layer covering half the parent — a full-bleed texture is a sibling of everything and a partner of nothing. When no sibling qualifies, the parent is used instead, and only if it declares `align-items: center`.
+- **group-not-centred** (`warning`): a label does not share a centre with the icon beside it. "Beside" is a stated relationship, not a nearest-neighbour search: the two boxes must be on one line, within a gutter of each other horizontally, comparable in height, and neither a surface the text sits on (an image, a gradient, a blurred or blended layer) nor a layer covering half the parent — a full-bleed texture is a sibling of everything and a partner of nothing. No qualifying sibling means no finding: a row is not an anchor, and a line that belongs in the middle of its own box is `ink-not-centred-y`'s claim, read from the file rather than guessed from a flex line.
 - **no-ink**: the box holds text and paints none of it.
 - A `textPath` has no line box and is reported as skipped, with the reason. Empty text boxes are skipped silently: a spacer is a legitimate box.
 - **The default grade is 1px.** On a poster or a cover that is tighter than the intent — `--audit-tolerance N` grades at N canvas px (0.25–16, scaled to screen px by the measured zoom) when a pixel is not the unit you are working in.
 
 ### Headless Protocol
 - `?view=canvas`: Viewport-uncull artboard render.
-- `?report=1&element=<id>&scale=N`: Emits `<script id="fish-report">` with `repairs`, `validate`, `element` bounds.
+- `?report=1&element=<id>&scale=N`: Emits `<script id="fish-report">` with `repairs`, `validate`, `layout` (the coordinates auto-layout ignored, when any) and `element` bounds.
 - Use `chrome --headless --dump-dom "file://...?report=1"` or `./tools/shot.sh` to read reports.
 - **Never regex-replace `*.fish.html` manually.** Only modify `#design-doc` (and `#fish-assets` when present). The runtime blocks `#fish-rt-css`, `#fish-rt` and inline loader must remain untouched.
 
@@ -89,6 +89,7 @@ FISH documents encapsulate state in a single JSON block:
 - **Variables & Math**: `variables: { "--color": "#FFF" }` resolves `var(--color, fallback)`. Length values support px, bare numbers, `rem` (16px), and constant `calc()` / `min()` / `max()` / `clamp()`.
   This is **authoring-time substitution only** — `var()` is folded into the value on load and creates no style. A reusable, mode-aware value is a design token; see [Design Tokens & Styles](#design-tokens--styles).
 - **Pages**: A page holds its tree in `children`, and that is the only place it lives: `pages: [{ id, name, canvas, children }]` + `activePageId`. A single-page document may instead carry a top-level `elements` array; the reader adopts it into page 1 and never writes it back, so prefer `pages`.
+- **Presentation backdrop**: `canvas.presentBackground: true` paints that canvas `background` behind every slide while presenting, instead of the editor's paper surface. It is a deck setting only — the editing canvas is unchanged. The deck's own **Canvas background** switch writes it, per page.
 - **Relaxed JSON**: Comments (`//`, `/* */`) and trailing commas are accepted on parse. String values containing `</` must escape it as `\u003c/`.
 
 ## Design Tokens & Styles
@@ -212,7 +213,7 @@ FISH reads a fixed subset of CSS. This document names the common surface and the
 
 ### 1. Coordinates & Box Model
 - **Local Coordinate Convention**: Top-level artboards sit at canvas `(x, y)`. All children of `frame` and `component` use **local coordinates relative to parent top-left `(0, 0)`**. Moving a parent never alters child coordinates.
-- **In-Flow Children**: Children inside an auto-layout container (`display: "flex"` or `"grid"`) have their positions computed automatically; authors can set `(0, 0)` or omit `x`/`y`.
+- **In-Flow Children**: Children inside an auto-layout container (`display: "flex"` or `"grid"`) have their positions computed automatically; `x`/`y` are **ignored** unless the child says `position: "absolute"`. Omit them or write `(0, 0)`. Coordinates left on an in-flow child are the one silent mistake this dialect allows — the flow wins, and `fish check` names it: `x/y (16, 14) are ignored by the auto-layout of "capsule" (flex) — the flow places it at (0, 14.5)`.
 - **Absolute Positioning**: `position: "absolute"` takes a child out of auto-layout flow. Requires explicit `x`, `y`, `width`, `height`. Always write `position` (`layoutPosition` and `layoutAlignSelf` / `layoutMargin` / `layoutCell` are pre-rename keys the dialect **refuses** — they are dropped with a repair, not migrated).
 - **Box Sizing**: Always **border-box** (`box-sizing: content-box` is not supported).
 - **Transforms**: write them as CSS — `rotate: "45deg"` (clockwise around the element centre), `scale: "-1 1"` to mirror horizontally / `"1 -1"` vertically, `transform: "rotateX(20deg)"` for the 3D tilt. `perspective` (px, default 800) sets the projection depth. These are baked to bitmap on export.

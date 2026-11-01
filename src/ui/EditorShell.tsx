@@ -1,4 +1,4 @@
-import { DesignDocument, DesignElement, Page, PathElement } from "../core/dsl/types";
+import { DesignDocument, DesignElement, Page, PathElement, updatePageCanvas } from "../core/dsl/types";
 import { useState, useEffect } from "preact/hooks";
 import { collectComponents } from "../core/interactions/component-inventory";
 import type { ViewportBox } from "../core/geometry/cull";
@@ -375,6 +375,7 @@ export function EditorShell(p: EditorShellProps) {
           onActivateAutosave={file.activateAutosave}
           onSave={file.triggerSave}
           onSaveAs={file.triggerSaveAs}
+          onSaveReadOnly={file.triggerSaveAsReadOnly}
           onNewFile={file.triggerNewFile}
           onOpenHistory={file.openHistory}
           onExportJson={documentJson.exportJson}
@@ -745,11 +746,21 @@ export function EditorShell(p: EditorShellProps) {
             index={present.index}
             total={present.total}
             transition={present.transition}
-            allElements={allElements}
+            page={present.page}
+            pages={present.pages}
             docRef={docRef}
             onExit={present.keys.exit}
             onNext={present.keys.next}
             onPrev={present.keys.prev}
+            onSelectPage={present.selectPage}
+            /* The one thing a deck writes: the backdrop it is standing on is a
+               property of the page, and a switch that forgot itself on exit
+               would be a switch nobody would use a second time. Keyed by the
+               PLAYED page, which the deck may have switched away from the
+               active one. */
+            onSetCanvasBackground={(value) =>
+              setDoc((prev) => updatePageCanvas(prev, present.page.id, { presentBackground: value }))
+            }
           />
         )}
 

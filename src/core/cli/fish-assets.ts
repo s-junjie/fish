@@ -2,31 +2,20 @@ import fs from "node:fs";
 import path from "node:path";
 import { compactDocumentJson, documentJson } from "../document-json";
 import { normalizeDesignDocument } from "../dsl/normalize";
-import { parseLenientJson } from "../dsl/lenient-json";
 import { createId } from "../id";
-import { openverseProvider, lucideProvider, remixProvider } from "../plugins";
+import { openverseProvider } from "../../plugins/_shared/assets/openverse-provider";
+import { lucideProvider, remixProvider } from "../../plugins/_shared/assets/iconify-provider";
 import { dataUriBytes, embedImageBytes, embedImageUri, formatBytes } from "./image-embed";
 import type { EmbeddedImage } from "./image-embed";
 import type { AssetRef, DesignDocument, DesignElement, ImagePaint, Paint } from "../dsl/types";
 import { getActivePage, updateActivePageElements } from "../dsl/types";
 import { pageRoots, referencedAssetIds } from "../dsl/asset-usage";
-
-const DOC_BLOCK_RE = /<script\s+id=["']design-doc["'][^>]*>([\s\S]*?)<\/script>/i;
-
-type DocSource = { file: string; html: boolean; text: string; source: string };
+import { DOC_BLOCK_RE, readDocument } from "./doc-source";
+import type { Source } from "./doc-source";
 
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
-function readDocSource(file: string): DocSource | string {
-  if (!fs.existsSync(file)) return `no such file: ${file}`;
-  const source = fs.readFileSync(file, "utf8");
-  if (file.endsWith(".json")) return { file, html: false, text: source, source };
-  const match = DOC_BLOCK_RE.exec(source);
-  if (!match) return `no #design-doc block in ${file} — not a FISH document`;
-  return { file, html: true, text: match[1], source };
-}
-
-function writeDocBack(src: DocSource, doc: DesignDocument, outFile?: string, compact = false): string {
+function writeDocBack(src: Source, doc: DesignDocument, outFile?: string, compact = false): string {
   const json = (compact ? compactDocumentJson(doc) : documentJson(doc)).replace(/<\//g, "\\u003c/");
   const target = outFile ?? src.file;
   const targetIsHtml = target.endsWith(".html");
@@ -43,22 +32,16 @@ function writeDocBack(src: DocSource, doc: DesignDocument, outFile?: string, com
 }
 
 type LoadFailure = { code: number; message: string };
-type LoadedDoc = { src: DocSource; doc: DesignDocument };
+type LoadedDoc = { src: Source; doc: DesignDocument };
 
 function isFailure(result: LoadedDoc | LoadFailure): result is LoadFailure {
   return "code" in result;
 }
 
 function loadDocument(file: string): LoadedDoc | LoadFailure {
-  const src = readDocSource(file);
-  if (typeof src === "string") return { code: 2, message: src };
-  let raw: unknown;
-  try {
-    raw = parseLenientJson(src.text.trim() || "{}");
-  } catch (err) {
-    return { code: 1, message: `${src.file}: the #design-doc block is not valid JSON — ${message(err)}` };
-  }
-  return { src, doc: normalizeDesignDocument(raw).document };
+  const read = readDocument(file);
+  if ("error" in read) return { code: read.code, message: read.error };
+  return { src: read.src, doc: normalizeDesignDocument(read.value).document };
 }
 
 function reportFailure(failure: LoadFailure): number {
@@ -74,18 +57,12 @@ function reportFailure(failure: LoadFailure): number {
  * with the tree in `pages[]` only while keeping `assets` intact.
  */
 export function compactCommand(file: string, opts: { out?: string }): number {
-  const src = readDocSource(file);
-  if (typeof src === "string") {
-    console.error(src);
-    return 2;
+  const read = readDocument(file);
+  if ("error" in read) {
+    console.error(read.error);
+    return read.code;
   }
-  let raw: unknown;
-  try {
-    raw = parseLenientJson(src.text.trim() || "{}");
-  } catch (err) {
-    console.error(`${src.file}: the #design-doc block is not valid JSON — ${message(err)}`);
-    return 1;
-  }
+  const { src, value: raw } = read;
   const { document } = normalizeDesignDocument(raw);
   const compact = compactDocumentJson(document);
 

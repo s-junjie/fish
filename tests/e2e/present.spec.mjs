@@ -121,7 +121,7 @@ check(
 const fitZoom = Math.min(VIEW.width / SLIDE.width, VIEW.height / SLIDE.height);
 await page.mouse.move(VIEW.width / 2, VIEW.height / 2);
 await page.click("[data-testid='present-scale-trigger']");
-await page.getByRole("button", { name: "Fit width and height" }).click();
+await page.getByRole("menuitemradio", { name: "Fit width and height" }).click();
 await idle();
 const fitted = await boxOf("a-top-left");
 check(
@@ -133,7 +133,7 @@ check(
 );
 await page.mouse.move(VIEW.width / 2, VIEW.height / 2);
 await page.click("[data-testid='present-scale-trigger']");
-await page.getByRole("button", { name: "Responsive" }).click();
+await page.getByRole("menuitemradio", { name: "Responsive" }).click();
 await idle();
 check("only the current artboard is on screen", (await boxOf("c-bottom-right")) === null, `c present: ${(await boxOf("c-bottom-right")) !== null}`);
 

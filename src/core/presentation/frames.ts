@@ -1,4 +1,4 @@
-import { DesignDocument, DesignElement, getActivePage } from "../dsl/types";
+import { DesignDocument, DesignElement, Page, getActivePage } from "../dsl/types";
 import { Rect } from "../geometry/bounds";
 import { contentBounds, elementRotatedAABB } from "../geometry/element-bounds";
 import { readingOrder } from "../geometry/reading-order";
@@ -57,16 +57,38 @@ export const PAGE_FRAME_ID = "__page__";
  * A page built without artboards still presents, as itself — one slide holding
  * every visible element on it. An empty page has no slides at all.
  */
-export function presentationFrames(doc: DesignDocument): PresentationFrame[] {
-  const elements = getActivePage(doc).children || [];
+export function presentationFrames(doc: DesignDocument, page?: Page): PresentationFrame[] {
+  // `page` is the override for a host that is showing a page the DOCUMENT is not
+  // on: the phone reader switches pages without committing one, so `activePageId`
+  // still names the page the editor last had open and a deck built from it would
+  // play a different page than the one on screen.
+  const elements = (page ?? getActivePage(doc)).children || [];
   const slides = slideOrder(elements);
   if (slides.length > 0) {
     return slides.map((el) => ({ id: el.id, elements: [el], bounds: elementRotatedAABB(el) }));
   }
 
-  const page = contentBounds(elements);
-  if (!page || page.width <= 0 || page.height <= 0) return [];
-  return [{ id: PAGE_FRAME_ID, elements, bounds: page }];
+  const bounds = contentBounds(elements);
+  if (!bounds || bounds.width <= 0 || bounds.height <= 0) return [];
+  return [{ id: PAGE_FRAME_ID, elements, bounds }];
+}
+
+/**
+ * The pages a deck can be switched to, in document order.
+ *
+ * A page with no slides is left out rather than listed and disabled: a deck's
+ * page menu is a list of destinations, and a page that plays nothing is not one
+ * — picking it would put a blank screen on stage with a counter still counting.
+ *
+ * Read from the STORED geometry, without laying anything out: this runs for every
+ * page each time the deck is opened, and a reflow per page would be a deck that
+ * takes a second to appear. A page whose frames are all zero-area before layout
+ * is therefore not offered — which is the same verdict `presentationFrames`
+ * reaches for it, so the menu and the stage agree about what a slide is.
+ */
+export function presentablePages(doc: DesignDocument): Page[] {
+  const pages = doc.pages && doc.pages.length > 0 ? doc.pages : [getActivePage(doc)];
+  return pages.filter((page) => presentationFrames(doc, page).length > 0);
 }
 
 /**

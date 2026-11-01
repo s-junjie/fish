@@ -7,7 +7,7 @@ import { SegmentedControl } from "../SegmentedControl";
 import { Select } from "../Select";
 import { Button } from "../Button";
 import { PanelHeader } from "../PanelHeader";
-import { useAnchoredPosition, placementStyle } from "../hooks/useAnchoredPosition";
+import { useAnchoredPosition, placementStyle, sidePanelCompute } from "../hooks/useAnchoredPosition";
 import { useDismiss } from "../hooks/useDismiss";
 import { setPickerOpen } from "../hooks/picker-focus";
 import { t } from "../../i18n";
@@ -15,9 +15,6 @@ import { SUB_LABEL_CLASS } from "../label-tier";
 import { ROW_SPREAD_CLASS } from "../row-style";
 
 const PANEL_WIDTH = 240;
-const VIEWPORT_MARGIN = 8;
-const ANCHOR_GAP = 10;
-const BOTTOM_MARGIN = 20;
 
 export interface StrokePanelProps {
   stroke: Stroke;
@@ -48,27 +45,7 @@ export function StrokePanel({
     anchorRef,
     panelRef,
     deps: [anchor, stroke.side, stroke.align],
-    compute: (anchorEl, panel) => {
-      const a = anchorEl.getBoundingClientRect();
-      if (a.width === 0 && a.height === 0 && a.top === 0 && a.left === 0) return null;
-      const host = anchorEl.closest("[data-host-popover], [data-style-picker-popover]");
-      const bounds = host ? host.getBoundingClientRect() : a;
-      let left = bounds.left - PANEL_WIDTH - ANCHOR_GAP;
-      if (left < VIEWPORT_MARGIN) {
-        left = Math.min(bounds.right + ANCHOR_GAP, window.innerWidth - PANEL_WIDTH - VIEWPORT_MARGIN);
-      }
-      left = Math.max(VIEWPORT_MARGIN, left);
-
-      const height = panel.offsetHeight || 300;
-      const fitsBelow = a.top + height <= window.innerHeight - BOTTOM_MARGIN;
-      const fitsAbove = a.top - height >= VIEWPORT_MARGIN;
-      const top = fitsBelow
-        ? a.top
-        : fitsAbove
-          ? a.top - height
-          : Math.max(VIEWPORT_MARGIN, window.innerHeight - height - BOTTOM_MARGIN);
-      return { left, top };
-    }
+    compute: sidePanelCompute(PANEL_WIDTH, 300)
   });
 
   useDismiss(true, onClose, panelRef, anchorRef);

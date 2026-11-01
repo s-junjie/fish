@@ -167,6 +167,9 @@ export default defineConfig({
   },
   build: {
     target: "es2020",
+    // Nothing to preload: every chunk is inlined, so the polyfill Vite prepends
+    // would only ever observe an empty `<link rel=modulepreload>` list.
+    modulePreload: false,
     // terser over esbuild: ~7 KB smaller on this bundle. `drop_console` must stay
     // off — `main.tsx` reports document validation through console.warn/error.
     minify: "terser",

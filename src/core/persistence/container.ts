@@ -11,6 +11,7 @@ import { computePayloadHash } from "./recovery";
 import { FishCommentsDocument } from "../comments/types";
 import { getActiveComments, parseCommentsBlock } from "../comments/comments-bridge";
 import { readFileIdFromShell } from "./file-identity";
+import { stampFilePolicy } from "./file-policy";
 import { getFileName } from "./file-paths";
 
 export const DOC_BLOCK_RE = /<script\s+id=["']design-doc["'][^>]*>([\s\S]*?)<\/script>/i;
@@ -173,7 +174,7 @@ export function isSafePreviewHtml(html: string): boolean {
 export function serializeSelf(
   doc: DesignDocument,
   templateHtml?: string,
-  opts?: { freshFileId?: boolean; title?: string; comments?: FishCommentsDocument }
+  opts?: { freshFileId?: boolean; title?: string; comments?: FishCommentsDocument; readOnly?: boolean }
 ): string {
   // `toDocumentText` folds the live mirror into its page *before* normalizing.
   // Order matters: normalizing first would read the page record — which is the
@@ -243,6 +244,11 @@ export function serializeSelf(
   // and an update transplants a shell whose title is the release's, so the title
   // is derived from the target here rather than read off the page.
   const title = opts?.title ?? documentTitleFor(getFileName(), doc.name);
+
+  // The file's policy, stamped on every write rather than carried over: a save
+  // from the editor is a statement that this file is editable, and a shell that
+  // kept a stale flag could not make that statement.
+  resultHtml = stampFilePolicy(resultHtml, opts?.readOnly === true);
 
   // Remove any existing preview blocks so they never accumulate on re-saves.
   resultHtml = stripCoverBlock(resultHtml);

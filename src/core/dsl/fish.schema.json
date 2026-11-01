@@ -53,6 +53,10 @@
         "background": {
           "$ref": "#/definitions/Paint"
         },
+        "presentBackground": {
+          "type": "boolean",
+          "description": "Presentation paints `background` behind every slide instead of the editor's paper surface."
+        },
         "unit": {
           "type": "string",
           "enum": [
@@ -226,6 +230,10 @@
             },
             "background": {
               "$ref": "#/definitions/Paint"
+            },
+            "presentBackground": {
+              "type": "boolean",
+              "description": "Presentation paints `background` behind every slide instead of the editor's paper surface."
             },
             "unit": {
               "type": "string",

@@ -35,6 +35,9 @@ FISH packages the entire application runtime, stylesheets, icons, and document d
 - **Dialect Version**: `DesignDocument.version` represents the document dialect, single-sourced from `src/core/dsl/versions.json`.
 - **Pre-Release Invariant**: Pre-release dialect (`0.1`) is edited in place; all readers, writers, and schemas update in sync without migration overhead.
 - **Post-Release Migration**: No migration scaffold exists while the dialect is pre-release. When a second dialect ships, add explicit version steps at that point. Unrecognized dialect versions preserve their raw label while reading through the latest schema.
+- **The kit does not read forward** (`src/core/cli/doc-source.ts`): the app may open a document it does not know, because the person in front of it can see that it painted differently. `tools/fish` has no such observer — `check` would grade it against a schema it does not speak and `apply` would write it back — so a dialect mismatch is refused, in both directions, before the document is parsed. Nothing is a warning here: a dialect does not migrate, so there is no reading of it that is merely approximate.
+- **The kit checks that it is one release** (`src/core/cli/kit-identity.ts`): an installed skill is never refreshed by the app it drives — not by an update, not by `reshell` — so `tools/fish` compares `SKILL.md`'s frontmatter with its own build before running, and refuses when two releases share a directory. Both numbers are rendered by `npm run build` from `package.json` and `versions.json`; never type them into prose.
+- **The kit asks its origin once a day** (`src/core/cli/kit-update.ts`): the CLI's only network call, cached in the temp directory — a negative answer included, so an offline machine pays one timeout a day rather than one per command — and off entirely for a build with no origin or with `FISH_NO_UPDATE_CHECK`. It reads a version out of `stable/manifest.json` without verifying the signature, which is why the result can only ever be a warning; the bytes that get installed are pinned by the digest on the HTTPS page. `fish --version --check` is the manual form.
 
 ---
 
@@ -102,6 +105,21 @@ fish/
   - `backdrop-blur` and `liquid-glass` compile into HTML elements with CSS `backdrop-filter` inside `<foreignObject>`, clipped to the element path.
 - **Export Engine**: `core/export.ts` clones the SVG canvas, strips workbench chrome, resolves backdrop rasters via staged off-screen passes, and serializes to standalone SVG or PNG.
 
+### 3.5 Document Hosts (Three Shells, One Stage)
+
+`DocumentStage` — `<defs>` plus the element tree, and nothing else — is mounted by three shells. Which one a load uses is decided **once**, in `ui/viewer/viewer-mode.ts`:
+
+| Shell | Entered by | What it adds |
+|---|---|---|
+| `EditorShell` | default | Layer panel, inspector, dock, selection, every editing overlay |
+| `ViewerShell` | `pointer: coarse` **and** width ≤ 820, or `?view=viewer` | Touch camera (pan / pinch / double-tap), page menu, zoom pill |
+| `CanvasOnlyView` | `?view=canvas` | Nothing — the artwork at 1:1, for screenshots and embeds |
+
+- **The mode is read once per load.** Both shells mount different hook trees, so swapping one for the other at runtime would change how many hooks run in one component instance; `?view=editor` is a reload, and it is the only way back from the reader.
+- **The reader is read-only by construction.** It never writes the document, and a page switch does not go through `usePageManagement` — that persists a viewport into page metadata and marks the file dirty, which would turn "just looking" into an autosave prompt. A page that was never laid out is reflowed into a memo instead.
+- **The camera is pure** (`ui/viewer/viewer-camera.ts`): a fit never magnifies past 1:1, a pinch anchors the world point under its midpoint, and a pan cannot carry the board off screen.
+- **The backdrop rule still applies.** A page with both a backdrop blur and a blend mode takes the `<g>`-attribute transform, exactly as the editor does (see LESSONS #166); only *where* the transform lands differs.
+
 ---
 
 ## 4. Performance & Frame Budget
@@ -129,9 +147,10 @@ Token values live in `tailwind.tokens.js` and are emitted as `--fish-*` CSS cust
 
 All user-facing UI labels are strictly retrieved via `t("scope.key")` through `src/i18n/`.
 - `src/i18n/en.ts` is the authored, nested dictionary; `src/i18n/index.ts` is the runtime.
-- `scripts/vite-plugin-i18n-index.ts` flattens the dictionary into one front-coded key string plus a value array, and rewrites literal `t("scope.key")` calls to `t(slot)`. Only dynamic keys (`t(REFUSAL[key])`) still travel as strings, resolved lazily against the same table.
-- Dev, tests and builds all read the same virtual table, so a key resolves identically in every mode.
-- A locale only supplies the keys it translates; an omitted key keeps its English string. An unknown key still returns its path so a missing entry stays visible.
+- `scripts/vite-plugin-i18n-index.ts` flattens the dictionary into a value array plus a front-coded map of the keys a call site can only name at runtime, and rewrites `t("scope.key")` — including both branches of `t(cond ? "a" : "b")` — to `t(slot)`. A key reached through a built path (`t(`mask.${m}`)`) or through a table (`t(item.labelKey)`) stays a string and resolves lazily through that map.
+- Only those runtime keys are mapped. `scanI18n` reads `src` and keeps a key when a `t()` argument names it, when it survives as a literal anywhere (a table a variable is read out of), or when a template or `"scope."` concatenation head can land on it. `serve` keeps every key, because nothing is rewritten there.
+- A key no call site can reach is an entry to delete from `en.ts`, not a slot to ship: `tests/i18n-table.test.ts` fails on one.
+- A locale only supplies the keys it translates; an omitted key keeps its English string. An unknown key still returns its path so a missing entry stays visible. The value array is in slot order; the nested-object form of `registerLanguage` can only cover the keys the shipped map kept, so a real translation ships as an array.
 - Messages may use a compact ICU subset: `{arg}`, `{arg, plural, …}`, `{arg, select, …}`, `{arg, selectordinal, …}`, nested choices, exact `=N` plural cases and `#` for the count. `src/i18n/format.ts` parses such a message once and caches it; plain `{arg}` messages keep the single-regex path. Plural and ordinal categories come from `Intl.PluralRules` for the active locale, falling back to English.
 - Dictionaries are structured key-value modules.
 - New languages can be added by declaring a new locale module without altering UI components.

@@ -17,6 +17,7 @@ export interface EditablePath {
 }
 
 const EPS = 1e-6;
+const SEPARATORS = " \t\r\n\f,";
 
 interface Token {
   cmd: string;
@@ -30,7 +31,7 @@ function tokenize(d: string): Token[] | null {
   let current: Token | null = null;
 
   const skipSep = () => {
-    while (i < len && (d[i] === " " || d[i] === ",")) i++;
+    while (i < len && SEPARATORS.includes(d[i])) i++;
   };
   const readNum = (): number | null => {
     skipSep();
@@ -454,8 +455,42 @@ export function moveAnchor(path: EditablePath, anchorIdx: number, newX: number, 
   return { ...path, anchors: newAnchors, segments: newSegments };
 }
 
+/** Roots of the derivative of one axis of a cubic Bézier: `a·t² + b·t + c`. */
+function cubicExtrema(p0: number, p1: number, p2: number, p3: number, out: number[]): void {
+  const a = -p0 + 3 * p1 - 3 * p2 + p3;
+  const b = 2 * (p0 - 2 * p1 + p2);
+  const c = p1 - p0;
+  if (Math.abs(a) < EPS) {
+    if (Math.abs(b) > EPS) out.push(-c / b);
+    return;
+  }
+  const disc = b * b - 4 * a * c;
+  if (disc < 0) return;
+  const root = Math.sqrt(disc);
+  out.push((-b + root) / (2 * a), (-b - root) / (2 * a));
+}
+
+const quadExtremum = (p0: number, c: number, p1: number): number => (p0 - c) / (p0 - 2 * c + p1);
+
+const quadAt = (p0: Pt, c: Pt, p1: Pt, t: number): Pt => {
+  const u = 1 - t;
+  return { x: u * u * p0.x + 2 * u * t * c.x + t * t * p1.x, y: u * u * p0.y + 2 * u * t * c.y + t * t * p1.y };
+};
+
+const cubicAt = (p0: Pt, c1: Pt, c2: Pt, p1: Pt, t: number): Pt => {
+  const u = 1 - t;
+  const a = u * u * u;
+  const b = 3 * u * u * t;
+  const c = 3 * u * t * t;
+  const d = t * t * t;
+  return { x: a * p0.x + b * c1.x + c * c2.x + d * p1.x, y: a * p0.y + b * c1.y + c * c2.y + d * p1.y };
+};
+
 /**
- * Computes min/max bounds of all points and control handles.
+ * The box the drawn geometry occupies — anchors plus the true turning points,
+ * not the control handles. A handle can sit far outside the curve it steers
+ * (shallow arcs are the worst case), so including them reports a box the ink
+ * never reaches.
  */
 export function computePathBounds(path: EditablePath): { minX: number; minY: number; maxX: number; maxY: number } {
   if (path.anchors.length === 0) {
@@ -474,14 +509,26 @@ export function computePathBounds(path: EditablePath): { minX: number; minY: num
   };
 
   path.anchors.forEach(update);
-  path.segments.forEach((s) => {
-    if (s.kind === "cubic") {
-      update(s.ca);
-      update(s.cb);
-    } else if (s.kind === "quad") {
-      update(s.c);
+  for (const s of path.segments) {
+    const a = path.anchors[s.a];
+    const b = path.anchors[s.b];
+    if (!a || !b) continue;
+    if (s.kind === "line") {
+      update(b);
+      continue;
     }
-  });
+    const candidates: number[] = [];
+    if (s.kind === "quad") {
+      candidates.push(quadExtremum(a.x, s.c.x, b.x), quadExtremum(a.y, s.c.y, b.y));
+    } else {
+      cubicExtrema(a.x, s.ca.x, s.cb.x, b.x, candidates);
+      cubicExtrema(a.y, s.ca.y, s.cb.y, b.y, candidates);
+    }
+    for (const t of candidates) {
+      if (!(t > 0 && t < 1)) continue;
+      update(s.kind === "quad" ? quadAt(a, s.c, b, t) : cubicAt(a, s.ca, s.cb, b, t));
+    }
+  }
 
   return { minX, minY, maxX, maxY };
 }

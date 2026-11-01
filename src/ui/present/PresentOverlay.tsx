@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "preact/hooks";
-import { DesignDocument, DesignElement } from "../../core/dsl/types";
+import { DesignDocument, DesignElement, Page } from "../../core/dsl/types";
+import { DEFAULT_CANVAS_BACKGROUND } from "../../core/dsl/defaults";
 import { PresentationFrame } from "../../core/presentation/frames";
 import { DocumentStage } from "../canvas/DocumentStage";
 import { useElementSize } from "../hooks/useElementSize";
@@ -8,16 +9,19 @@ import { useDismiss } from "../hooks/useDismiss";
 import { useWindowKeydown } from "../hooks/useWindowKeydown";
 import { t } from "../../i18n";
 import { PresentScaleMode, calculatePresentFit } from "./presentScale";
-import { PresentTransition } from "./usePresentation";
+import { PresentPageEntry, PresentTransition } from "./usePresentation";
 import { matchSlides } from "../../core/presentation/morph";
 import { morphSlide, slidePaint } from "../../core/presentation/animate";
 import { flattenElements } from "../../core/geometry/tree-ops";
-import { MENU_SURFACE_CLASS } from "../menu-style";
+import { MENU_ITEM_CLASS, MENU_ITEM_ON_CLASS, MENU_SEPARATOR_CLASS, MENU_SURFACE_CLASS } from "../menu-style";
+import { LEADER_RULE_CLASS } from "../inspector/SectionHeader";
+import { ScaleModeIcon } from "../scale-icons";
 import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
   Check,
+  File,
   Maximize,
   Minimize,
   X
@@ -28,53 +32,81 @@ interface PresentOverlayProps {
   index: number;
   total: number;
   transition: PresentTransition;
-  allElements: DesignElement[];
+  /** The page being played — a deck can switch pages without committing one. */
+  page: Page;
+  /** The pages the deck can switch to, in document order. */
+  pages: PresentPageEntry[];
   docRef: { current: DesignDocument };
   onExit: () => void;
   onNext: () => void;
   onPrev: () => void;
+  onSelectPage: (pageId: string) => void;
+  /**
+   * This session's answer for the played page, when the host keeps one instead
+   * of writing the document. `undefined` reads the page's own `presentBackground`
+   * — the editor's case, where the menu row is the setting itself.
+   */
+  canvasBackground?: boolean;
+  /**
+   * Writes `canvas.presentBackground` for the page being played, and absent in a
+   * host that may not write the document: the row is then not rendered at all
+   * rather than rendered dead.
+   */
+  onSetCanvasBackground?: (value: boolean) => void;
 }
 
 const WHEEL_COOLDOWN_MS = 350;
 const AUTO_HIDE_DELAY_MS = 2500;
 
-function ScaleModeIcon({ mode }: { mode: PresentScaleMode }) {
+/** The share of the width that reads as "back" when the slide is clicked. */
+const BACK_ZONE = 0.3;
+
+/** The mode's name — the trigger's label, a row's label, and its aria-label. */
+function scaleLabel(mode: PresentScaleMode): string {
   switch (mode) {
     case "actual":
-      return (
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="shrink-0">
-          <rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" strokeWidth="1.3" />
-          <text x="8" y="10" textAnchor="middle" fontSize="6.5" fontWeight="700" fill="currentColor" fontFamily="monospace">1:1</text>
-        </svg>
-      );
+      return t("present.actualSize");
     case "responsive":
-      return (
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="shrink-0">
-          <rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" strokeWidth="1.3" />
-          <path d="M5 6 L3.5 8 L5 10 M11 6 L12.5 8 L11 10 M8 4.5 L8 11.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      );
+      return t("present.responsive");
     case "fit-width":
-      return (
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="shrink-0">
-          <rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" strokeWidth="1.3" />
-          <path d="M5.5 6 L3.5 8 L5.5 10 M10.5 6 L12.5 8 L10.5 10 M3.5 8 L12.5 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      );
+      return t("present.fitWidth");
     case "fit":
-      return (
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="shrink-0">
-          <rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" strokeWidth="1.3" />
-          <path d="M6 8 L10 8 M8 6 L8 10 M5 8 L3.5 8 M12.5 8 L11 8 M8 5 L8 3.5 M8 12.5 L8 11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      );
+      return t("present.fitWidthAndHeight");
     case "fill":
-      return (
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="shrink-0">
-          <path d="M2.5 6 L2.5 3.5 C2.5 2.95 2.95 2.5 3.5 2.5 L6 2.5 M10 2.5 L12.5 2.5 C13.05 2.5 13.5 2.95 13.5 3.5 L13.5 6 M13.5 10 L13.5 12.5 C13.5 13.05 13.05 13.5 12.5 13.5 L10 13.5 M6 13.5 L3.5 13.5 C2.95 13.5 2.5 13.05 2.5 12.5 L2.5 10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      );
+      return t("present.fillScreen");
   }
+}
+
+/**
+ * One row of the deck's menu: the mark, the glyph, the label — the same
+ * three-column row the page menu draws, because there is one menu (DESIGN.md
+ * §The one menu), not one per control.
+ */
+function ScaleRow({
+  mode,
+  active,
+  onSelect
+}: {
+  mode: PresentScaleMode;
+  active: PresentScaleMode;
+  onSelect: (mode: PresentScaleMode) => void;
+}) {
+  const on = mode === active;
+  return (
+    <button
+      type="button"
+      role="menuitemradio"
+      aria-checked={on}
+      className={`${MENU_ITEM_CLASS} ${on ? MENU_ITEM_ON_CLASS : ""}`.trim()}
+      onClick={() => onSelect(mode)}
+    >
+      <span className="flex w-3.5 shrink-0 justify-center">
+        {on && <Check size={13} className="text-brand group-hover:text-brand-ink" />}
+      </span>
+      <ScaleModeIcon mode={mode} />
+      <span className="min-w-0 flex-1">{scaleLabel(mode)}</span>
+    </button>
+  );
 }
 
 export function PresentOverlay({
@@ -82,31 +114,58 @@ export function PresentOverlay({
   index,
   total,
   transition,
-  allElements,
+  page,
+  pages,
   docRef,
   onExit,
   onNext,
-  onPrev
+  onPrev,
+  onSelectPage,
+  canvasBackground,
+  onSetCanvasBackground
 }: PresentOverlayProps) {
   const screenRef = useRef<HTMLDivElement>(null);
   const scaleButtonRef = useRef<HTMLButtonElement>(null);
   const scaleMenuRef = useRef<HTMLDivElement>(null);
+  const pageButtonRef = useRef<HTMLButtonElement>(null);
+  const pageMenuRef = useRef<HTMLDivElement>(null);
   const lastWheelRef = useRef(0);
   const hideTimerRef = useRef<number | null>(null);
   const size = useElementSize(screenRef);
 
   const [scaleMode, setScaleMode] = useState<PresentScaleMode>("responsive");
   const [scaleMenuOpen, setScaleMenuOpen] = useState(false);
+  const [pageMenuOpen, setPageMenuOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement));
   const [uiVisible, setUiVisible] = useState(true);
   const [scrollY, setScrollY] = useState(0);
+
+  // Read once: the deck is mounted and unmounted per presentation, and a
+  // pointer type cannot change inside one.
+  const [touch] = useState(
+    () => typeof window !== "undefined" && typeof window.matchMedia === "function"
+      ? window.matchMedia("(pointer: coarse)").matches
+      : false
+  );
 
   // Reset vertical scroll to top whenever slide changes
   useEffect(() => {
     setScrollY(0);
   }, [index, frame?.id]);
 
+  /**
+   * The elements the PLAYED page paints, flattened.
+   *
+   * Derived here rather than handed in by the host: a deck can switch pages, and
+   * the host's flat list is its own page's — a stage painting one page's slide
+   * out of another page's list is exactly the pairing `<defs>` cannot survive.
+   * `defs` itself stays document-wide (`CanvasDefs` walks `docRef`), so an
+   * instance whose master lives elsewhere still resolves.
+   */
+  const pageElements = useMemo(() => flattenElements(page.children ?? []), [page]);
+
   useDismiss(scaleMenuOpen, () => setScaleMenuOpen(false), scaleMenuRef, scaleButtonRef);
+  useDismiss(pageMenuOpen, () => setPageMenuOpen(false), pageMenuRef, pageButtonRef);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -122,12 +181,15 @@ export function PresentOverlay({
       window.clearTimeout(hideTimerRef.current);
       hideTimerRef.current = null;
     }
-    if (!scaleMenuOpen) {
+    // A menu that is open holds the chrome on screen: the pointer may leave the
+    // deck entirely while reading it, and a control that faded under an open menu
+    // takes the menu with it.
+    if (!scaleMenuOpen && !pageMenuOpen) {
       hideTimerRef.current = window.setTimeout(() => {
         setUiVisible(false);
       }, AUTO_HIDE_DELAY_MS);
     }
-  }, [scaleMenuOpen]);
+  }, [scaleMenuOpen, pageMenuOpen]);
 
   useEffect(() => {
     resetAutoHide();
@@ -136,19 +198,31 @@ export function PresentOverlay({
         window.clearTimeout(hideTimerRef.current);
       }
     };
-  }, [resetAutoHide, scaleMenuOpen]);
+  }, [resetAutoHide, scaleMenuOpen, pageMenuOpen]);
+
+  /**
+   * Full screen is a deliberate second press, never a consequence of entering
+   * the deck — on any platform. iPhone Safari has no element fullscreen at all,
+   * which is why the button is not rendered there rather than rendered dead.
+   */
+  const canFullscreen =
+    typeof document !== "undefined" &&
+    typeof document.documentElement.requestFullscreen === "function";
 
   const toggleFullscreen = useCallback(() => {
+    const root = document.documentElement;
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
-    } else {
-      document.exitFullscreen().catch(() => {});
+      const request = root.requestFullscreen?.();
+      if (request && typeof request.catch === "function") request.catch(() => { });
+      return;
     }
+    const exit = document.exitFullscreen?.();
+    if (exit && typeof exit.catch === "function") exit.catch(() => { });
   }, []);
 
   const handleExit = useCallback(() => {
     if (document.fullscreenElement) {
-      document.exitFullscreen().catch(() => {});
+      document.exitFullscreen().catch(() => { });
     }
     onExit();
   }, [onExit]);
@@ -162,13 +236,13 @@ export function PresentOverlay({
     videos.forEach((v) => {
       const vid = v.getAttribute("data-video-id");
       // Find element in frame
-      const el = allElements.find((e) => e.id === vid) as any;
+      const el = pageElements.find((e) => e.id === vid) as any;
       if (el && el.type === "video" && el.autoplay) {
         v.currentTime = 0;
-        v.play().catch(() => {});
+        v.play().catch(() => { });
       }
     });
-  }, [index, frame, allElements]);
+  }, [index, frame, pageElements]);
 
   // Keyboard shortcut listeners (F for fullscreen, etc.)
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -210,17 +284,17 @@ export function PresentOverlay({
   }, [morphPair, transition.progress]);
 
   const stageAllElements = useMemo(() => {
-    if (!incoming) return allElements;
+    if (!incoming) return pageElements;
     const flatIncoming = flattenElements(incoming);
     const incomingMap = new Map(flatIncoming.map((el) => [el.id, el]));
-    const result = allElements.map((el) => incomingMap.get(el.id) ?? el);
+    const result = pageElements.map((el) => incomingMap.get(el.id) ?? el);
     for (const el of flatIncoming) {
-      if (!allElements.some((e) => e.id === el.id)) {
+      if (!pageElements.some((e) => e.id === el.id)) {
         result.push(el);
       }
     }
     return result;
-  }, [allElements, incoming]);
+  }, [pageElements, incoming]);
 
   const paint = slidePaint(
     resolved?.transition ?? "none",
@@ -234,21 +308,6 @@ export function PresentOverlay({
   const fit = calculatePresentFit(frame?.bounds ?? null, viewport, scaleMode);
   const fitOut = calculatePresentFit(transition.outgoing?.bounds ?? null, viewport, scaleMode);
 
-  const getScaleLabel = (mode: PresentScaleMode) => {
-    switch (mode) {
-      case "actual":
-        return t("present.actualSize");
-      case "responsive":
-        return t("present.responsive");
-      case "fit-width":
-        return t("present.fitWidth");
-      case "fit":
-        return t("present.fitWidthAndHeight");
-      case "fill":
-        return t("present.fillScreen");
-    }
-  };
-
   const selectScale = (mode: PresentScaleMode) => {
     setScaleMode(mode);
     setScaleMenuOpen(false);
@@ -256,28 +315,59 @@ export function PresentOverlay({
 
   const maxScroll = fit && frame ? Math.max(0, frame.bounds.height * fit.zoom - viewport.height) : 0;
 
+  // Under a mouse a deck is driven by the keyboard and these controls are a
+  // reminder; under a thumb they are the whole interface, and 32px is not a
+  // target. Same object, two metrics.
+  const roundBtn = `flex items-center justify-center rounded-full bg-panel/90 text-ink shadow-modal backdrop-blur hover:bg-raised transition-colors ${touch ? "h-11 w-11" : "h-8 w-8"
+    }`;
+
+  /**
+   * The backdrop is the PAGE's own statement, not the viewer's: a deck whose
+   * slides were drawn on a canvas colour is shown on it, and one that never opted
+   * in keeps the paper surface the editor's chrome is tuned to.
+   *
+   * The menu row that writes that field sits in the same menu as the scale
+   * modes, so the deck is the one place the setting is both made and seen —
+   * which is what an inspector checkbox two panels away from the effect could
+   * never be.
+   */
+  const pageCanvas = page.canvas ?? docRef.current.canvas;
+  const canvasColor =
+    pageCanvas?.background?.type === "solid" ? pageCanvas.background.color : DEFAULT_CANVAS_BACKGROUND;
+  const usesCanvasBackground = canvasBackground ?? (pageCanvas?.presentBackground === true);
+  const presentationBg = usesCanvasBackground ? canvasColor : null;
+
   return (
     <div
       data-present-overlay="true"
       role="dialog"
       aria-modal="true"
       aria-label={t("present.title")}
-      className={`fixed inset-0 z-[100] select-none overflow-hidden bg-paper ${
-        uiVisible ? "cursor-default" : "cursor-none"
-      }`}
+      style={presentationBg ? { backgroundColor: presentationBg } : undefined}
+      className={`fixed inset-0 z-[100] select-none overflow-hidden ${presentationBg ? "" : "bg-paper"} ${uiVisible ? "cursor-default" : "cursor-none"
+        }`}
       onMouseMove={resetAutoHide}
       onPointerDown={resetAutoHide}
       onClick={(e: any) => {
         resetAutoHide();
-        if (scaleMenuOpen) {
+        if (scaleMenuOpen || pageMenuOpen) {
           setScaleMenuOpen(false);
+          setPageMenuOpen(false);
           return;
         }
         const target = e.target as HTMLElement | null;
         if (target && target.closest("foreignObject, video, iframe")) {
           return;
         }
-        if (!openLinkFromEvent(e)) onNext();
+        if (openLinkFromEvent(e)) return;
+        // A link still wins in the back zone: it is the only thing on the slide
+        // that promised to do something, and a mis-aimed tap that navigated away
+        // is worse than one that went to the previous slide.
+        if (typeof e.clientX === "number" && e.clientX < window.innerWidth * BACK_ZONE) {
+          onPrev();
+          return;
+        }
+        onNext();
       }}
       onWheel={(e: any) => {
         resetAutoHide();
@@ -301,9 +391,10 @@ export function PresentOverlay({
         {/* The slide being left. Mounting a second `DocumentStage` puts a second
             set of `<defs>` in the document, and every id in them is derived from
             an element id — which is only safe because both are built from the
-            same `allElements` and therefore describe the same things. Give the
+            same `pageElements` and therefore describe the same things. Give the
             two different element lists and a `url(#…)` would start resolving
-            against the other slide's paint. */}
+            against the other slide's paint. A page switch settles the transition
+            first, so the outgoing slide is always one of THIS page's. */}
         {transition.outgoing && fitOut && paint.drawOutgoing && (
           <svg
             data-present-stage="outgoing"
@@ -319,7 +410,7 @@ export function PresentOverlay({
           >
             <DocumentStage
               elements={transition.outgoing.elements}
-              allElements={allElements}
+              allElements={pageElements}
               docRef={docRef}
               zoom={fitOut.zoom}
               viewportBox={null}
@@ -355,9 +446,9 @@ export function PresentOverlay({
         )}
       </div>
 
-      {/* Top Left Controls: Exit Button */}
+      {/* Top Left Controls: Exit, and which page is playing */}
       <div
-        className={`absolute left-4 top-4 z-20 flex items-center transition-opacity duration-base ${
+        className={`absolute left-4 top-4 z-20 flex items-center gap-2 transition-opacity duration-base ${
           uiVisible ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
         }`}
         onClick={(e: MouseEvent) => e.stopPropagation()}
@@ -367,18 +458,72 @@ export function PresentOverlay({
           data-present-exit="true"
           aria-label={t("present.exit")}
           title={`${t("present.exit")} (Esc)`}
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-panel/90 text-ink shadow-modal backdrop-blur hover:bg-raised transition-colors"
+          className={roundBtn}
           onClick={handleExit}
         >
           <X size={14} />
         </button>
+
+        {/* A deck is one page at a time, and this is the door between them: the
+            exit button is the deck's chrome too, so the page it is showing is
+            named beside it rather than left implicit. Absent, not dead, when
+            there is only one page to switch to. */}
+        {pages.length > 1 && (
+          <div className="relative">
+            <button
+              ref={pageButtonRef}
+              type="button"
+              data-testid="present-page-trigger"
+              aria-label={t("present.pages")}
+              aria-expanded={pageMenuOpen}
+              className={`flex items-center gap-1.5 rounded-full bg-panel/90 px-3 text-row font-medium text-ink shadow-modal backdrop-blur hover:bg-raised transition-colors ${
+                touch ? "h-11" : "h-8"
+              }`}
+              onClick={() => setPageMenuOpen((open) => !open)}
+            >
+              <File size={12} className="shrink-0 text-ink-dim" />
+              <span className="max-w-[160px] truncate">{page.name}</span>
+              <ChevronDown size={12} className="shrink-0 text-ink-dim" />
+            </button>
+
+            {pageMenuOpen && (
+              <div
+                ref={pageMenuRef}
+                role="menu"
+                aria-label={t("present.pages")}
+                className={`${MENU_SURFACE_CLASS} absolute left-0 top-full mt-2 max-h-[50vh] w-56 overflow-y-auto py-1.5`}
+              >
+                {pages.map((entry) => {
+                  const on = entry.id === page.id;
+                  return (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={on}
+                      className={`${MENU_ITEM_CLASS} ${on ? MENU_ITEM_ON_CLASS : ""}`.trim()}
+                      onClick={() => {
+                        onSelectPage(entry.id);
+                        setPageMenuOpen(false);
+                      }}
+                    >
+                      <span className="flex w-3.5 shrink-0 justify-center">
+                        {on && <Check size={13} className="text-brand group-hover:text-brand-ink" />}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Top Right Controls: Scale Options, Fullscreen */}
       <div
-        className={`absolute right-4 top-4 z-20 flex items-center gap-2 transition-opacity duration-base ${
-          uiVisible ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-        }`}
+        className={`absolute right-4 top-4 z-20 flex items-center gap-2 transition-opacity duration-base ${uiVisible ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+          }`}
         onClick={(e: MouseEvent) => e.stopPropagation()}
       >
         {/* Scale Mode Picker */}
@@ -387,117 +532,95 @@ export function PresentOverlay({
             ref={scaleButtonRef}
             type="button"
             data-testid="present-scale-trigger"
-            aria-label={getScaleLabel(scaleMode)}
+            aria-label={scaleLabel(scaleMode)}
             aria-expanded={scaleMenuOpen}
-            className="flex h-8 items-center gap-1.5 rounded-full bg-panel/90 px-3 text-row font-medium text-ink shadow-modal backdrop-blur hover:bg-raised transition-colors"
+            className={`flex items-center gap-1.5 rounded-full bg-panel/90 px-3 text-row font-medium text-ink shadow-modal backdrop-blur hover:bg-raised transition-colors ${touch ? "h-11" : "h-8"
+              }`}
             onClick={() => setScaleMenuOpen((open) => !open)}
           >
             <ScaleModeIcon mode={scaleMode} />
-            <span className="max-w-[120px] truncate">{getScaleLabel(scaleMode)}</span>
+            <span className="max-w-[120px] truncate">{scaleLabel(scaleMode)}</span>
             <ChevronDown size={12} className="text-ink-dim shrink-0" />
           </button>
 
           {scaleMenuOpen && (
             <div
               ref={scaleMenuRef}
-              className={`${MENU_SURFACE_CLASS} absolute right-0 top-10 w-56 py-1.5 z-30 shadow-popover`}
+              role="menu"
+              aria-label={t("present.viewOptions")}
+              className={`${MENU_SURFACE_CLASS} absolute right-0 top-full mt-2`}
             >
-              <button
-                type="button"
-                className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-row hover:bg-raised transition-colors ${
-                  scaleMode === "actual" ? "text-brand font-medium" : "text-ink"
-                }`}
-                onClick={() => selectScale("actual")}
-              >
-                <div className="w-3.5 flex items-center justify-center shrink-0">
-                  {scaleMode === "actual" && <Check size={13} className="text-brand" />}
-                </div>
-                <ScaleModeIcon mode="actual" />
-                <span className="flex-1 truncate">{t("present.actualSize")}</span>
-              </button>
+              <ScaleRow mode="actual" active={scaleMode} onSelect={selectScale} />
+              <ScaleRow mode="responsive" active={scaleMode} onSelect={selectScale} />
 
-              <button
-                type="button"
-                className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-row hover:bg-raised transition-colors ${
-                  scaleMode === "responsive" ? "text-brand font-medium" : "text-ink"
-                }`}
-                onClick={() => selectScale("responsive")}
-              >
-                <div className="w-3.5 flex items-center justify-center shrink-0">
-                  {scaleMode === "responsive" && <Check size={13} className="text-brand" />}
-                </div>
-                <ScaleModeIcon mode="responsive" />
-                <span className="flex-1 truncate">{t("present.responsive")}</span>
-              </button>
-
-              <div className="my-1.5 border-t border-rule" />
-              <div className="px-3 py-1 text-micro text-ink-dim uppercase tracking-wider">
-                {t("present.otherScalingOptions")}
+              <div className={MENU_SEPARATOR_CLASS} />
+              {/* A section header, not a sub-label: `micro` carries its own 9px /
+                  0.18em / 600, so the only thing a call site adds is the case. */}
+              <div className="flex items-center gap-2 px-2.5 pb-1 pt-0.5">
+                <span className="text-micro uppercase text-ink-muted">{t("present.otherScalingOptions")}</span>
+                <span aria-hidden="true" className={LEADER_RULE_CLASS} />
               </div>
 
-              <button
-                type="button"
-                className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-row hover:bg-raised transition-colors ${
-                  scaleMode === "fit-width" ? "text-brand font-medium" : "text-ink"
-                }`}
-                onClick={() => selectScale("fit-width")}
-              >
-                <div className="w-3.5 flex items-center justify-center shrink-0">
-                  {scaleMode === "fit-width" && <Check size={13} className="text-brand" />}
-                </div>
-                <ScaleModeIcon mode="fit-width" />
-                <span className="flex-1 truncate">{t("present.fitWidth")}</span>
-              </button>
+              <ScaleRow mode="fit-width" active={scaleMode} onSelect={selectScale} />
+              <ScaleRow mode="fit" active={scaleMode} onSelect={selectScale} />
+              <ScaleRow mode="fill" active={scaleMode} onSelect={selectScale} />
 
-              <button
-                type="button"
-                className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-row hover:bg-raised transition-colors ${
-                  scaleMode === "fit" ? "text-brand font-medium" : "text-ink"
-                }`}
-                onClick={() => selectScale("fit")}
-              >
-                <div className="w-3.5 flex items-center justify-center shrink-0">
-                  {scaleMode === "fit" && <Check size={13} className="text-brand" />}
-                </div>
-                <ScaleModeIcon mode="fit" />
-                <span className="flex-1 truncate">{t("present.fitWidthAndHeight")}</span>
-              </button>
-
-              <button
-                type="button"
-                className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-row hover:bg-raised transition-colors ${
-                  scaleMode === "fill" ? "text-brand font-medium" : "text-ink"
-                }`}
-                onClick={() => selectScale("fill")}
-              >
-                <div className="w-3.5 flex items-center justify-center shrink-0">
-                  {scaleMode === "fill" && <Check size={13} className="text-brand" />}
-                </div>
-                <ScaleModeIcon mode="fill" />
-                <span className="flex-1 truncate">{t("present.fillScreen")}</span>
-              </button>
+              {/* The deck's one setting. It lives here, in the menu that already
+                  owns how the slide meets the screen, rather than as a labelled
+                  pill in the fourth corner: it is set once per deck, and a
+                  permanent control for a once-per-deck decision is chrome the
+                  audience sees on every slide. A host that may not write the
+                  document (the phone reader) omits the whole row rather than
+                  drawing a row that does nothing. */}
+              {onSetCanvasBackground && (
+                <>
+                  <div className={MENU_SEPARATOR_CLASS} />
+                  <button
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={usesCanvasBackground}
+                    data-testid="present-canvas-background"
+                    title={t("present.canvasBackgroundHint")}
+                    className={`${MENU_ITEM_CLASS} ${usesCanvasBackground ? MENU_ITEM_ON_CLASS : ""}`.trim()}
+                    onClick={() => {
+                      onSetCanvasBackground(!usesCanvasBackground);
+                      setScaleMenuOpen(false);
+                    }}
+                  >
+                    {/* A switch, not a mode: no glyph, so the label starts one
+                        column in instead of two. The check's column is kept even
+                        when off — a row whose mark appears and disappears would
+                        shift its own label. */}
+                    <span className="flex w-3.5 shrink-0 justify-center">
+                      {usesCanvasBackground && <Check size={13} className="text-brand group-hover:text-brand-ink" />}
+                    </span>
+                    <span className="min-w-0 flex-1">{t("present.canvasBackground")}</span>
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
 
-        {/* Fullscreen Button */}
-        <button
-          type="button"
-          data-testid="present-fullscreen-toggle"
-          aria-label={isFullscreen ? t("present.exitFullscreen") : t("present.fullscreen")}
-          title={isFullscreen ? `${t("present.exitFullscreen")} (F)` : `${t("present.fullscreen")} (F)`}
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-panel/90 text-ink shadow-modal backdrop-blur hover:bg-raised transition-colors"
-          onClick={toggleFullscreen}
-        >
-          {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
-        </button>
+        {/* Fullscreen Button — absent where the platform has no element fullscreen. */}
+        {canFullscreen && (
+          <button
+            type="button"
+            data-testid="present-fullscreen-toggle"
+            aria-label={isFullscreen ? t("present.exitFullscreen") : t("present.fullscreen")}
+            title={isFullscreen ? `${t("present.exitFullscreen")} (F)` : `${t("present.fullscreen")} (F)`}
+            className={roundBtn}
+            onClick={toggleFullscreen}
+          >
+            {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
+          </button>
+        )}
       </div>
 
       {/* Streamlined Bottom Right HUD: [<] 1 / 2 [>] */}
       <div
-        className={`absolute bottom-5 right-5 z-20 transition-opacity duration-base ${
-          uiVisible ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-        }`}
+        className={`absolute bottom-5 right-5 z-20 transition-opacity duration-base ${uiVisible ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+          }`}
         onClick={(e: MouseEvent) => e.stopPropagation()}
       >
         <div className="flex items-center gap-1.5 rounded-full bg-panel/90 px-2 py-1 shadow-modal backdrop-blur border border-rule/40">
@@ -505,7 +628,8 @@ export function PresentOverlay({
             type="button"
             aria-label={t("present.prev")}
             disabled={index <= 0}
-            className="flex h-6 w-6 items-center justify-center rounded-full text-ink hover:bg-raised disabled:opacity-30 disabled:pointer-events-none transition-colors"
+            className={`flex items-center justify-center rounded-full text-ink hover:bg-raised disabled:opacity-30 disabled:pointer-events-none transition-colors ${touch ? "h-11 w-11" : "h-6 w-6"
+              }`}
             onClick={(e: MouseEvent) => {
               e.stopPropagation();
               onPrev();
@@ -522,7 +646,8 @@ export function PresentOverlay({
             type="button"
             aria-label={t("present.next")}
             disabled={index >= total - 1}
-            className="flex h-6 w-6 items-center justify-center rounded-full text-ink hover:bg-raised disabled:opacity-30 disabled:pointer-events-none transition-colors"
+            className={`flex items-center justify-center rounded-full text-ink hover:bg-raised disabled:opacity-30 disabled:pointer-events-none transition-colors ${touch ? "h-11 w-11" : "h-6 w-6"
+              }`}
             onClick={(e: MouseEvent) => {
               e.stopPropagation();
               onNext();

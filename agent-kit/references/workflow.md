@@ -2,6 +2,8 @@
 
 The DSL itself is in `dsl.md`. This file is how to move: pick a mode, get a document open, edit it, source what it needs, and verify the result.
 
+**If `./tools/fish` exits without running, read the reason before anything else.** A refusal that names two versions, or a document dialect this kit does not speak, means the kit and the file are from different releases: re-install (`SKILL.md` § "Get the kit"). Never retry past it, and never translate the document by hand.
+
 ---
 
 ## 0. Pick a working mode
@@ -19,8 +21,16 @@ Both working modes use the same document and the same CLI. Fast stops at the str
 
 ```bash
 ./tools/fish brief existing.fish.html    # tokens, styles (with binding counts), components, assets, fonts
+./tools/fish inspect <elementId> existing.fish.html   # ONE node: the box it got, its effective style, its parents, its overridable slots
 ./tools/fish compact existing.fish.html  # the document as compact JSON
 ```
+
+`inspect` is the one to reach for before writing by id. It prints the box the layout
+actually produced — with the `x/y` the file wrote beside it when the flow discarded
+them — and, for an instance, the exact `targetId` / `property` pairs its overrides may
+use (`--all` lists every slot, `--json` for a machine). An override that names a node
+outside the master, or a property the node cannot carry, is skipped at paint time;
+`check` reports it, `inspect` shows why.
 
 Reuse what the document already carries. Ask only what neither the document nor the user's prompt can answer.
 
@@ -163,7 +173,7 @@ Use `--strict` to fail on warnings and `--strict-assets` before delivery. When t
 
 **Two renderers, one protocol.** `shot.sh` and `fish export` both drive `chrome --headless`, and neither computes the window size or the crop origin — the page reports them, both callers only pass them through. Choose by what the machine has and what you need back:
 
-- **`shot.sh`** needs bash, coreutils and a browser, and nothing else — it is the path that still works where Node is not installed. It writes `out.report.json` beside the PNG: the normalize repairs, the validate diagnostics, and the box the element actually occupies. On Windows the same tool is `powershell -File ./tools/shot.ps1`; without `-Element` it skips the report pass and writes a canvas-size stub instead, so treat its report as element-scoped.
+- **`shot.sh`** needs bash, coreutils and a browser, and nothing else — it is the path that still works where Node is not installed. It writes `out.report.json` beside the PNG: the normalize repairs, the validate diagnostics, the coordinates auto-layout ignored (when the file states any), and the box the element actually occupies. On Windows the same tool is `powershell -File ./tools/shot.ps1`; without `-Element` it skips the report pass and writes a canvas-size stub instead, so treat its report as element-scoped.
 - **`fish export`** is already in the CLI, writes the PNG alone, and answers with an exit code instead of a report.
 
 Prefer `shot.sh` when you want the diagnostics; prefer `export` when you only want the picture.

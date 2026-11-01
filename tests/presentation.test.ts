@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { presentationFrames, nextSlideOf, PAGE_FRAME_ID, findPresentationSlideIndex } from "../src/core/presentation/frames";
+import { presentationFrames, nextSlideOf, presentablePages, PAGE_FRAME_ID, findPresentationSlideIndex } from "../src/core/presentation/frames";
 import { isBrowserReservedKey } from "../src/ui/present/presentKeys";
 import { fitRect } from "../src/core/geometry/fit";
 import { LATEST_DOCUMENT_VERSION } from "../src/core/dsl/version";
@@ -99,12 +99,64 @@ describe("presentationFrames", () => {
     expect(presentationFrames(doc([]))).toEqual([]);
   });
 
+  it("plays the page it is handed, not the document's active one", () => {
+    // The phone reader switches pages without committing an `activePageId`, so a
+    // deck built from the document alone would play the page the EDITOR last had
+    // open — the one the reader is no longer showing.
+    const twoPages = doc([frame("one", 0, 0, 400, 300)]) as DesignDocument;
+    twoPages.pages.push({
+      id: "page_2",
+      name: "Page 2",
+      canvas: twoPages.pages[0].canvas,
+      children: [frame("two", 0, 0, 400, 300)]
+    });
+    expect(presentationFrames(twoPages).map((f) => f.id)).toEqual(["one"]);
+    expect(presentationFrames(twoPages, twoPages.pages[1]).map((f) => f.id)).toEqual(["two"]);
+  });
+
   it("fits the artboard's own box, not the union of what it holds", () => {
     // A slide is the frame you see; a child painted outside an unclipped frame
     // is not part of the slide.
     const f = frame("f", 100, 200, 300, 150);
     (f as any).children = [rect("escapee", 900, 900, 50, 50)];
     expect(presentationFrames(doc([f]))[0].bounds).toEqual({ x: 100, y: 200, width: 300, height: 150 });
+  });
+});
+
+describe("presentablePages", () => {
+  it("offers every page that has a deck, in document order", () => {
+    const twoPages = doc([frame("one", 0, 0, 400, 300)]) as DesignDocument;
+    twoPages.pages.push({
+      id: "page_2",
+      name: "Page 2",
+      canvas: twoPages.pages[0].canvas,
+      children: [frame("two", 0, 0, 400, 300)]
+    });
+    expect(presentablePages(twoPages).map((p) => p.id)).toEqual(["page_1", "page_2"]);
+  });
+
+  it("leaves out a page whose artboards are all hidden or zero-area", () => {
+    // A deck's page menu is a list of destinations; a page that plays nothing is
+    // a blank screen with a counter still counting it.
+    const deck = doc([frame("a", 0, 0, 400, 300)]) as DesignDocument;
+    deck.pages.push({
+      id: "empty",
+      name: "Empty",
+      canvas: deck.pages[0].canvas,
+      children: []
+    });
+    deck.pages.push({
+      id: "hidden",
+      name: "Hidden",
+      canvas: deck.pages[0].canvas,
+      children: [frame("h", 0, 0, 400, 300, { visible: false })]
+    });
+    expect(presentablePages(deck).map((p) => p.id)).toEqual(["page_1"]);
+  });
+
+  it("counts a page drawn without artboards, which presents as itself", () => {
+    const deck = doc([rect("r", 0, 0, 100, 50)]) as DesignDocument;
+    expect(presentablePages(deck).map((p) => p.id)).toEqual(["page_1"]);
   });
 });
 

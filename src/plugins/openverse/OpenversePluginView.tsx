@@ -1,5 +1,4 @@
 import type { PluginHostContext } from "../../core/plugins/plugin-contract";
-import type { OpenverseLicenseFilter } from "../../core/plugins/openverse-provider";
 import type { AssetSearchResult, AssetInsertPayload } from "../../core/plugins/types";
 import {
   useState,
@@ -7,9 +6,10 @@ import {
   useRef,
   dragPayload,
   getActivePage,
-  openverseProvider,
+  insertRemoteImage,
   updateActivePageElements
 } from "../_host";
+import { openverseProvider, type OpenverseLicenseFilter } from "./provider";
 import { ImageGlyph, SearchGlyph, SpinnerGlyph } from "../_shared/glyphs";
 import { openverseStrings as i18n } from "./i18n";
 
@@ -82,7 +82,7 @@ export function OpenversePluginView({ context }: OpenversePluginViewProps) {
         ? { x: primarySelected.x + primarySelected.width + 16, y: primarySelected.y }
         : { x: 0, y: 0 };
 
-      const { element, asset } = await openverseProvider.insert(item, target);
+      const { element, asset } = await insertRemoteImage(item, target);
       if (!asset) return;
 
       const nextAssets = [...(docRef.current.assets || []), asset];
@@ -181,7 +181,7 @@ export function OpenversePluginView({ context }: OpenversePluginViewProps) {
           <div className="grid grid-cols-2 gap-1.5">
             {results.map((img) => {
               const payload: AssetInsertPayload = {
-                providerId: "openverse",
+                insert: "remote-image",
                 result: img
               };
 

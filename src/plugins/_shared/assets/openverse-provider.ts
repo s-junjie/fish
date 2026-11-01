@@ -1,11 +1,11 @@
-import { insertRemoteImage } from "./remote-image";
+import { insertRemoteImage } from "../../../core/plugins/remote-image";
 import type {
   AssetInsertResult,
   AssetInsertTarget,
   AssetProvider,
   AssetSearchOptions,
   AssetSearchResult
-} from "./types";
+} from "../../../core/plugins/types";
 
 const API = "https://api.openverse.org/v1/images";
 const ATTRIBUTION_HOME = "https://openverse.org";

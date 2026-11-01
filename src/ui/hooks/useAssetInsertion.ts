@@ -9,7 +9,6 @@ import { createInstanceFromComponent } from "../../core/interactions/component-o
 import { findMasterComponent } from "../../core/interactions/component-inventory";
 import { findSwapTargetAtPoint, swapInstanceComponent, swapNestedInstance, swapRefusal } from "../../core/interactions/component-swap";
 import { createImageFillElement } from "../../core/dsl/image-fill";
-import { OFFICIAL_PROVIDERS } from "../../core/plugins";
 import { insertRemoteImage } from "../../core/plugins/remote-image";
 import { t } from "../../i18n";
 import type { AssetInsertPayload, AssetInsertResult } from "../../core/plugins/types";
@@ -205,14 +204,13 @@ export function useAssetInsertion({
         select(new Set([instance.id]));
         return;
       }
-      const provider =
-        payload.providerId && payload.result
-          ? OFFICIAL_PROVIDERS.find((p) => p.id === payload.providerId)
-          : undefined;
-      if (provider && payload.result) {
-        // Built at the origin and moved after: the provider decides the box (it
-        // probes the file for it), so only its answer can centre the element.
-        result = await provider.insert(payload.result, { x: 0, y: 0 });
+      if (payload.insert === "element" && payload.element) {
+        result = {
+          element: {
+            ...payload.element,
+            id: createId(payload.element.type)
+          }
+        };
       } else if (payload.insert === "remote-image" && payload.result) {
         // A plugin-owned source is not in the host registry; the generic path
         // is the same probe-and-link insert every remote photo provider uses.

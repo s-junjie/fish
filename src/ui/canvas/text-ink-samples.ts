@@ -16,9 +16,10 @@ import type { DesignDocument, DesignElement } from "../../core/dsl/types";
 import { getActivePage } from "../../core/dsl/types";
 import {
   authoredAlignmentOf,
-  isGroupAnchor,
+  pickGroupAnchor,
   unionInkRects,
   type AuditTolerance,
+  type GroupCandidate,
   type Rect,
   type TextInkSample
 } from "../../core/audit/text-ink";
@@ -71,21 +72,21 @@ function nodeOf(id: string): SVGGElement | null {
 }
 
 /**
- * The nearest painted sibling that is actually a PAIR with this one — the icon a
- * label is supposed to line up with.
+ * Every sibling that could be the pair, with what it paints.
  *
  * Only a sibling of the same parent counts: an icon one row up is not the thing
- * this label is glued to, and comparing against it would report a defect where
- * nothing is wrong. Sharing a parent is not enough on its own either — a
- * full-bleed texture is a sibling too — so `isGroupAnchor` states what "beside"
- * means, and a sibling that fails it leaves the group anchor unset rather than
- * becoming the thing every text is graded against.
+ * this label is glued to. Sharing a parent is not enough — a full-bleed texture is
+ * a sibling too — so the placement gate lives in `pickGroupAnchor`, and the paint
+ * question ("is this a surface the text sits on?") is answered here, where the
+ * element tree is readable.
  */
-function nearestSibling(node: SVGGElement): { elementId: string; box: Rect } | null {
+function groupCandidates(
+  node: SVGGElement,
+  byId: Map<string, DesignElement>
+): { own: Rect; parent: Rect; candidates: GroupCandidate[] } | null {
   const parent = node.parentElement?.closest("[data-element-id]");
   if (!parent) return null;
   const own = rectOf(node.getBoundingClientRect());
-  const ownY = own.y + own.height / 2;
   const parentBox = rectOf(parent.getBoundingClientRect());
   // Descendants, not direct children: an element's paint sits under wrapper `<g>`s
   // for clip, mask and effects, so the DOM tree is deeper than the element tree.
@@ -94,15 +95,40 @@ function nearestSibling(node: SVGGElement): { elementId: string; box: Rect } | n
   // every candidate.
   const candidates = Array.from(parent.querySelectorAll("[data-element-id]"))
     .filter((sib) => sib !== node && sib.parentElement?.closest("[data-element-id]") === parent)
-    .map((sib) => ({
-      elementId: sib.getAttribute("data-element-id") ?? "",
-      box: rectOf(sib.getBoundingClientRect())
-    }))
-    .filter((sib) => sib.elementId !== "" && area(sib.box) > 0.5)
-    .filter((sib) => isGroupAnchor(own, sib.box, parentBox));
-  if (candidates.length === 0) return null;
-  return candidates.reduce((best, sib) =>
-    Math.abs(sib.box.y + sib.box.height / 2 - ownY) < Math.abs(best.box.y + best.box.height / 2 - ownY) ? sib : best
+    .map((sib) => {
+      const elementId = sib.getAttribute("data-element-id") ?? "";
+      const el = byId.get(elementId);
+      return {
+        elementId,
+        box: rectOf(sib.getBoundingClientRect()),
+        surface: el ? paintsSurface(el) : undefined
+      };
+    })
+    .filter((sib) => sib.elementId !== "" && area(sib.box) > 0.5);
+  return { own, parent: parentBox, candidates };
+}
+
+const SURFACE_PAINTS: ReadonlySet<string> = new Set([
+  "image",
+  "linear-gradient",
+  "radial-gradient",
+  "angular-gradient",
+  "diamond-gradient",
+  "pattern"
+]);
+
+/**
+ * Whether an element is something text sits ON rather than something it lines up
+ * with: a photograph, a gradient scrim, a blended or blurred layer.
+ */
+function paintsSurface(el: DesignElement): boolean {
+  const any = el as unknown as Record<string, unknown>;
+  const fills = Array.isArray(any.fills) ? (any.fills as Array<{ type?: string; enabled?: boolean }>) : [];
+  if (fills.some((fill) => fill && fill.enabled !== false && SURFACE_PAINTS.has(String(fill.type)))) return true;
+  if (typeof any.blendMode === "string" && any.blendMode !== "normal") return true;
+  const effects = Array.isArray(any.effects) ? (any.effects as Array<{ type?: string; enabled?: boolean }>) : [];
+  return effects.some(
+    (e) => e?.enabled !== false && (e.type === "layer-blur" || e.type === "backdrop-blur" || e.type === "liquid-glass")
   );
 }
 
@@ -129,7 +155,23 @@ export function collectTextInk(doc: DesignDocument, rawDoc: unknown): InkCollect
     if (typeof id === "string") rawById.set(id, el);
   }
 
-  const walk = (elements: DesignElement[], parent: DesignElement | null) => {
+  const byId = new Map<string, DesignElement>();
+  const indexPath = (elements: DesignElement[]) => {
+    for (const el of elements) {
+      byId.set(el.id, el);
+      const kids = (el as { children?: DesignElement[] }).children;
+      if (kids?.length) indexPath(kids);
+    }
+  };
+  indexPath(getActivePage(doc).children);
+
+  const pairOf = (node: SVGGElement) => {
+    const found = groupCandidates(node, byId);
+    const anchor = found ? pickGroupAnchor(found.own, found.candidates, found.parent) : null;
+    return anchor ? { elementId: anchor.elementId, box: anchor.box } : null;
+  };
+
+  const walk = (elements: DesignElement[]) => {
     for (const el of elements) {
       if (el.type === "text") {
         const node = nodeOf(el.id);
@@ -146,7 +188,6 @@ export function collectTextInk(doc: DesignDocument, rawDoc: unknown): InkCollect
           skipped.push({ elementId: el.id, reason: "no HTML line box under this text node" });
         } else {
           const box = rectOf(foreign.getBoundingClientRect());
-          const parentNode = node.parentElement?.closest("[data-element-id]");
           sizes.push({ measured: box.width, declared: el.width ?? 0 });
           samples.push({
             elementId: el.id,
@@ -158,32 +199,17 @@ export function collectTextInk(doc: DesignDocument, rawDoc: unknown): InkCollect
             computedJustify: getComputedStyle(container).justifyContent,
             box,
             ink: unionInkRects(inkRects(container), trackingOf(container)),
-            group: nearestSibling(node),
-            parent:
-              parent && parentNode
-                ? {
-                    box: rectOf(parentNode.getBoundingClientRect()),
-                    alignItems: alignItemsOf(parent)
-                  }
-                : null
+            group: pairOf(node)
           });
         }
       }
       const kids = (el as { children?: DesignElement[] }).children;
-      if (kids?.length) walk(kids, el);
+      if (kids?.length) walk(kids);
     }
   };
 
-  walk(getActivePage(doc).children, null);
+  walk(getActivePage(doc).children);
   return { samples, skipped, zoom: measureZoom(sizes) };
-}
-
-/** The container's cross-axis alignment, under either the flat or the nested spelling. */
-function alignItemsOf(el: DesignElement): string {
-  const flat = (el as unknown as Record<string, unknown>)["align-items"];
-  if (typeof flat === "string") return flat;
-  const nested = (el as unknown as { layout?: { align?: string } }).layout;
-  return typeof nested?.align === "string" ? nested.align : "";
 }
 
 /** Raw top-level elements of whichever page the block declares active. */

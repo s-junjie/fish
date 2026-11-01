@@ -81,6 +81,69 @@ export function useAnchoredPosition({
   return pos;
 }
 
+/** The side panel family's shared edges: 8px viewport, 10px off the anchor, 20px bottom. */
+export const SIDE_PANEL_MARGIN = 8;
+export const SIDE_PANEL_GAP = 10;
+export const SIDE_PANEL_BOTTOM = 20;
+
+/**
+ * A panel opened from inside another panel clears the HOST, not the swatch that
+ * opened it — otherwise it lands underneath its own parent.
+ */
+export const HOST_POPOVER_SELECTOR = "[data-host-popover], [data-style-picker-popover]";
+
+/**
+ * Left-of-the-anchor, or right when the viewport cannot hold the preferred side.
+ *
+ * Eight panels spelled this arithmetic out inline, with a constant trio repeated
+ * above each one; the flip is the part that was re-derived (and re-broken) at
+ * every copy.
+ */
+export function sidePanelLeft(
+  bounds: { left: number; right: number },
+  width: number,
+  gap = SIDE_PANEL_GAP,
+  margin = SIDE_PANEL_MARGIN
+): number {
+  const preferred = bounds.left - width - gap;
+  if (preferred >= margin) return preferred;
+  return Math.max(margin, Math.min(bounds.right + gap, window.innerWidth - width - margin));
+}
+
+/**
+ * The `compute` a side panel hands `useAnchoredPosition`: anchored to the left of
+ * its host, flipped to the right when there is no room, and clamped vertically to
+ * prefer below, then above, then a bottom-anchored fit.
+ *
+ * `hostSelector` defaults to `HOST_POPOVER_SELECTOR`; a nested picker prepends
+ * its own attribute to that chain. `null` measures from the anchor itself.
+ */
+export function sidePanelCompute(
+  width: number,
+  fallbackHeight: number,
+  hostSelector?: string | null
+) {
+  return (anchor: HTMLElement, panel: HTMLElement): Placement | null => {
+    const a = anchor.getBoundingClientRect();
+    // Unlaid-out anchors (a detached row, a hidden section) have an all-zero
+    // rect; placing against it would park the panel at the viewport corner.
+    if (a.width === 0 && a.height === 0 && a.top === 0 && a.left === 0) return null;
+    const host = hostSelector === null ? null : anchor.closest(hostSelector ?? HOST_POPOVER_SELECTOR);
+    const bounds = host ? host.getBoundingClientRect() : a;
+    const left = sidePanelLeft(bounds, width);
+
+    const height = panel.offsetHeight || fallbackHeight;
+    const fitsBelow = a.top + height <= window.innerHeight - SIDE_PANEL_BOTTOM;
+    const fitsAbove = a.top - height >= SIDE_PANEL_MARGIN;
+    const top = fitsBelow
+      ? a.top
+      : fitsAbove
+        ? a.top - height
+        : Math.max(SIDE_PANEL_MARGIN, window.innerHeight - height - SIDE_PANEL_BOTTOM);
+    return { left, top };
+  };
+}
+
 /** The hidden-until-placed style every anchored panel shares. */
 export function placementStyle(
   pos: Placement | null,

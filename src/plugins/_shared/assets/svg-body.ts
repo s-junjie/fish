@@ -1,4 +1,4 @@
-import { parsePathData, serializePathData } from "../geometry/path-data";
+import { parsePathData, serializePathData } from "../../../core/geometry/path-data";
 
 /**
  * Iconify's wire format is a string of SVG markup, not path data: an icon body

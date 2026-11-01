@@ -124,6 +124,24 @@ describe("contrast backdrop", () => {
     expect(contrastFindings([badge, label()])).toHaveLength(1);
   });
 
+  it("says nothing when the photograph only PARTLY covers the text", () => {
+    // The reported case: the label runs past the photo's right edge. "Covers the
+    // box" is false, so the walk used to skip the photo and fall through to the
+    // canvas — reporting white-on-photo at 1.0:1 against #FFFFFF. Half the glyphs
+    // are on a bitmap, so the honest answer is "unknown", not a wrong number.
+    const half = photo({ width: 160, x: 0, y: 0, height: 400 });
+    expect(contrastFindings([half, label()])).toEqual([]);
+  });
+
+  it("gives up on an image that merely clips a corner, where a solid does not", () => {
+    // The deliberate asymmetry: a solid badge over a corner leaves the rest of the
+    // line readable and says nothing about the glyphs behind it, so the canvas
+    // stays the answer. An image cannot be reduced at all, and guessing past it is
+    // what produced the wrong colour in the first place.
+    const corner = photo({ width: 40, height: 20, x: 20, y: 300 });
+    expect(contrastFindings([corner, label()])).toEqual([]);
+  });
+
   it("still reports white text on a white canvas with nothing under it", () => {
     const out = contrastFindings([label()]);
     expect(out).toHaveLength(1);

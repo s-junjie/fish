@@ -1,5 +1,13 @@
 name: Release
 
+# Which repository may publish a release. The development repository carries this
+# file too — `scripts/sync-to-public.sh` syncs `.github/workflows` verbatim — and
+# both point at the same origin, so a tag pushed there would deploy over the live
+# site. Its Actions are disabled today, which is the first lock; this gate is the
+# second, so re-enabling them there cannot become a publishing pipeline by
+# accident. It is a repository variable rather than the repository name, so the
+# file that gets synced carries no identity: unset means `on`, and a repository
+# that must not publish sets `FISH_ACTIONS=off` before enabling Actions.
 on:
   push:
     tags: ["v*"]
@@ -33,7 +41,7 @@ env:
 
 jobs:
   build:
-    if: github.event_name == 'push' || inputs.mode == 'release'
+    if: vars.FISH_ACTIONS != 'off' && (github.event_name == 'push' || inputs.mode == 'release')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     environment: release
@@ -87,6 +95,13 @@ jobs:
           set -euo pipefail
           export FISH_UPDATE_MANIFEST_URL="${ORIGIN}/stable/manifest.json"
           npm run build
+          # A kit whose bundle lost its origin answers "there is nothing to
+          # compare against", which reads exactly like being current. Nothing
+          # downstream notices, so the artifact is asked directly.
+          grep -qF "${ORIGIN}/stable/manifest.json" dist/fish-agent-kit/tools/fish.cjs || {
+            echo "::error::the kit bundle does not carry ${ORIGIN}/stable/manifest.json — its freshness check would have nothing to ask"
+            exit 1
+          }
 
       - name: Sign the release manifest
         env:
@@ -165,7 +180,7 @@ jobs:
               --generate-notes
 
   promote:
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'promote'
+    if: vars.FISH_ACTIONS != 'off' && github.event_name == 'workflow_dispatch' && inputs.mode == 'promote'
     runs-on: ubuntu-latest
     environment: release
     steps:

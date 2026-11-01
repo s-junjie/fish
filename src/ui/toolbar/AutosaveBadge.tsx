@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "preact/hooks";
-import { ChevronDown, Check, Copy, Save, History, FileDown, FilePlus, FileUp, FileInput, AlertTriangle, ShieldCheck, RotateCcw } from "lucide-react";
+import { ChevronDown, Check, Copy, Save, History, FileDown, FilePlus, FileUp, FileInput, AlertTriangle, ShieldCheck, RotateCcw, Lock } from "lucide-react";
 import { t } from "../../i18n";
 import type { AutosaveStatus } from "../../core/persistence/autosave-controller";
 import { Button } from "../Button";
@@ -19,6 +19,7 @@ interface AutosaveBadgeProps {
   onActivateAutosave: () => void | Promise<unknown>;
   onSave: () => void | Promise<unknown>;
   onSaveAs: () => void | Promise<unknown>;
+  onSaveReadOnly: () => void | Promise<unknown>;
   onNewFile: () => void;
   onOpenHistory: () => void;
   onExportJson: () => Promise<boolean>;
@@ -83,6 +84,7 @@ export function AutosaveBadge(props: AutosaveBadgeProps) {
     onActivateAutosave,
     onSave,
     onSaveAs,
+    onSaveReadOnly,
     onNewFile,
     onOpenHistory,
     onExportJson,
@@ -372,6 +374,21 @@ export function AutosaveBadge(props: AutosaveBadgeProps) {
                 <span>{t("app.saveAs")}</span>
               </div>
               <span className={MENU_SHORTCUT_CLASS}>⇧⌘S</span>
+            </button>
+
+            {/* A save variant, not a transport: it writes the same document into
+                the same kind of file, and the only difference is who may edit it
+                afterwards. No shortcut — the wrong one of the two saves is the
+                one you cannot undo. */}
+            <button
+              onClick={() => closeAfter(onSaveReadOnly)}
+              data-title-bar-save-read-only="true"
+              className={`${MENU_ITEM_CLASS} justify-between`}
+            >
+              <div className={ROW_CLASS}>
+                <Lock size={13} />
+                <span>{t("app.saveReadOnly")}</span>
+              </div>
             </button>
 
             <div className={MENU_SEPARATOR_CLASS} />

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseIconBody } from "../src/core/assets/svg-body";
+import { parseIconBody } from "../src/plugins/_shared/assets/svg-body";
 import lucideFixture from "./fixtures/iconify-lucide.json";
 import remixFixture from "./fixtures/iconify-ri.json";
 

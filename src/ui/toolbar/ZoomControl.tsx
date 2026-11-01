@@ -1,7 +1,8 @@
-import { Plus, Minus, Maximize } from "lucide-react";
+import { Plus, Minus } from "lucide-react";
 import { t } from "../../i18n";
 import { formatZoomPercent } from "../../core/geometry/viewport";
 import { Button } from "../Button";
+import { ScaleModeIcon } from "../scale-icons";
 
 interface ZoomControlProps {
   zoom: number;
@@ -78,6 +79,10 @@ export function ZoomControl({ zoom, onZoomIn, onZoomOut, onZoomFit, onZoomActual
         {/* Fit last: stepping is what this cluster is for, and fit is the one
             you press once. It also leaves the number flanked by its own two
             steps instead of by two different verbs. */}
+        {/* Fit wears the deck's `fill` mark — the same glyph as its "Fill screen"
+            row — and not a second set of corner brackets: those belong to
+            fullscreen, and at 13px two glyphs built from the same four corners
+            are one glyph. */}
         <Button
           size="iconLg"
           onClick={onZoomFit}
@@ -85,7 +90,7 @@ export function ZoomControl({ zoom, onZoomIn, onZoomOut, onZoomFit, onZoomActual
           title={t("zoom.fit")}
           aria-label={t("zoom.fit")}
         >
-          <Maximize size={13} />
+          <ScaleModeIcon mode="fill" size={13} />
         </Button>
       </div>
     </div>

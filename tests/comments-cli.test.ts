@@ -102,6 +102,28 @@ describe("comments CLI workflow", () => {
     expect(context.tokens.colors).toContain("--fish-brand");
   });
 
+  it("refuses to read the design document of another dialect", () => {
+    const foreign = initialHtml.replace('"version": "0.1",\n    "id": "doc_cli"', '"version": "9.9",\n    "id": "doc_cli"');
+    writeFileSync(tmpFile, foreign, "utf-8");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const code = commentsCommand(["context", tmpFile, "cmt_cli_1"]);
+    const message = error.mock.calls.map((call) => call.join(" ")).join("\n");
+    const printed = log.mock.calls.length;
+    error.mockRestore();
+    log.mockRestore();
+    expect(code).toBe(2);
+    expect(printed).toBe(0);
+    expect(message).toContain("document dialect 9.9");
+    expect(message).toContain("does not migrate");
+  });
+
+  it("still lists the conversation of a file whose document it will not read", () => {
+    const foreign = initialHtml.replace('"version": "0.1",\n    "id": "doc_cli"', '"version": "9.9",\n    "id": "doc_cli"');
+    writeFileSync(tmpFile, foreign, "utf-8");
+    expect(JSON.parse(run(["list", tmpFile]))).toHaveLength(1);
+  });
+
   it("writes an AI suggestion without mutating #design-doc", () => {
     writeFileSync(tmpFile, initialHtml, "utf-8");
     const docBlockBefore = /<script id="design-doc"[\s\S]*?<\/script>/.exec(initialHtml)![0];

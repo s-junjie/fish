@@ -27,6 +27,7 @@ interface TitleBarProps {
   onActivateAutosave: () => void | Promise<unknown>;
   onSave: () => void | Promise<unknown>;
   onSaveAs: () => void | Promise<unknown>;
+  onSaveReadOnly: () => void | Promise<unknown>;
   onNewFile: () => void;
   onOpenHistory: () => void;
   onExportJson: () => Promise<boolean>;
@@ -69,6 +70,7 @@ export function TitleBar({
   onActivateAutosave,
   onSave,
   onSaveAs,
+  onSaveReadOnly,
   onNewFile,
   onOpenHistory,
   onExportJson,
@@ -124,6 +126,7 @@ export function TitleBar({
             onActivateAutosave={onActivateAutosave}
             onSave={onSave}
             onSaveAs={onSaveAs}
+            onSaveReadOnly={onSaveReadOnly}
             onNewFile={onNewFile}
             onOpenHistory={onOpenHistory}
             onExportJson={onExportJson}

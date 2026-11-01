@@ -24,6 +24,19 @@ interface Row {
   icon: string;
   manifest: PluginManifest;
   installed: boolean;
+  updateAvailable?: PluginManifest;
+}
+
+function isNewerVersion(remote: string, installed: string): boolean {
+  const r = remote.split(".").map((x) => parseInt(x, 10) || 0);
+  const inst = installed.split(".").map((x) => parseInt(x, 10) || 0);
+  for (let i = 0; i < Math.max(r.length, inst.length); i++) {
+    const rv = r[i] ?? 0;
+    const iv = inst[i] ?? 0;
+    if (rv > iv) return true;
+    if (rv < iv) return false;
+  }
+  return false;
 }
 
 /** Presses on the menu are part of this popover, not a click-away from it. */
@@ -60,16 +73,22 @@ export function ResourcesPopover({ onClose, onOpenPlugin, anchorRef }: Resources
     };
   }, []);
 
+  const remoteMap = new Map<string, PluginManifest>(remotePlugins.map((m) => [m.id, m]));
   const installedMap = new Map<string, PluginManifest>(pluginList.items.map((m) => [m.id, m]));
 
-  const installedRows: Row[] = pluginList.items.map((manifest) => ({
-    id: manifest.id,
-    name: manifest.name,
-    description: manifest.description,
-    icon: manifest.icon as string,
-    manifest,
-    installed: true
-  }));
+  const installedRows: Row[] = pluginList.items.map((manifest) => {
+    const remote = remoteMap.get(manifest.id);
+    const updateAvailable = remote && isNewerVersion(remote.version, manifest.version) ? remote : undefined;
+    return {
+      id: manifest.id,
+      name: manifest.name,
+      description: manifest.description,
+      icon: manifest.icon as string,
+      manifest,
+      installed: true,
+      updateAvailable
+    };
+  });
 
   const availableRows: Row[] = remotePlugins
     .filter((manifest) => !installedMap.has(manifest.id))
@@ -199,28 +218,48 @@ export function ResourcesPopover({ onClose, onOpenPlugin, anchorRef }: Resources
                     <div className={`px-2 py-1 ${SUB_LABEL_CLASS}`}>{t("plugins.installed")}</div>
                   )}
                   {filteredInstalled.map((item) => (
-                    <button
+                    <div
                       key={item.id}
-                      type="button"
                       onClick={() => activate(item)}
                       onContextMenu={(e) => {
                         e.preventDefault();
                         setMenu({ x: e.clientX, y: e.clientY, id: item.id });
                       }}
-                      className="flex items-center gap-2.5 px-2 py-2 rounded-ctl hover:bg-surface text-left transition-colors group font-sans"
+                      className="flex items-center gap-2.5 px-2 py-2 rounded-ctl hover:bg-surface text-left transition-colors group font-sans cursor-pointer"
                     >
                       <div className="w-7 h-7 rounded-ctl bg-raised border border-rule flex items-center justify-center flex-none group-hover:border-rule-strong">
                         {renderPluginIcon(item.icon)}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="text-ui font-medium text-ink truncate font-sans">
-                          {item.name}
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-ui font-medium text-ink truncate font-sans">
+                            {item.name}
+                          </span>
+                          <span className="text-micro text-ink-muted/60 font-sans">
+                            v{item.manifest.version}
+                          </span>
                         </div>
                         <div className="text-ui text-ink-muted truncate font-sans opacity-80">
                           {item.description}
                         </div>
                       </div>
-                    </button>
+                      {item.updateAvailable && (
+                        <Button
+                          variant="boxed"
+                          size="text"
+                          disabled={installingId === item.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleOnlineInstall(e, item.updateAvailable!);
+                          }}
+                          className="flex items-center gap-1 shrink-0 text-brand"
+                          title={`v${item.manifest.version} → v${item.updateAvailable.version}`}
+                        >
+                          <Download size={12} className="flex-none" />
+                          <span>{installingId === item.id ? t("plugins.updating") : t("plugins.update")}</span>
+                        </Button>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}

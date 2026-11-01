@@ -23,22 +23,30 @@ import { geometryReport } from "../geometry-report";
 import { compactDocumentJson, documentJson } from "../document-json";
 import { assetsCommand, compactCommand, embedLocalDocumentAssets } from "./fish-assets";
 import { importHtmlPage } from "./html-import";
-import { readSource, DOC_BLOCK_RE, injectDocumentBlock } from "./doc-source";
+import { readDocument, dialectMismatch, DOC_BLOCK_RE, injectDocumentBlock } from "./doc-source";
 import type { Source } from "./doc-source";
+import { kitIdentityCheck, kitRootOf } from "./kit-identity";
+import { checkKitUpdate } from "./kit-update";
+import type { KitUpdate } from "./kit-update";
 import { brief } from "./fish-brief";
+import { inspect } from "./fish-inspect";
 import { checkVerdict } from "../check-verdict";
+import { laidOutDocument } from "../layout-report";
 import { fontDiagnostics } from "../font-diagnostics";
 import { countElements } from "../geometry/tree-ops";
 import type { DesignDocument, DesignElement } from "../dsl/types";
 import { auditToleranceOf, screenshotPlan } from "../export-request";
+import { auditRuleDrift, inkGateLevel } from "../audit/text-ink";
+import type { InkFinding } from "../audit/text-ink";
 import { commentsCommand } from "./fish-comments";
 import { APP_VERSION } from "../version";
 
 const USAGE = `fish — the FISH agent CLI (nothing to install)
 
-  ./fish --version
+  ./fish --version [--check]
   ./fish check <doc.fish.html | doc.json> [--json] [--strict] [--geometry] [--audit] [--audit-tolerance N] [--strict-assets]
   ./fish brief <doc.fish.html | doc.json> [--json]
+  ./fish inspect <elementId> <doc.fish.html | doc.json> [--all] [--json]
   ./fish compact <doc.fish.html | doc.json> [-o|--out FILE]
   ./fish assets <doc.fish.html | doc.json> [--json]
   ./fish assets search <query> [--source openverse|lucide|ri] [--limit N] [--add-to <doc>] [--pick N] [--embed] [--to <elementId>] [--replace] [--json]
@@ -56,6 +64,8 @@ const USAGE = `fish — the FISH agent CLI (nothing to install)
 
 check    normalize + validate the document block and print what the engine would change.
 brief    report the tokens, styles, components, assets and fonts the document already carries.
+inspect  report ONE element: the box it actually got, its effective style, its parents,
+         and — for an instance — the slots its overrides may address.
 compact  emit the canonical compact JSON of a document, assets preserved.
 assets   inspect doc.assets[] with the size each one costs; search, import or embed.
 apply    run the macro-ops of the authoring guide against the document block, in place.
@@ -64,6 +74,11 @@ import   measure a page in a real browser and emit an editable document.
 export   render a PNG of a document through a headless browser (PNG only).
 
 Exit codes: 0 clean, 1 an error diagnostic or a failed op, 2 bad usage.
+
+--check  (with --version) ask the release origin whether a newer FISH is published.
+         This is the manual form of a check that otherwise runs at most once a day,
+         silently, and only reports a kit that is behind. FISH_NO_UPDATE_CHECK=1
+         turns both off.
 
 What a report means, and which check to run when: references/workflow.md.
 What each flag's diagnostics are: references/dsl.md.
@@ -121,13 +136,15 @@ function assetDiagnostics(
  * as "0 findings" would be a clean bill of health for a page nobody measured.
  */
 type InkAudit = {
-  findings: Array<{ level: "error" | "warning"; elementId: string; rule: string; message: string }>;
+  findings: InkFinding[];
   checked: number;
   skipped: Array<{ elementId: string; reason: string }>;
   zoom: number;
   /** Screen px the shell actually graded at, echoed back so a summary can say it. */
   tolerance?: { x: number; y: number };
   fontsReady?: boolean;
+  /** The rules the file's own runtime looked for — see `auditRuleDrift`. */
+  rules?: string[];
 };
 
 function auditInk(src: Source, tolerance?: number): InkAudit | string {
@@ -177,7 +194,8 @@ function auditInk(src: Source, tolerance?: number): InkAudit | string {
       skipped: audit.skipped ?? [],
       zoom: audit.zoom ?? 1,
       tolerance: audit.tolerance,
-      fontsReady: audit.fontsReady
+      fontsReady: audit.fontsReady,
+      rules: audit.rules
     };
   } catch (err) {
     return err instanceof Error ? err.message : String(err);
@@ -199,30 +217,26 @@ function check(
     auditTolerance?: number;
   }
 ): number {
-  const src = readSource(file);
-  if (typeof src === "string") {
-    console.error(src);
-    return 2;
-  }
-
-  let value: unknown;
-  try {
-    value = parseLenientJson(src.text.trim() || "{}");
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (opts.json) {
-      console.log(JSON.stringify({ ok: false, file: src.file, parseError: message }, null, 2));
+  const read = readDocument(file);
+  if ("error" in read) {
+    if (opts.json && read.parseError) {
+      console.log(JSON.stringify({ ok: false, file, parseError: read.parseError }, null, 2));
     } else {
-      console.error(`${src.file}: the #design-doc block is not valid JSON — ${message}`);
+      console.error(read.error);
     }
-    return 1;
+    return read.code;
   }
+  const { src, value } = read;
 
   // Materialised before it is graded: a text that names a text style and carries
   // no `style` is a text the canvas paints at the default 24px, and `validate`
   // has to see the size the renderer will use, not the one the author omitted.
   const { document: normalized, repairs } = normalizeDesignDocument(value);
-  const document = syncDocumentBindings(normalized);
+  // Laid out before it is graded: the load path positions every in-flow child, and
+  // a verdict about a box that the page never paints is the one kind of green
+  // `check` must not give.
+  const prepared = laidOutDocument(syncDocumentBindings(normalized), value);
+  const document = prepared.document;
   const diagnostics = validateDocument(document);
   // Opt-in, and measurements rather than verdicts: overlap is a design technique,
   // so this reports what landed outside the box that was meant to hold it, with
@@ -237,8 +251,14 @@ function check(
   // above can be satisfied by a page whose labels are pinned to the left edge of
   // their boxes, because nothing in the document is wrong — only the rendering.
   const ink = opts.audit ? auditInk(src, opts.auditTolerance) : null;
-  const inkFindings = ink && typeof ink !== "string" ? ink.findings : [];
-  const all = [...diagnostics, ...geometry, ...assetFindings, ...fontFindings, ...inkFindings];
+  // Graded here, not by the runtime that measured: which findings may fail a build
+  // is the gate's judgement, and the file's own runtime can be from another build.
+  const inkFindings = (ink && typeof ink !== "string" ? ink.findings : []).map((finding) => ({
+    level: inkGateLevel(finding),
+    message: finding.message,
+    elementId: finding.elementId
+  }));
+  const all = [...diagnostics, ...prepared.findings, ...geometry, ...assetFindings, ...fontFindings, ...inkFindings];
   const errors = all.filter((d) => d.level === "error");
   const warnings = all.filter((d) => d.level === "warning");
   // `checkVerdict` owns the rule that only a "lossy" repair fails: an `info`
@@ -258,8 +278,9 @@ function check(
           repairs,
           lossyRepairs: lossy,
           diagnostics,
+          ...(prepared.findings.length > 0 ? { layout: prepared.findings } : {}),
           ...(opts.geometry ? { geometry } : {}),
-          ...(opts.audit ? { ink: typeof ink === "string" ? { ok: false, error: ink } : { ok: true, ...ink } } : {}),
+          ...(opts.audit ? { ink: inkJson(ink) } : {}),
           ...(assetFindings.length > 0 ? { assetFindings } : {}),
           ...(fontFindings.length > 0 ? { fontFindings } : {})
         },
@@ -276,7 +297,7 @@ function check(
   );
   console.log(`  repairs: ${repairs.length}${lossy !== repairs.length ? ` (${lossy} lossy)` : ""}`);
   for (const r of repairs) console.log(`    [${r.kind}]${r.severity === "info" ? " (info)" : ""} ${r.path} — ${r.message}`);
-  console.log(`  diagnostics: ${errors.length} error(s), ${warnings.length} warning(s)`);
+  console.log(`  findings: ${errors.length} error(s), ${warnings.length} warning(s)`);
   for (const d of all) {
     console.log(`    [${d.level}]${d.elementId ? ` ${d.elementId}:` : ""} ${d.message}`);
   }
@@ -292,6 +313,22 @@ function check(
   }
   console.log(ok ? "  ok" : `  FAIL${failReason}`);
   return ok ? 0 : 1;
+}
+
+/**
+ * The audit as JSON, with the rule-set question answered rather than left to the
+ * reader.
+ *
+ * `ok` is the same word it is at the top level: nothing in this block failed. A
+ * block that reads `{"ok": true, "findings": [{"level": "error"}]}` is a pass an
+ * agent has no reason to doubt; "the audit ran" is what the block's presence
+ * already says.
+ */
+function inkJson(ink: InkAudit | string | null): Record<string, unknown> {
+  if (typeof ink === "string") return { ok: false, error: ink };
+  if (!ink) return { ok: false, error: "the audit did not run" };
+  const drift = auditRuleDrift(ink.rules);
+  return { ok: !ink.findings.some((f) => f.level === "error"), ...ink, ...(drift ? { ruleDrift: drift } : {}) };
 }
 
 /**
@@ -314,6 +351,8 @@ function inkSummary(ink: InkAudit | string | null): string {
   if (ink.fontsReady === false) {
     lines.push("    [note] the webfonts did not settle before measuring — vertical findings may be font-loading noise");
   }
+  const drift = auditRuleDrift(ink.rules);
+  if (drift) lines.push(`    [note] ${drift}`);
   for (const s of ink.skipped) lines.push(`    [skipped] ${s.elementId}: ${s.reason}`);
   return lines.join("\n");
 }
@@ -323,19 +362,12 @@ function inkSummary(ink: InkAudit | string | null): string {
 // ---------------------------------------------------------------------------
 
 function apply(opsArg: string, file: string, opts: { json: boolean; out?: string; compact?: boolean }): number {
-  const src = readSource(file);
-  if (typeof src === "string") {
-    console.error(src);
-    return 2;
+  const read = readDocument(file);
+  if ("error" in read) {
+    console.error(read.error);
+    return read.code;
   }
-
-  let doc: unknown;
-  try {
-    doc = parseLenientJson(src.text.trim() || "{}");
-  } catch (err) {
-    console.error(`${src.file}: the #design-doc block is not valid JSON — ${err instanceof Error ? err.message : err}`);
-    return 1;
-  }
+  const { src, value: doc } = read;
 
   let ops: unknown;
   try {
@@ -421,6 +453,15 @@ async function compose(jsonFile: string, templateFile: string, opts: { out?: str
     return 1;
   }
 
+  // A design handed to `compose` is a document too, and injected verbatim: it
+  // never passes through `readDocument`, so the dialect gate has to be asked for
+  // here as well.
+  const mismatch = dialectMismatch(doc, jsonFile);
+  if (mismatch) {
+    console.error(mismatch);
+    return 2;
+  }
+
   const templateContent = fs.readFileSync(resolvedTemplate, "utf8");
   if (!DOC_BLOCK_RE.test(templateContent)) {
     console.error(`${resolvedTemplate}: no #design-doc block found in template`);
@@ -443,6 +484,13 @@ async function compose(jsonFile: string, templateFile: string, opts: { out?: str
   const jsonStr = serialized.replace(/<\//g, "\\u003c/");
   const target = opts.out ?? resolvedTemplate;
   const assembled = injectDocumentBlock(templateContent, jsonStr);
+
+  // Printed, not rewritten: a coordinate the flow ignores is the author's to keep
+  // or delete, and this is the moment they can still see it. Nothing here changes
+  // the bytes that are written.
+  for (const finding of laidOutDocument(canonical, doc).findings) {
+    console.error(`warning: ${finding.elementId ? `${finding.elementId}: ` : ""}${finding.message}`);
+  }
 
   fs.writeFileSync(target, assembled);
   const note = embedded.count > 0 ? `, embedded ${embedded.count} local asset(s)` : "";
@@ -598,14 +646,41 @@ function exportDocument(
 function main(argv: string[]): number | Promise<number> {
   // Answered before anything else: the kit's `SKILL.md` tells an agent to compare
   // this against the version it was written for, so it must cost nothing to ask.
+  // `--check` is the manual form of the question, and the only path here that
+  // touches the network — an agent that suspects it is behind can ask on purpose
+  // instead of paying for a probe it did not need.
   if (argv[0] === "--version" || argv[0] === "-v" || argv[0] === "version") {
     console.log(`fish ${APP_VERSION}`);
-    return 0;
+    if (!argv.includes("--check")) return 0;
+    return checkKitUpdate({ force: true }).then((result) => {
+      console.log(freshnessLine(result));
+      return 0;
+    });
   }
   if (argv.length === 0 || argv.includes("--help") || argv.includes("-h") || argv.includes("help")) {
     console.log(USAGE);
     return 0;
   }
+  // Asked before any command acts, and after `--version` / `help`: the two ways
+  // to diagnose a broken install must keep working when it is broken. A skill is
+  // installed once and never refreshed by the app it drives, so this is the only
+  // place the prose and the engine can be compared — and when they disagree the
+  // prose is what an agent has already read.
+  const identity = kitIdentityCheck(kitRootOf(process.argv[1]));
+  if (identity.status === "mismatch") {
+    console.error(identity.message);
+    return 2;
+  }
+  return checkKitUpdate().then((result) => {
+    // Once a day, on the run that asked: a warning repeated from the cache would
+    // greet every `check` in a loop, which is how a real warning gets ignored.
+    if (result.status === "behind" && !result.fromCache) console.error(result.message);
+    return dispatch(argv);
+  });
+}
+
+/** Everything the pre-flight decided not to answer: the command itself. */
+function dispatch(argv: string[]): number | Promise<number> {
   const [command, ...rest] = argv;
   const flags = new Set(rest.filter((a) => a.startsWith("--")));
 
@@ -722,6 +797,13 @@ function main(argv: string[]): number | Promise<number> {
     if (args.length < 1) return usage("brief needs a document");
     return brief(args[0], opts);
   }
+  if (command === "inspect") {
+    if (args.length < 2) return usage("inspect needs an element id and a document");
+    // `<id> <doc>` reads like the command; `<doc> <id>` is how every other
+    // subcommand is written, so the order is taken from which one is a file.
+    const [first, second] = fs.existsSync(args[0]) ? [args[1], args[0]] : [args[0], args[1]];
+    return inspect(second, first, { json: opts.json, allSlots: opts.all });
+  }
   if (command === "compact") {
     if (args.length < 1) return usage("compact needs a document");
     return compactCommand(args[0], opts);
@@ -759,6 +841,27 @@ function main(argv: string[]): number | Promise<number> {
     return exportDocument(args[0], opts);
   }
   return usage(`unknown command "${command}"`);
+}
+
+/**
+ * The answer to `--version --check`, in one line per state. "I could not ask" and
+ * "you are current" are worded differently on purpose: a check that cannot
+ * distinguish them would report the first as the second, which is the one claim
+ * it has no basis for.
+ */
+function freshnessLine(result: KitUpdate): string {
+  switch (result.status) {
+    case "behind":
+      return result.message;
+    case "current":
+      return `  release ${result.latest} — this kit is current.`;
+    case "unknown":
+      return "  the release could not be read (offline, or the origin did not answer) — this kit may be behind.";
+    case "off":
+      if (result.reason === "opted-out") return "  release check is off (FISH_NO_UPDATE_CHECK).";
+      if (result.reason === "dev-build") return "  a dev build has no release to compare against.";
+      return "  this build carries no release origin, so there is nothing to check against.";
+  }
 }
 
 function usage(message: string): number {

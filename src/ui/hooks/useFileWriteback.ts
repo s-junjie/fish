@@ -24,7 +24,8 @@ import {
   writeBackFile,
   writebackTargetName,
   saveDocAsNewFile,
-  saveAsCopyName
+  saveAsCopyName,
+  readOnlyCopyName
 } from "../../core/persistence/writeback";
 import {
   TabCoordinator,
@@ -615,6 +616,39 @@ export function useFileWriteback(
   }, [openedName, store, fileDoc, clearSaveStatus, flashSaveStatus]);
 
   /**
+   * Write a copy this tab does not adopt.
+   *
+   * It must not become the write-back target: the user is still editing the
+   * original, and the copy is a one-way export. A fresh fileId is what keeps the
+   * two from colliding on one recovery snapshot and one stored handle — the copy
+   * would otherwise inherit the original's history and its file identity.
+   */
+  const triggerSaveAsReadOnly = useCallback(async () => {
+    flashSaveStatus(t("app.saving"), "busy");
+    const doc = fileDoc();
+    const currentName = openedName || `${(doc.name || "untitled").toLowerCase().replace(/\s+/g, "-")}.fish.html`;
+    try {
+      const res = await saveDocAsNewFile(doc, readOnlyCopyName(currentName), undefined, {
+        freshFileId: true,
+        readOnly: true
+      });
+      if (res.ok) {
+        flashSaveStatus(t("app.savedReadOnly"));
+        return;
+      }
+      if (res.reason === "aborted") {
+        clearSaveStatus();
+        return;
+      }
+      console.error("FISH: read-only copy failed:", res.reason ?? "unknown");
+      flashSaveStatus(t("app.saveFailed"), "error");
+    } catch (err) {
+      console.error("FISH: read-only copy threw:", err);
+      flashSaveStatus(t("app.saveFailed"), "error");
+    }
+  }, [openedName, fileDoc, clearSaveStatus, flashSaveStatus]);
+
+  /**
    * Reset the current document to a clean blank canvas (Bento style).
    * Confirms with the user if the document currently contains elements.
    * Committed through `store.commit` so it is undoable via ⌘Z.
@@ -701,6 +735,7 @@ export function useFileWriteback(
     controllerRef,
     triggerSave,
     triggerSaveAs,
+    triggerSaveAsReadOnly,
     triggerNewFile,
     savedAsCopyOf,
     filePath: savedAsCopyOf ? undefined : openedFilePath(),

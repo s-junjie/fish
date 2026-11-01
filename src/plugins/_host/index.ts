@@ -18,7 +18,6 @@ import type * as DslTypes from "../../core/dsl/types";
 import type * as TreeEdit from "../../core/geometry/tree-edit";
 import type * as ImageFill from "../../core/dsl/image-fill";
 import type * as IdModule from "../../core/id";
-import type * as AssetModule from "../../core/plugins";
 import type * as DragModule from "../../core/plugins/drag";
 import type * as RemoteImageModule from "../../core/plugins/remote-image";
 import type * as StylesModule from "../../core/plugins/plugin-styles";
@@ -41,9 +40,6 @@ export interface FishHostBridge {
     createId: typeof IdModule.createId;
   };
   assets: {
-    lucideProvider: typeof AssetModule.lucideProvider;
-    remixProvider: typeof AssetModule.remixProvider;
-    openverseProvider: typeof AssetModule.openverseProvider;
     insertRemoteImage: typeof RemoteImageModule.insertRemoteImage;
     dragPayload: typeof DragModule.dragPayload;
   };
@@ -76,9 +72,6 @@ export const updateActivePageElements = bridge.doc.updateActivePageElements;
 export const mapElements = bridge.doc.mapElements;
 export const firstImagePaint = bridge.doc.firstImagePaint;
 export const createId = bridge.doc.createId;
-export const lucideProvider = bridge.assets.lucideProvider;
-export const remixProvider = bridge.assets.remixProvider;
-export const openverseProvider = bridge.assets.openverseProvider;
 export const insertRemoteImage = bridge.assets.insertRemoteImage;
 export const dragPayload = bridge.assets.dragPayload;
 export const injectPluginStyles = bridge.styles.inject;

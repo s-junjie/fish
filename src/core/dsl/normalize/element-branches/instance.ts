@@ -9,12 +9,30 @@ export const normalizeInstance: ElementBranch = ({ el, base, path, repairs, box 
   if (Array.isArray(el.overrides)) {
     // The shared list, not a copy: this filter is the only thing standing
     // between a stored override and the bin, so a list that lags behind the
-    // union deletes the difference on every load.
-    base.overrides = el.overrides.filter((ov: any) =>
-      isPlainObject(ov) &&
-      typeof ov.targetId === "string" &&
-      (OVERRIDABLE_PROPERTIES as readonly string[]).includes(String(ov.property))
-    );
+    // union deletes the difference on every load. A deletion the author cannot
+    // see is the same defect the filter exists to prevent, so every one of them
+    // is named — a dropped value is a repair, not a cleanup.
+    base.overrides = el.overrides.filter((ov: any, index: number) => {
+      const target = typeof ov?.targetId === "string" ? ov.targetId : null;
+      const property = String(ov?.property);
+      if (!isPlainObject(ov) || target === null) {
+        repairs.push({
+          kind: "dropped-property",
+          path: `${path}/overrides/${index}`,
+          message: `override ${JSON.stringify(ov)} has no targetId; dropped`
+        });
+        return false;
+      }
+      if (!(OVERRIDABLE_PROPERTIES as readonly string[]).includes(property)) {
+        repairs.push({
+          kind: "dropped-property",
+          path: `${path}/overrides/${index}/property`,
+          message: `override property ${JSON.stringify(ov.property)} on "${target}" is not one of ${OVERRIDABLE_PROPERTIES.length} overridable properties; dropped`
+        });
+        return false;
+      }
+      return true;
+    });
   }
 
   // An instance's own paint stack is an OVERRIDE, not a definition: an

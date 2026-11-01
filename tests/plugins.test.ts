@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { OFFICIAL_PROVIDERS, lucideProvider, remixProvider } from "../src/core/plugins";
-import { openverseProvider, __resetOpenverseThrottle } from "../src/core/plugins/openverse-provider";
+import { lucideProvider, remixProvider } from "../src/plugins/_shared/assets/iconify-provider";
+import { openverseProvider, __resetOpenverseThrottle } from "../src/plugins/_shared/assets/openverse-provider";
 import { createWikimediaProvider } from "../src/plugins/wikimedia/provider";
 import { PixabayError, searchPixabay } from "../src/plugins/pixabay/provider";
 import { insertRemoteImage } from "../src/core/plugins/remote-image";
-import { __resetIconifyCaches, fetchIconNames } from "../src/core/assets/iconify";
+import { __resetIconifyCaches, fetchIconNames } from "../src/plugins/_shared/assets/iconify";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
 import { validateDocument } from "../src/core/validate";
 import { DesignDocument, Paint, PathElement } from "../src/core/dsl/types";
@@ -321,13 +321,15 @@ describe("inserted icons validate cleanly", () => {
   });
 });
 
+const ALL_PROVIDERS = [lucideProvider, remixProvider, openverseProvider];
+
 describe("provider registry", () => {
   it("offers both icon sets and the photo sources", () => {
-    expect(OFFICIAL_PROVIDERS.map((p) => p.id)).toEqual(["lucide", "ri", "openverse"]);
+    expect(ALL_PROVIDERS.map((p) => p.id)).toEqual(["lucide", "ri", "openverse"]);
   });
 
   it("gives every provider a translated name", () => {
-    for (const p of OFFICIAL_PROVIDERS) {
+    for (const p of ALL_PROVIDERS) {
       expect(p.nameKey, `${p.id} has no nameKey, so the panel would print a literal`).toBeTruthy();
     }
   });
@@ -336,7 +338,7 @@ describe("provider registry", () => {
     // A remote source that omits `remote` gets asked for a feed on mount. The
     // two icon sets are the only non-remote providers, and the invariant is
     // here so a future image source cannot quietly regress into that path.
-    for (const p of OFFICIAL_PROVIDERS) {
+    for (const p of ALL_PROVIDERS) {
       expect(p.remote ?? false, `${p.id} does not declare remote`).toBe(p.kind === "image");
     }
   });

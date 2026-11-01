@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
-import { DesignDocument, SlideSpec } from "../../core/dsl/types";
-import { PresentationFrame, presentationFrames, findPresentationSlideIndex } from "../../core/presentation/frames";
+import { DesignDocument, Page, SlideSpec, getActivePage } from "../../core/dsl/types";
+import { PresentationFrame, presentationFrames, presentablePages, findPresentationSlideIndex } from "../../core/presentation/frames";
 import { ResolvedSlide, createSlideClock, resolveStep } from "../../core/presentation/slide";
+import { isLaidOut, relayoutDocumentTree } from "../../core/compile";
 import { t } from "../../i18n";
 import { PresentationKeys } from "./presentKeys";
 
@@ -14,17 +15,29 @@ export interface PresentTransition {
   motion: ResolvedSlide | null;
 }
 
+/** One row of the deck's page menu. */
+export interface PresentPageEntry {
+  id: string;
+  name: string;
+}
+
 export interface PresentHost {
   active: boolean;
   index: number;
   total: number;
   frame: PresentationFrame | null;
+  /** The page being played — the document's active page unless the deck switched. */
+  page: Page;
+  /** The pages the deck can be switched to, in document order. Empty while closed. */
+  pages: PresentPageEntry[];
   transition: PresentTransition;
   /** Handed to the shortcut layer while active. */
   keys: PresentationKeys;
   /** Opens the deck, or says why it cannot. */
   start: () => void;
   toggle: () => void;
+  /** Switches the page being played. Commits nothing — not even `activePageId`. */
+  selectPage: (pageId: string) => void;
 }
 
 /** The slide spec of a frame, or nothing for the synthetic page slide. */
@@ -34,11 +47,12 @@ function specOf(frame: PresentationFrame | null): SlideSpec | undefined {
 }
 
 /**
- * Presentation is a mode of the *viewer*, not of the document: nothing here is
- * committed, and nothing about a slide is stored. That is what keeps it out of
- * undo, autosave and the dialect — and it is why the deck cannot be reordered
- * yet. When it can be, the frames come from `presentationFrames` and this hook
- * does not change.
+ * Presentation is a mode of the *viewer*, not of the document: no slide, no
+ * order and no page is committed by it, which is what keeps a deck out of undo,
+ * autosave and the dialect. The one setting the deck does write is
+ * `canvas.presentBackground`, through its host — a backdrop chosen while
+ * presenting has to survive to the next presentation, or it is a switch nobody
+ * would use twice.
  *
  * The transition clock lives here rather than in the overlay because the keys do
  * too, and `busy` below is the one gate every move passes: a click, a wheel step
@@ -48,20 +62,51 @@ function specOf(frame: PresentationFrame | null): SlideSpec | undefined {
 export function usePresentation(
   doc: DesignDocument,
   primarySelectedId: string | null,
-  showHint: (message: string) => void
+  showHint: (message: string) => void,
+  page?: Page,
+  /** Told which page the deck moved to, so a host that owns page state can follow. */
+  onPageChange?: (pageId: string) => void
 ): PresentHost {
   const [active, setActive] = useState(false);
   const [index, setIndex] = useState(0);
+  /** The page the deck switched to, or null while it plays its host's page. */
+  const [pageId, setPageId] = useState<string | null>(null);
   const [outgoing, setOutgoing] = useState<PresentationFrame | null>(null);
   const [progress, setProgress] = useState(1);
   const [motion, setMotion] = useState<ResolvedSlide | null>(null);
 
+  // `page` is the host's own page when it is showing one the document is not on:
+  // the phone reader switches pages without committing `activePageId`, so a deck
+  // built from `getActivePage` would play a different page than the one on screen.
+  const hostPage = page ?? getActivePage(doc);
+  const picked = useMemo(() => {
+    if (!pageId || pageId === hostPage.id) return hostPage;
+    return doc.pages?.find((p) => p.id === pageId) ?? hostPage;
+  }, [doc, pageId, hostPage]);
+
+  /**
+   * The page as the stage should draw it.
+   *
+   * A page the host is not showing has never been through the layout pass — the
+   * editor compiles only the page it draws — so it is reflowed into a memo rather
+   * than into the document. Presenting a page is not editing it.
+   */
+  const playedPage = useMemo(() => {
+    const children = picked.children ?? [];
+    return isLaidOut(children) ? picked : { ...picked, children: relayoutDocumentTree(children) };
+  }, [picked]);
+
   // Derived, not snapshotted at `start()`. The overlay mounts a `DocumentStage`
-  // that culls and builds defs from the LIVE `allElements` and `docRef`, so a
-  // deck holding the element references it captured on entry would pair one
-  // revision's tree with another revision's defs — the exact drift
-  // `DocumentStage` exists to prevent, reintroduced through the host.
-  const frames = useMemo(() => (active ? presentationFrames(doc) : []), [active, doc]);
+  // that culls and builds defs from the LIVE `docRef`, so a deck holding the
+  // element references it captured on entry would pair one revision's tree with
+  // another revision's defs — the exact drift `DocumentStage` exists to prevent,
+  // reintroduced through the host.
+  const frames = useMemo(() => (active ? presentationFrames(doc, playedPage) : []), [active, doc, playedPage]);
+
+  const deckPages = useMemo<PresentPageEntry[]>(
+    () => (active ? presentablePages(doc).map((p) => ({ id: p.id, name: p.name })) : []),
+    [active, doc]
+  );
 
   const clock = useMemo(() => createSlideClock(), []);
   const frameRef = useRef(0);
@@ -146,8 +191,30 @@ export function usePresentation(
   // Stable so the shortcut layer does not re-register on every render.
   const keys = useMemo<PresentationKeys>(() => ({ next, prev, first, last, exit }), [next, prev, first, last, exit]);
 
+  /**
+   * A page switch is not a step: it settles whatever transition is on screen and
+   * lands on the new page's FIRST slide, because a transition describes a move
+   * between two slides of one deck — the outgoing slide belongs to a page that is
+   * no longer loaded.
+   */
+  const selectPage = useCallback(
+    (nextPageId: string) => {
+      if (nextPageId === playedPage.id) return;
+      if (!doc.pages?.some((p) => p.id === nextPageId)) return;
+      settle();
+      indexRef.current = 0;
+      setIndex(0);
+      setPageId(nextPageId);
+      onPageChange?.(nextPageId);
+    },
+    [doc, playedPage.id, settle, onPageChange]
+  );
+
   const start = useCallback(() => {
-    const list = presentationFrames(doc);
+    // A fresh deck starts on the page the host is on: the switch is a move inside
+    // one presentation, not a page the document remembers.
+    setPageId(null);
+    const list = presentationFrames(doc, page ?? getActivePage(doc));
     if (list.length === 0) {
       showHint(t("present.empty"));
       return;
@@ -159,7 +226,7 @@ export function usePresentation(
     const at = findPresentationSlideIndex(list, doc, primarySelectedId);
     setIndex(at);
     setActive(true);
-  }, [doc, primarySelectedId, showHint]);
+  }, [doc, page, primarySelectedId, showHint]);
 
   const toggle = useCallback(() => {
     if (active) exit();
@@ -171,5 +238,17 @@ export function usePresentation(
     [outgoing, progress, motion]
   );
 
-  return { active, index, total: frames.length, frame: frames[index] ?? null, transition, keys, start, toggle };
+  return {
+    active,
+    index,
+    total: frames.length,
+    frame: frames[index] ?? null,
+    page: playedPage,
+    pages: deckPages,
+    transition,
+    keys,
+    start,
+    toggle,
+    selectPage
+  };
 }

@@ -286,7 +286,8 @@ export function normalizeDesignDocument(input: unknown, context?: NormalizeConte
     unit: "px",
     background:
       normalizePaint(rawCanvas?.background, "/canvas/background", repairs) ??
-      normalizePaint(rawCanvas?.backgroundColor, "/canvas/backgroundColor", repairs) ?? { type: "solid", color: "#FFFFFF" }
+      normalizePaint(rawCanvas?.backgroundColor, "/canvas/backgroundColor", repairs) ?? { type: "solid", color: "#FFFFFF" },
+    ...(typeof rawCanvas?.presentBackground === "boolean" ? { presentBackground: rawCanvas.presentBackground } : {})
   };
 
   const rawComponentBoxes = collectRawComponentBoxes(source);
@@ -319,7 +320,14 @@ export function normalizeDesignDocument(input: unknown, context?: NormalizeConte
         background:
           normalizePaint(rawPageCanvas?.background, `/pages/${pIndex}/canvas/background`, repairs) ??
           normalizePaint(rawPageCanvas?.backgroundColor, `/pages/${pIndex}/canvas/backgroundColor`, repairs) ??
-          canvas.background
+          canvas.background,
+        // An explicit `false` on the page is a decision, not an absence: the
+        // document's canvas only seeds the pages that say nothing.
+        ...(typeof rawPageCanvas?.presentBackground === "boolean"
+          ? { presentBackground: rawPageCanvas.presentBackground }
+          : canvas.presentBackground === true
+            ? { presentBackground: true }
+            : {})
       };
       const rawPageEls = Array.isArray(rawPage.children) ? rawPage.children : [];
       const pElements: DesignElement[] = [];

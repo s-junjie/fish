@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  AUDITED_RULES,
+  INK_GATE_RULES,
+  auditRuleDrift,
+  inkGateLevel,
   auditSample,
   auditTextInk,
   authoredAlignmentOf,
   DEFAULT_TOLERANCE,
   isGroupAnchor,
+  pickGroupAnchor,
   unionInkRects,
   type Rect,
   type TextInkSample
@@ -189,13 +194,13 @@ describe("a label and the icon beside it share a centre", () => {
     expect(auditSample({ ...aligned, ink: rect(100, 41, 38, 17) }).map((f) => f.rule)).toEqual([]);
   });
 
-  it("falls back to the row only when the row states a centre", () => {
-    const centredRow = { box: rect(40, 36, 160, 32), alignItems: "center" };
-    expect(rules(sample({ parent: centredRow, box: rect(100, 50, 72, 24) }))).toEqual(["group-not-centred"]);
-    expect(rules(sample({ parent: { ...centredRow, alignItems: "flex-start" }, box: rect(100, 50, 72, 24) }))).toEqual(
-      []
-    );
-    expect(rules(sample({ parent: centredRow, box: rect(100, 40, 72, 24) }))).toEqual([]);
+  it("does not grade the text against the row it shares with a stack of siblings", () => {
+    // A dashboard cell holds a number, its unit and its caption in one row. Their
+    // boxes have different centres by construction, so a row-wide anchor reported
+    // three findings on a document that is laid out exactly as intended. A claim
+    // about the middle of a text's OWN box is `ink-not-centred-y`'s, and that one
+    // is read from the file rather than guessed from a flex line.
+    expect(rules(sample({ box: rect(100, 50, 72, 24) }))).toEqual([]);
   });
 });
 
@@ -233,6 +238,26 @@ describe("what counts as the neighbour a text lines up with", () => {
   it("is not a display glyph twenty times its size", () => {
     const poster = rect(0, 0, 800, 600);
     expect(isGroupAnchor(rect(40, 80, 200, 20), rect(40, 0, 300, 400), poster)).toBe(false);
+  });
+
+  it("is not a scrim that happens to share its centre line", () => {
+    // The case that motivated the paint question: a 390×380 gradient scrim passes
+    // every geometric gate — small enough, beside, same row, comparable height —
+    // and is still the paper the title sits on, not the thing it lines up with.
+    const screen = rect(0, 0, 390, 844);
+    const title = rect(20, 334, 346, 100);
+    const scrim = rect(0, 180, 390, 380);
+    expect(isGroupAnchor(title, scrim, screen)).toBe(true);
+    expect(
+      pickGroupAnchor(title, [{ elementId: "hero_scrim_bottom", box: scrim, surface: true }], screen)
+    ).toBeNull();
+  });
+
+  it("picks the nearest pair among the candidates that are not surfaces", () => {
+    const icon = { elementId: "icon", box: rect(76, 44, 16, 16) };
+    const photo = { elementId: "photo", box: rect(0, 20, 390, 120), surface: true };
+    expect(pickGroupAnchor(label, [photo, icon], parent)).toEqual(icon);
+    expect(pickGroupAnchor(label, [photo], parent)).toBeNull();
   });
 });
 
@@ -293,5 +318,95 @@ describe("the rule set is a list, not a habit", () => {
   it("scales with the tolerance it is given", () => {
     const loose = { x: 20, y: 20 };
     expect(rules(sample({ computedAlign: "center" }), loose)).toEqual([]);
+  });
+});
+
+/**
+ * The audit runs inside the delivered file, so its rule set is whatever that file
+ * was built with. A version number cannot tell the two apart — two builds of one
+ * release differ — but the list of rules the file looked for can.
+ */
+describe("whether the file graded itself by this kit's rules", () => {
+  it("says nothing when the file publishes the same list", () => {
+    expect(auditRuleDrift([...AUDITED_RULES])).toBeNull();
+  });
+
+  it("names a rule the file never looked for", () => {
+    const filed = AUDITED_RULES.filter((rule) => rule !== "ink-not-right");
+    expect(auditRuleDrift(filed)).toContain("it lacks ink-not-right");
+  });
+
+  it("names a rule only the file knows — that is an older kit, not a clean file", () => {
+    expect(auditRuleDrift([...AUDITED_RULES, "group-row"])).toContain("it adds group-row");
+  });
+
+  it("treats a runtime that publishes no list as older, not as agreeing", () => {
+    expect(auditRuleDrift(undefined)).toContain("publishes no rule set");
+  });
+});
+
+/**
+ * Which findings may fail a build.
+ *
+ * The audit can say two different kinds of thing: "the file stated this and the
+ * browser did not do it" (a lost property, invisible in a screenshot) and "these
+ * boxes do not share a centre line" (a judgement about composition). Only the
+ * first may fail a build — otherwise a check that is wrong about taste teaches
+ * its reader to ignore the findings that are not about taste.
+ */
+describe("what a finding is worth to a gate", () => {
+  const finding = (rule: string, level: "error" | "warning" = "warning") =>
+    ({ level, elementId: "a", rule, message: "" }) as never;
+
+  it("fails on a property the file set and the browser dropped", () => {
+    expect(INK_GATE_RULES).toContain("align-not-applied");
+    expect(INK_GATE_RULES).toContain("vertical-align-not-applied");
+    expect(INK_GATE_RULES).toContain("no-ink");
+    expect(inkGateLevel(finding("align-not-applied", "error"))).toBe("error");
+  });
+
+  it("advises, but does not fail, on composition", () => {
+    for (const rule of ["ink-not-centred", "ink-not-right", "ink-not-centred-y", "group-not-centred"]) {
+      expect(inkGateLevel(finding(rule))).toBe("info");
+    }
+  });
+
+  it("re-grades a finding whose runtime chose a harsher level", () => {
+    // The rule set lives in the delivered file; a file built before this split
+    // still calls a group finding a warning. The gate decides, not the file.
+    expect(inkGateLevel(finding("group-not-centred", "warning"))).toBe("info");
+  });
+});
+
+describe("a pair is one finding", () => {
+  const left = sample({
+    elementId: "col_l",
+    box: rect(0, 0, 100, 40),
+    ink: rect(0, 0, 100, 40),
+    group: { elementId: "col_r", box: rect(120, 18, 100, 40) }
+  });
+  const right = sample({
+    elementId: "col_r",
+    box: rect(120, 18, 100, 40),
+    ink: rect(120, 18, 100, 40),
+    group: { elementId: "col_l", box: rect(0, 0, 100, 40) }
+  });
+
+  it("is reported once, from the first side that saw it", () => {
+    const out = auditTextInk([left, right]).filter((f) => f.rule === "group-not-centred");
+    expect(out).toHaveLength(1);
+    expect(out[0].elementId).toBe("col_l");
+    expect(out[0].anchorId).toBe("col_r");
+  });
+
+  it("does not merge two different pairs", () => {
+    const third = sample({
+      elementId: "col_c",
+      box: rect(240, 18, 100, 40),
+      ink: rect(240, 18, 100, 40),
+      group: { elementId: "col_l", box: rect(0, 0, 100, 40) }
+    });
+    const out = auditTextInk([left, right, third]).filter((f) => f.rule === "group-not-centred");
+    expect(out.map((f) => f.elementId)).toEqual(["col_l", "col_c"]);
   });
 });

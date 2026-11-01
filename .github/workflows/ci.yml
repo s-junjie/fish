@@ -1,5 +1,16 @@
 name: CI
 
+# Which repository may run this workflow at all.
+#
+# `scripts/sync-to-public.sh` syncs `.github/workflows` verbatim, so this file and
+# the one in the public repo are the same file — the difference between them is a
+# repository variable, not code. Actions is already disabled on the development
+# repository, which is why it has no Actions tab; this gate is the second lock, so
+# that switching Actions back on there — to debug a build, say — cannot also hand
+# that repository a pipeline it was never meant to have. Unset means `on`: the
+# public repo needs no setup, and a repository that forgets the variable runs its
+# tests rather than going quiet. A repository that must not run these workflows
+# sets `FISH_ACTIONS=off` before enabling Actions.
 on:
   pull_request:
   push:
@@ -18,6 +29,7 @@ env:
 
 jobs:
   verify:
+    if: vars.FISH_ACTIONS != 'off'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -104,6 +116,15 @@ jobs:
           VERSION="$(node -p 'require("./package.json").version')"
           export FISH_KIT_URL="https://dl.fish.themindstudio.cc/kit/fish-agent-kit-${VERSION}.zip"
           node scripts/build-fish-agent-kit.mjs
+          # The kit answers "am I behind" by reading this pointer, and a bundle
+          # built without it says "there is nothing to compare against" — which
+          # reads exactly like being current. Nothing downstream would notice, so
+          # the artifact is asked directly, before it is packed.
+          KIT_ORIGIN="$(node -p 'new URL(process.env.FISH_KIT_URL).origin')"
+          grep -qF "${KIT_ORIGIN}/stable/manifest.json" dist/fish-agent-kit/tools/fish.cjs || {
+            echo "::error::the kit bundle does not carry ${KIT_ORIGIN}/stable/manifest.json — its freshness check would have nothing to ask"
+            exit 1
+          }
           npm run release:catalog
           npm run release:kit
           npm run release:manifest -- --url "https://dl.fish.themindstudio.cc/shell/$VERSION/index.html" --shell dist/index.html --out .smoke/manifest.json

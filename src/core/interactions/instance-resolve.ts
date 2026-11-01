@@ -22,6 +22,7 @@ import { resolveInstanceBox, resolveInstanceNumberMode, resolveInstanceTheme } f
 import { applyConstraintsToChildren } from "../geometry/constraints";
 import { relayoutDocumentTree } from "../compile";
 import { findMasterComponent } from "./component-inventory";
+import { overridableFor } from "./override-audit";
 import { layoutOf, withLayout } from "../dsl/layout-flat";
 import { instanceScaleOf, scaleLayout, scaleSubtreeAbout } from "../geometry/scale-geometry";
 import { syncDualStorage } from "./style-sync";
@@ -872,6 +873,9 @@ export function applyPropertyToSubtree(
   for (let i = 0; i < elements.length; i++) {
     const el = elements[i];
     if (el.id === targetId) {
+      // The list the rest of the engine answers with: a property whose branch does
+      // not exist for this node type is a no-op, and it says so in one place.
+      if (!overridableFor(el).includes(property)) return false;
       const updated = { ...el } as any;
       let wrote = true;
       if (property === "content" && el.type === "text") {

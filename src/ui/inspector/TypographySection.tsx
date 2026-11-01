@@ -1,14 +1,11 @@
 import { useState } from "preact/hooks";
 import { TextElement, DesignElement, DesignDocument, TextStyleDefinition, TextStyle, TextDecorationLine } from "../../core/dsl/types";
-import { LineHeightField } from "./LineHeightField";
-import { LetterSpacingField } from "./LetterSpacingField";
 import { ScrubInput } from "../ScrubInput";
-import { SegmentedControl, ToggleGroup } from "../SegmentedControl";
-import { Select } from "../Select";
-import { FontFamilyPicker } from "./FontFamilyPicker";
+import { SegmentedControl } from "../SegmentedControl";
 import { NumeralsMark } from "./NumeralsMark";
+import { TypographyFields, DecorationRow, CaseRow } from "./typography-fields";
 import { t } from "../../i18n";
-import { AlignLeft, AlignCenter, AlignRight, AlignVerticalJustifyStart, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, Italic, Underline, Strikethrough, Minus, ArrowDownFromLine, Unlink } from "lucide-react";
+import { AlignLeft, AlignCenter, AlignRight, AlignVerticalJustifyStart, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, Minus, ArrowDownFromLine, Unlink } from "lucide-react";
 import { Button } from "../Button";
 import { StylePill } from "./StylePill";
 import { DEFAULT_FONT_FAMILY } from "../../core/font-stack";
@@ -92,6 +89,12 @@ export function TypographySection({
   let currentWeight = textStyle.fontWeight || 400;
   let currentSize = textStyle.fontSize || 24;
   let currentLetterSpacing = textStyle.letterSpacing || 0;
+
+  /** The bound number token's name, for the field's token tag. */
+  const tokenName = (prop: "fontSize" | "lineHeight" | "letterSpacing") => {
+    const boundId = textElement.tokenBindings?.[prop];
+    return boundId ? findNumberToken(docRef.current.tokens ?? [], boundId)?.name : undefined;
+  };
 
   const hasRangeSelection = Boolean(
     activeSelection &&
@@ -262,30 +265,6 @@ export function TypographySection({
     applyStyleUpdate({ textDecoration: lines.length > 0 ? lines : undefined }, true);
   };
 
-  const decorationItems = [
-    {
-      value: "italic",
-      icon: <Italic size={11} />,
-      title: t("typography.styleItalic"),
-      grow: true,
-      attrs: { "data-typography-toggle": "italic" }
-    },
-    {
-      value: "underline",
-      icon: <Underline size={11} />,
-      title: t("typography.decorationUnderline"),
-      grow: true,
-      attrs: { "data-typography-toggle": "underline" }
-    },
-    {
-      value: "line-through",
-      icon: <Strikethrough size={11} />,
-      title: t("typography.decorationStrikethrough"),
-      grow: true,
-      attrs: { "data-typography-toggle": "line-through" }
-    }
-  ];
-
   return (
     /* `data-typography-section`: the section-level hook the e2e suite reads to
        prove the STANDARD typography block is what an instance child gets. It was
@@ -323,106 +302,50 @@ export function TypographySection({
           "whatever this style declares": a per-key rule moved the same field
           between the two panels from one style to the next. */}
       {!styleOwnsType && (
-        <>
-          {/* Font family. No label above it: the field already carries the family
-              name, and a second line saying "Font" above a control that reads
-              "System UI" is the same information twice in two voices. */}
-          <div>
-            <FontFamilyPicker
-              value={currentFont}
-              mixed={mixedFont}
-              onChange={(fontFamily) => {
-                applyStyleUpdate({ fontFamily }, true);
-              }}
-            />
-          </div>
-
-          {/* Font Weight & Size */}
-          <div className="grid grid-cols-2 gap-2">
-            <Select
-              value={mixedWeight ? "" : currentWeight}
-              onChange={(val) => applyStyleUpdate({ fontWeight: Number(val) }, true)}
-            >
-              {mixedWeight && (
-                <option value="" disabled>
-                  {MIXED_LABEL}
-                </option>
-              )}
-              {[
-                [300, "weightLight"],
-                [400, "weightRegular"],
-                [500, "weightMedium"],
-                [600, "weightSemiBold"],
-                [700, "weightBold"],
-                [800, "weightExtraBold"]
-              ].map(([w, k]) => (
-                <option key={w} value={w}>{t(`typography.${k}` as any)}</option>
-              ))}
-            </Select>
-
-            <ScrubInput
-              label={t("typography.size")}
-              value={mixedSize ? undefined : currentSize}
-              mixed={mixedSize}
-              min={1}
-              tokenName={
-                textElement.tokenBindings?.fontSize
-                  ? findNumberToken(docRef.current.tokens ?? [], textElement.tokenBindings.fontSize)?.name
-                  : undefined
-              }
-              onDetachToken={
-                textElement.tokenBindings?.fontSize
-                  ? () => onMutate((el) => unbindNumberTokenFromElement(el, "fontSize"), true)
-                  : undefined
-              }
-              onOpenTokenPicker={(anchor) => setTokenPicker({ prop: "fontSize", anchor })}
-              onDragStart={onDragStart}
-              onDragEnd={onDragEnd}
-              onChange={(sz) => applyStyleUpdate({ fontSize: sz }, false)}
-            />
-          </div>
-
-          {/* Line Height & Letter Spacing */}
-          <div className="grid grid-cols-2 gap-2">
-            <LineHeightField
-              value={mixedLineHeight ? undefined : textElement.style?.lineHeight}
-              fontSize={currentSize}
-              mixed={mixedLineHeight}
-              tokenName={
-                textElement.tokenBindings?.lineHeight
-                  ? findNumberToken(docRef.current.tokens ?? [], textElement.tokenBindings.lineHeight)?.name
-                  : undefined
-              }
-              onDetachToken={
-                textElement.tokenBindings?.lineHeight
-                  ? () => onMutate((el) => unbindNumberTokenFromElement(el, "lineHeight"), true)
-                  : undefined
-              }
-              onOpenTokenPicker={(anchor) => setTokenPicker({ prop: "lineHeight", anchor })}
-              onDragStart={onDragStart}
-              onDragEnd={onDragEnd}
-              onChange={(lh) => setStyle({ lineHeight: lh }, false)}
-            />
-            <LetterSpacingField
-              value={mixedLetterSpacing ? undefined : currentLetterSpacing}
-              mixed={mixedLetterSpacing}
-              tokenName={
-                textElement.tokenBindings?.letterSpacing
-                  ? findNumberToken(docRef.current.tokens ?? [], textElement.tokenBindings.letterSpacing)?.name
-                  : undefined
-              }
-              onDetachToken={
-                textElement.tokenBindings?.letterSpacing
-                  ? () => onMutate((el) => unbindNumberTokenFromElement(el, "letterSpacing"), true)
-                  : undefined
-              }
-              onOpenTokenPicker={(anchor) => setTokenPicker({ prop: "letterSpacing", anchor })}
-              onDragStart={onDragStart}
-              onDragEnd={onDragEnd}
-              onChange={(letterSpacing) => applyStyleUpdate({ letterSpacing }, false)}
-            />
-          </div>
-        </>
+        <TypographyFields
+          fontFamily={currentFont}
+          fontWeight={currentWeight}
+          fontSize={currentSize}
+          lineHeight={textElement.style?.lineHeight}
+          letterSpacing={currentLetterSpacing}
+          mixed={{
+            fontFamily: mixedFont,
+            fontWeight: mixedWeight,
+            fontSize: mixedSize,
+            lineHeight: mixedLineHeight,
+            letterSpacing: mixedLetterSpacing
+          }}
+          tokens={{
+            fontSize: {
+              name: tokenName("fontSize"),
+              onDetach: textElement.tokenBindings?.fontSize
+                ? () => onMutate((el) => unbindNumberTokenFromElement(el, "fontSize"), true)
+                : undefined
+            },
+            lineHeight: {
+              name: tokenName("lineHeight"),
+              onDetach: textElement.tokenBindings?.lineHeight
+                ? () => onMutate((el) => unbindNumberTokenFromElement(el, "lineHeight"), true)
+                : undefined
+            },
+            letterSpacing: {
+              name: tokenName("letterSpacing"),
+              onDetach: textElement.tokenBindings?.letterSpacing
+                ? () => onMutate((el) => unbindNumberTokenFromElement(el, "letterSpacing"), true)
+                : undefined
+            }
+          }}
+          onOpenTokenPicker={(prop, anchor) => setTokenPicker({ prop, anchor })}
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+          onChange={(patch, commit) =>
+            /* Line height is the paragraph's alone: writing it on a run would
+               need span ranges, which is a different interaction. */
+            "lineHeight" in patch
+              ? setStyle(patch as Partial<TextStyle>, commit)
+              : applyStyleUpdate(patch as Partial<TextStyle>, commit)
+          }
+        />
       )}
 
       {/* Alignment: Horizontal & Vertical. The layer's — a style places type, not
@@ -463,44 +386,24 @@ export function TypographySection({
             together. Both halves of that are now the same arity, and the merge is
             what forced the DSL to catch up: see `TextDecorationLine`. */}
         {!styleOwnsType && (
-          <div className={ROW_SPREAD_GAP_CLASS}>
-            {/* "Decoration", not "Style": the section already has a Style pill above
-                it that means a TEXT STYLE, and two rows both labelled Style — one
-                meaning "which named style is this bound to", the other meaning "which
-                lines does this draw" — is the same word doing two jobs a row apart.
-                The row is the one the user named it when they asked for the merge. */}
-            <span className={`${SUB_LABEL_CLASS} shrink-0`}>{t("typography.decoration")}</span>
-            <ToggleGroup<string>
-              className="flex-1"
-              values={armedStyleValues}
-              onToggle={(value, next) =>
-                value === "italic"
-                  ? toggleFontStyle(next)
-                  : toggleDecoration(value as TextDecorationLine, next)
-              }
-              items={decorationItems}
-            />
-          </div>
+          <DecorationRow
+            values={armedStyleValues}
+            onToggle={(value, next) =>
+              value === "italic"
+                ? toggleFontStyle(next)
+                : toggleDecoration(value as TextDecorationLine, next)
+            }
+          />
         )}
 
         {/* Case (Text Transform) — the style owns it (the style editor has the row),
             and it sits with the other text decorations rather than after the
             layer-only rows below. */}
         {!styleOwnsType && (
-          <div className={ROW_SPREAD_GAP_CLASS}>
-            <span className={`${SUB_LABEL_CLASS} shrink-0`}>{t("typography.case")}</span>
-            <SegmentedControl<string>
-              className="flex-1"
-              value={textElement.style?.textTransform || "none"}
-              onChange={(v) => setStyle({ textTransform: v === "none" ? undefined : (v as any) })}
-              items={[
-                { value: "none", icon: <Minus size={11} />, title: t("typography.caseNone"), grow: true },
-                { value: "uppercase", label: "AA", title: t("typography.caseUpper"), grow: true },
-                { value: "lowercase", label: "aa", title: t("typography.caseLower"), grow: true },
-                { value: "capitalize", label: "Aa", title: t("typography.caseTitle"), grow: true }
-              ]}
-            />
-          </div>
+          <CaseRow
+            value={textElement.style?.textTransform}
+            onChange={(next) => setStyle({ textTransform: next })}
+          />
         )}
 
         {/* Figures are the layer's: a text style has no control for them. */}

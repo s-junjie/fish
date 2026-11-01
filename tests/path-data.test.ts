@@ -2,11 +2,12 @@ import { describe, it, expect } from "vitest";
 import {
   parsePathData,
   serializePathData,
+  computePathBounds,
   moveAnchor,
   getAnchorMirrorMode,
   setAnchorMirrorMode
 } from "../src/core/geometry/path-data";
-import { parseIconBody } from "../src/core/assets/svg-body";
+import { parseIconBody } from "../src/plugins/_shared/assets/svg-body";
 import lucideFixture from "./fixtures/iconify-lucide.json";
 import remixFixture from "./fixtures/iconify-ri.json";
 
@@ -160,5 +161,28 @@ describe("path-data round-trip stability", () => {
     expect(first).not.toContain("Z Z");
     expect(first.match(/Z/g)).toHaveLength(1);
     expect(serializePathData(parsePathData(first)!)).toBe(first);
+  });
+});
+
+describe("path-data extents", () => {
+  it("reads path data laid out over several lines", () => {
+    const parsed = parsePathData("M0 0\nL10 0\nL10 10\nZ");
+    expect(parsed).not.toBeNull();
+    expect(parsed!.anchors).toHaveLength(3);
+    expect(serializePathData(parsed!)).toBe("M 0 0 L 10 0 L 10 10 Z");
+  });
+
+  it("bounds the drawn curve, not the handles steering it", () => {
+    const bounds = computePathBounds(parsePathData("M0 0C30 -20 60 -20 90 0")!);
+    expect(bounds.minX).toBeCloseTo(0, 6);
+    expect(bounds.maxX).toBeCloseTo(90, 6);
+    expect(bounds.minY).toBeCloseTo(-15, 6);
+    expect(bounds.maxY).toBeCloseTo(0, 6);
+  });
+
+  it("bounds a shallow arc by the bulge the ellipse actually reaches", () => {
+    const bounds = computePathBounds(parsePathData("M0 0A200 200 0 0 1 100 0")!);
+    expect(bounds.minY).toBeCloseTo(-6.3505, 3);
+    expect(bounds.maxY).toBeCloseTo(0, 6);
   });
 });

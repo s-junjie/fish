@@ -66,8 +66,6 @@ export interface TextInkSample {
   ink: Rect | null;
   /** The nearest painted neighbour in the same group — an icon, usually. */
   group?: { elementId: string; box: Rect } | null;
-  /** The flex line the text sits on, when the parent states one. */
-  parent?: { box: Rect; alignItems: string } | null;
 }
 
 export type InkRule =
@@ -84,6 +82,32 @@ export interface InkFinding {
   elementId: string;
   rule: InkRule;
   message: string;
+  /** The sibling a `group-not-centred` finding measured against. */
+  anchorId?: string;
+}
+
+/**
+ * The rules that may fail a build: the file STATED something and the browser did
+ * not do it — a `text-align` that was dropped, a `vertical-align` that never
+ * arrived, a box whose glyphs paint nothing. Each is a lost property, and none of
+ * them is visible in a screenshot.
+ *
+ * Everything else the audit can say is a judgement about composition: two boxes
+ * do not share a centre line, ink stops short of an edge. On real work those have
+ * come back wrong every time they were looked at by hand (a cover headline over a
+ * scrim, two body columns top-aligned, a numeral beside a rule), so they are
+ * reported and do not gate. A check that fails builds on taste teaches its reader
+ * to ignore the findings that are not taste.
+ */
+export const INK_GATE_RULES: readonly InkRule[] = [
+  "align-not-applied",
+  "vertical-align-not-applied",
+  "no-ink"
+];
+
+/** What a finding is worth to a gate, whatever level the runtime that made it chose. */
+export function inkGateLevel(finding: InkFinding): "info" | "error" | "warning" {
+  return INK_GATE_RULES.includes(finding.rule) ? finding.level : "info";
 }
 
 export interface AuditTolerance {
@@ -204,8 +228,8 @@ const vertical = (value: string | undefined): string =>
  * made every element a pair with something — on a poster, a kicker was graded
  * against a full-bleed grain layer that happened to share its centre line, and
  * the audit reported "kicker is 2px below paper_grain" nineteen times over.
- * The parent anchor below has a gate (`align-items: center`); this is the
- * neighbour's, and it is the same idea: state the relationship first.
+ * The neighbour has to state the relationship first, the way the parent anchor
+ * used to: all four gates below are that statement.
  *
  * All four gates are ratios, so a zoomed canvas reads the same way.
  */
@@ -226,6 +250,37 @@ export function isGroupAnchor(own: Rect, sibling: Rect, parent: Rect): boolean {
   // beside, and its centre is not a target anybody aimed at.
   const ratio = Math.max(own.height, sibling.height) / Math.max(0.5, Math.min(own.height, sibling.height));
   return ratio <= 4;
+}
+
+/**
+ * Which sibling is the PAIR.
+ *
+ * `.filter(isGroupAnchor)` alone still admitted a gradient scrim and a hero
+ * photograph on a real poster: both share the label's centre line, both are
+ * "beside" it, and neither is the thing the label lines up with. A surface — an
+ * image, a gradient, a blended or blurred layer — is what the text sits ON, so
+ * `surface` is stated by the reader that can see the paint, and the geometry gate
+ * below only answers the placement half.
+ */
+export interface GroupCandidate {
+  elementId: string;
+  box: Rect;
+  surface?: boolean;
+}
+
+export function pickGroupAnchor(
+  own: Rect,
+  candidates: readonly GroupCandidate[],
+  parent: Rect
+): GroupCandidate | null {
+  const pairs = candidates.filter(
+    (candidate) => candidate.elementId !== "" && !candidate.surface && isGroupAnchor(own, candidate.box, parent)
+  );
+  if (pairs.length === 0) return null;
+  const ownY = centreY(own);
+  return pairs.reduce((best, candidate) =>
+    Math.abs(centreY(candidate.box) - ownY) < Math.abs(centreY(best.box) - ownY) ? candidate : best
+  );
 }
 
 /**
@@ -313,20 +368,24 @@ export function auditSample(sample: TextInkSample, tolerance: AuditTolerance = D
     }
   }
 
-  const anchor = sample.group
-    ? { id: sample.group.elementId, y: centreY(sample.group.box), x: centreX(sample.group.box) }
-    : sample.parent && /center/.test(sample.parent.alignItems)
-      ? { id: "parent", y: centreY(sample.parent.box), x: centreX(sample.parent.box) }
-      : null;
-  if (anchor) {
-    const offsetY = centreY(box) - anchor.y;
+  /**
+   * A pair, and only a pair. The row used to be a fallback anchor whenever it
+   * said `align-items: center`, and on a dashboard that turned "a number, its
+   * unit and its caption share a column" into three findings: boxes stacked in a
+   * row have different centres by construction, and the row is not a thing the
+   * label was aimed at. The claim that a line should sit in the middle of its own
+   * box is `ink-not-centred-y`'s, and it is read from the FILE rather than guessed
+   * from a flex line.
+   */
+  if (sample.group) {
+    const offsetY = centreY(box) - centreY(sample.group.box);
     if (Math.abs(offsetY) > tolerance.y) {
-      const what = sample.group ? `"${anchor.id}"` : "its row";
       findings.push({
         level: "warning",
         elementId,
         rule: "group-not-centred",
-        message: `its box centre is ${round1(Math.abs(offsetY))}px ${offsetY < 0 ? "above" : "below"} the centre of ${what}`
+        anchorId: sample.group.elementId,
+        message: `its box centre is ${round1(Math.abs(offsetY))}px ${offsetY < 0 ? "above" : "below"} the centre of "${sample.group.elementId}"`
       });
     }
   }
@@ -335,7 +394,46 @@ export function auditSample(sample: TextInkSample, tolerance: AuditTolerance = D
 }
 
 export function auditTextInk(samples: TextInkSample[], tolerance: AuditTolerance = DEFAULT_TOLERANCE): InkFinding[] {
-  return samples.flatMap((sample) => auditSample(sample, tolerance));
+  const seenPairs = new Set<string>();
+  const out: InkFinding[] = [];
+  for (const sample of samples) {
+    for (const finding of auditSample(sample, tolerance)) {
+      // A pair is ONE finding. Two texts that share a centre line report each
+      // other, so the same 18px arrived twice — once from each side — and a
+      // reader counting findings saw two problems where there was one.
+      if (finding.rule === "group-not-centred" && finding.anchorId) {
+        const pair = [finding.elementId, finding.anchorId].sort().join("\u0000");
+        if (seenPairs.has(pair)) continue;
+        seenPairs.add(pair);
+      }
+      out.push(finding);
+    }
+  }
+  return out;
+}
+
+/**
+ * Whether the runtime that graded a document is looking for the same things this
+ * one is.
+ *
+ * The audit runs INSIDE the delivered file, so its rule set is whatever that file
+ * was built with — and a `.fish.html` outlives the kit that made it. A version
+ * number cannot answer this (two builds of one release differ), the list of rules
+ * can: the file publishes what it looked for, and a disagreement is stated rather
+ * than averaged away.
+ */
+export function auditRuleDrift(filed: readonly string[] | undefined): string | null {
+  if (!filed) return "the file's runtime publishes no rule set — its audit predates this kit's";
+  const have = new Set(filed);
+  const want = new Set<string>(AUDITED_RULES);
+  const missing = AUDITED_RULES.filter((rule) => !have.has(rule));
+  const extra = filed.filter((rule) => !want.has(rule));
+  if (missing.length === 0 && extra.length === 0) return null;
+  const parts = [
+    missing.length > 0 ? `it lacks ${missing.join(", ")}` : "",
+    extra.length > 0 ? `it adds ${extra.join(", ")}` : ""
+  ].filter(Boolean);
+  return `graded by the file's own runtime, whose rule set differs (${parts.join("; ")}) — rebuild the document, or update the kit, so both sides grade the same list`;
 }
 
 /** One line per rule, so a caller can say what it looked for, not only what it found. */

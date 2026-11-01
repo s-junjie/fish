@@ -14,18 +14,14 @@ import { NumberTokenPicker } from "./NumberTokenPicker";
 import { findNumberToken, numberTokenPropValue } from "../../core/interactions/number-token-ops";
 import { addTokenToDoc } from "../../core/interactions/style-ops";
 import { colorTokenColor } from "../../core/interactions/token-ops";
-import { Select } from "../Select";
 import { ScrubInput } from "../ScrubInput";
-import { LineHeightField } from "./LineHeightField";
-import { LetterSpacingField } from "./LetterSpacingField";
-import { FontFamilyPicker } from "./FontFamilyPicker";
+import { TypographyFields, type TypographyNumberProp } from "./typography-fields";
 import { EffectRows } from "../EffectRows";
-import { Plus, Eye, EyeOff, Minus, Italic, Underline, Strikethrough, SlidersHorizontal } from "lucide-react";
+import { Plus, Eye, EyeOff, Minus, SlidersHorizontal } from "lucide-react";
 import { TEXT_FIELD_CLASS } from "../ScrubInput";
 import { Button } from "../Button";
 import { SUB_LABEL_CLASS } from "../label-tier";
 import { NEW_SOLID, DEFAULT_STROKE_ROW } from "./style-draft-defaults";
-import { SegmentedControl, ToggleGroup } from "../SegmentedControl";
 import { DECORATION_LINES, hasDecoration, toggledDecoration } from "../../core/dsl/text-decoration";
 import { ROW_CLASS, ROW_SPREAD_GAP_CLASS } from "../row-style";
 export interface StyleDrafts {
@@ -418,139 +414,76 @@ function DraftTextRows({
   onCommitTokenEdit: (newDoc: DesignDocument) => void;
 }) {
   const [tokenPicker, setTokenPicker] = useState<{
-    prop: "fontSize" | "lineHeight" | "letterSpacing";
+    prop: TypographyNumberProp;
     anchor: HTMLElement;
   } | null>(null);
 
-  const resolveTokenName = (prop: "fontSize" | "lineHeight" | "letterSpacing") => {
-    const boundId = textStyle.tokenBindings?.[prop];
+  const bindings = textStyle.tokenBindings;
+  const tokenName = (prop: TypographyNumberProp) => {
+    const boundId = bindings?.[prop];
     return boundId && doc ? findNumberToken(doc.tokens ?? [], boundId)?.name : undefined;
   };
 
-  const handleDetach = (prop: "fontSize" | "lineHeight" | "letterSpacing") => {
-    const next = { ...textStyle.tokenBindings };
+  const withoutBinding = (prop: TypographyNumberProp) => {
+    const next = { ...bindings };
     delete next[prop];
-    onChange({ tokenBindings: Object.keys(next).length > 0 ? next : undefined });
+    return Object.keys(next).length > 0 ? next : undefined;
+  };
+
+  /** Typing into a bound field detaches it: the draft now holds a value, and a
+      binding it did not author would overwrite that value on the next sync. */
+  const apply = (patch: Partial<TextStyleDeclaration>) => {
+    const touched = (["fontSize", "lineHeight", "letterSpacing"] as const).find((key) => key in patch);
+    onChange(
+      touched && bindings?.[touched] ? { ...patch, tokenBindings: withoutBinding(touched) } : patch
+    );
   };
 
   return (
     <div className="space-y-2 text-ui">
-      <FontFamilyPicker
-        value={textStyle.fontFamily || DEFAULT_FONT_FAMILY}
-        onChange={(fontFamily) => onChange({ fontFamily })}
-      />
-      <div className="grid grid-cols-2 gap-2">
-        <Select value={String(textStyle.fontWeight || 400)} onChange={(val) => onChange({ fontWeight: Number(val) })}>
-          <option value="400">{t("typography.weightRegular")}</option>
-          <option value="500">{t("typography.weightMedium")}</option>
-          <option value="600">{t("typography.weightSemiBold")}</option>
-          <option value="700">{t("typography.weightBold")}</option>
-        </Select>
-        <ScrubInput
-          label={t("typography.size")}
-          value={textStyle.fontSize || 16}
-          min={1}
-          tokenName={resolveTokenName("fontSize")}
-          onDetachToken={textStyle.tokenBindings?.fontSize ? () => handleDetach("fontSize") : undefined}
-          onOpenTokenPicker={(anchor) => setTokenPicker({ prop: "fontSize", anchor })}
-          onChange={(val) => {
-            if (textStyle.tokenBindings?.fontSize) {
-              const next = { ...textStyle.tokenBindings };
-              delete next.fontSize;
-              onChange({ fontSize: val, tokenBindings: Object.keys(next).length > 0 ? next : undefined });
-            } else {
-              onChange({ fontSize: val });
-            }
-          }}
-        />
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        <LineHeightField
-          value={textStyle.lineHeight}
-          fontSize={textStyle.fontSize || 16}
-          tokenName={resolveTokenName("lineHeight")}
-          onDetachToken={textStyle.tokenBindings?.lineHeight ? () => handleDetach("lineHeight") : undefined}
-          onOpenTokenPicker={(anchor) => setTokenPicker({ prop: "lineHeight", anchor })}
-          onChange={(lh) => {
-            if (textStyle.tokenBindings?.lineHeight) {
-              const next = { ...textStyle.tokenBindings };
-              delete next.lineHeight;
-              onChange({ lineHeight: lh, tokenBindings: Object.keys(next).length > 0 ? next : undefined });
-            } else {
-              onChange({ lineHeight: lh });
-            }
-          }}
-        />
-        <LetterSpacingField
-          value={textStyle.letterSpacing}
-          tokenName={resolveTokenName("letterSpacing")}
-          onDetachToken={textStyle.tokenBindings?.letterSpacing ? () => handleDetach("letterSpacing") : undefined}
-          onOpenTokenPicker={(anchor) => setTokenPicker({ prop: "letterSpacing", anchor })}
-          onChange={(ls) => {
-            if (textStyle.tokenBindings?.letterSpacing) {
-              const next = { ...textStyle.tokenBindings };
-              delete next.letterSpacing;
-              onChange({ letterSpacing: ls, tokenBindings: Object.keys(next).length > 0 ? next : undefined });
-            } else {
-              onChange({ letterSpacing: ls });
-            }
-          }}
-        />
-      </div>
-
-      <div className={ROW_SPREAD_GAP_CLASS}>
-        <span className={`${SUB_LABEL_CLASS} shrink-0`}>{t("typography.decoration")}</span>
-        <ToggleGroup<string>
-          className="flex-1"
-          values={[
+      <TypographyFields
+        fontFamily={textStyle.fontFamily || DEFAULT_FONT_FAMILY}
+        fontWeight={textStyle.fontWeight || 400}
+        fontSize={textStyle.fontSize || 16}
+        lineHeight={textStyle.lineHeight}
+        letterSpacing={textStyle.letterSpacing}
+        textTransform={textStyle.textTransform}
+        tokens={{
+          fontSize: { name: tokenName("fontSize"), onDetach: bindings?.fontSize ? () => apply({ tokenBindings: withoutBinding("fontSize") }) : undefined },
+          lineHeight: { name: tokenName("lineHeight"), onDetach: bindings?.lineHeight ? () => apply({ tokenBindings: withoutBinding("lineHeight") }) : undefined },
+          letterSpacing: { name: tokenName("letterSpacing"), onDetach: bindings?.letterSpacing ? () => apply({ tokenBindings: withoutBinding("letterSpacing") }) : undefined }
+        }}
+        onOpenTokenPicker={(prop, anchor) => setTokenPicker({ prop, anchor })}
+        onChange={apply}
+        showCase
+        decoration={{
+          values: [
             ...(textStyle.fontStyle === "italic" ? ["italic"] : []),
             ...DECORATION_LINES.filter((line) => hasDecoration(textStyle.textDecoration, line))
-          ]}
-          onToggle={(value, next) => {
+          ],
+          onToggle: (value, next) => {
             if (value === "italic") {
-              onChange({ fontStyle: next ? "italic" : undefined });
+              apply({ fontStyle: next ? "italic" : undefined });
               return;
             }
             const lines = toggledDecoration(textStyle.textDecoration, value as TextDecorationLine, next);
-            onChange({ textDecoration: lines.length > 0 ? lines : undefined });
-          }}
-          items={[
-            { value: "italic", icon: <Italic size={11} />, title: t("typography.styleItalic"), grow: true },
-            { value: "underline", icon: <Underline size={11} />, title: t("typography.decorationUnderline"), grow: true },
-            { value: "line-through", icon: <Strikethrough size={11} />, title: t("typography.decorationStrikethrough"), grow: true }
-          ]}
-        />
-      </div>
-
-      <div className={ROW_SPREAD_GAP_CLASS}>
-        <span className={`${SUB_LABEL_CLASS} shrink-0`}>{t("typography.case")}</span>
-        <SegmentedControl<string>
-          className="flex-1"
-          value={textStyle.textTransform || "none"}
-          onChange={(v) =>
-            onChange({ textTransform: v === "none" ? undefined : (v as TextStyleDeclaration["textTransform"]) })
+            apply({ textDecoration: lines.length > 0 ? lines : undefined });
           }
-          items={[
-            { value: "none", icon: <Minus size={11} />, title: t("typography.caseNone"), grow: true },
-            { value: "uppercase", label: "AA", title: t("typography.caseUpper"), grow: true },
-            { value: "lowercase", label: "aa", title: t("typography.caseLower"), grow: true },
-            { value: "capitalize", label: "Aa", title: t("typography.caseTitle"), grow: true }
-          ]}
-        />
-      </div>
+        }}
+      />
 
       {doc && tokenPicker && (
         <NumberTokenPicker
           doc={doc}
           docRef={docRef}
           anchor={tokenPicker.anchor}
-          boundTokenId={textStyle.tokenBindings?.[tokenPicker.prop]}
+          boundTokenId={bindings?.[tokenPicker.prop]}
           category="typography"
           onSelect={(tok) => {
             if (docRef && !docRef.current.tokens?.some((t) => t.id === tok.id)) {
               docRef.current = addTokenToDoc(docRef.current, tok);
             }
-            const nextBindings = { ...(textStyle.tokenBindings || {}), [tokenPicker.prop]: tok.id };
+            const nextBindings = { ...(bindings || {}), [tokenPicker.prop]: tok.id };
             onChange({
               [tokenPicker.prop]: numberTokenPropValue(tokenPicker.prop, tok.value),
               tokenBindings: nextBindings
@@ -558,7 +491,7 @@ function DraftTextRows({
             setTokenPicker(null);
           }}
           onDetach={() => {
-            handleDetach(tokenPicker.prop);
+            apply({ tokenBindings: withoutBinding(tokenPicker.prop) });
             setTokenPicker(null);
           }}
           onCommitSnapshot={onCommitTokenEdit}

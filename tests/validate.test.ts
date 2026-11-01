@@ -131,6 +131,27 @@ describe("validateDocument", () => {
     expect(diags[0].message).toContain("outside local box");
   });
 
+  it("flags overhang when the arc flags are written without separators", () => {
+    // `0 0112.67` packs both flags into one number run, the shape optimisers emit.
+    const el = pathEl("glued", 0, 0, 20, 20, "M0 0A5 5 0 0112.67 19L20 0");
+    const diags = validateDocument(doc([el]));
+    expect(diags).toHaveLength(1);
+    expect(diags[0].elementId).toBe("glued");
+  });
+
+  it("flags overhang in path data laid out over several lines", () => {
+    const el = pathEl("wrapped", 0, 0, 50, 50, "M 400 400\nL 500 500");
+    const diags = validateDocument(doc([el]));
+    expect(diags).toHaveLength(1);
+    expect(diags[0].elementId).toBe("wrapped");
+  });
+
+  it("stays quiet when only the handles leave the box and the ink does not", () => {
+    // Handles reach y=-0.47; the shallow arc rises only to 1.65 in a 0..20 box.
+    const el = pathEl("shallow", 0, 0, 100, 20, "M0 8A200 200 0 0 1 100 8");
+    expect(validateDocument(doc([el]))).toHaveLength(0);
+  });
+
   it("flags text that wraps past its box", () => {
     const el = textEl("pill", 0, 0, 88, 20, "#M5-125-006 Auction", 8);
     const diags = validateDocument(doc([el]));

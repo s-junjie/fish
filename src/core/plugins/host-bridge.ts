@@ -30,7 +30,6 @@ import { getActivePage, updateActivePageElements } from "../dsl/types";
 import { mapElements } from "../geometry/tree-edit";
 import { firstImagePaint } from "../dsl/image-fill";
 import { createId } from "../id";
-import { lucideProvider, remixProvider, openverseProvider } from "./index";
 import { dragPayload } from "./drag";
 import { insertRemoteImage } from "./remote-image";
 import { injectPluginStyles } from "./plugin-styles";
@@ -49,9 +48,6 @@ export interface FishHostBridge {
     createId: typeof createId;
   };
   assets: {
-    lucideProvider: typeof lucideProvider;
-    remixProvider: typeof remixProvider;
-    openverseProvider: typeof openverseProvider;
     insertRemoteImage: typeof insertRemoteImage;
     dragPayload: typeof dragPayload;
   };
@@ -69,7 +65,7 @@ export function installHostBridge(): FishHostBridge {
     hooks,
     jsxRuntime,
     doc: { getActivePage, updateActivePageElements, mapElements, firstImagePaint, createId },
-    assets: { lucideProvider, remixProvider, openverseProvider, insertRemoteImage, dragPayload },
+    assets: { insertRemoteImage, dragPayload },
     styles: { inject: injectPluginStyles }
   };
   (globalThis as unknown as Record<string, unknown>)[HOST_BRIDGE_GLOBAL] = bridge;

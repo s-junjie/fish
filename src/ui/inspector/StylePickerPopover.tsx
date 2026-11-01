@@ -32,15 +32,16 @@ import { toTextStyleDeclaration } from "../../core/dsl/text-style-declarations";
 import { createId } from "../../core/id";
 import { useStylePreview } from "./style-preview-channel";
 import { ColorPanel } from "../ColorPanel";
-import { useAnchoredPosition, placementStyle } from "../hooks/useAnchoredPosition";
+import {
+  useAnchoredPosition,
+  placementStyle,
+  sidePanelCompute
+} from "../hooks/useAnchoredPosition";
 import { useDismiss } from "../hooks/useDismiss";
 import { setPickerOpen } from "../hooks/picker-focus";
 import { POPOVER_SURFACE_CLASS } from "../menu-style";
 
 export const POPOVER_WIDTH = 260;
-const VIEWPORT_MARGIN = 8;
-const ANCHOR_GAP = 10;
-const BOTTOM_MARGIN = 20;
 
 /** A fresh draft is a deep copy, so editing it cannot reach back into the element. */
 function draft<T>(value: T): T {
@@ -216,25 +217,7 @@ export function StylePickerPopover({
     anchorRef,
     panelRef,
     deps: [viewMode],
-    compute: (anchor, panel) => {
-      const a = anchor.getBoundingClientRect();
-      if (a.width === 0 && a.height === 0 && a.top === 0 && a.left === 0) return null;
-      let left = a.left - POPOVER_WIDTH - ANCHOR_GAP;
-      if (left < VIEWPORT_MARGIN) {
-        left = Math.min(a.right + ANCHOR_GAP, window.innerWidth - POPOVER_WIDTH - VIEWPORT_MARGIN);
-      }
-      left = Math.max(VIEWPORT_MARGIN, left);
-
-      const height = panel.offsetHeight || 320;
-      const fitsBelow = a.top + height <= window.innerHeight - BOTTOM_MARGIN;
-      const fitsAbove = a.top - height >= VIEWPORT_MARGIN;
-      const top = fitsBelow
-        ? a.top
-        : fitsAbove
-          ? a.top - height
-          : Math.max(VIEWPORT_MARGIN, window.innerHeight - height - BOTTOM_MARGIN);
-      return { left, top };
-    }
+    compute: sidePanelCompute(POPOVER_WIDTH, 320, null)
   });
 
   // Escape unwinds one layer at a time — the effect menu, then the colour picker,

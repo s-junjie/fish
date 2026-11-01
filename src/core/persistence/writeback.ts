@@ -233,6 +233,15 @@ export function saveAsCopyName(currentName: string): string {
 }
 
 /**
+ * The name a read-only copy is offered under. Distinct from `-copy` because the
+ * two copies say different things: one is a draft of the same work, the other is
+ * the version you hand to someone else.
+ */
+export function readOnlyCopyName(currentName: string): string {
+  return currentName.replace(/(\.fish)?\.html?$/i, "-read-only.fish.html");
+}
+
+/**
  * Save a document as a *new* standalone `.fish.html` — used to export a named
  * version as a sidecar. Prompts the user for a location via
  * `showSaveFilePicker` (requires a user gesture). Does NOT touch the active
@@ -247,7 +256,7 @@ export async function saveDocAsNewFile(
   doc: DesignDocument,
   filename: string,
   templateHtml?: string,
-  opts?: { freshFileId?: boolean }
+  opts?: { freshFileId?: boolean; readOnly?: boolean }
 ): Promise<WritebackResult> {
   const picker = (typeof window !== "undefined" ? (window as any).showSaveFilePicker : undefined) ?? (globalThis as any).showSaveFilePicker;
   if (typeof picker !== "function") {

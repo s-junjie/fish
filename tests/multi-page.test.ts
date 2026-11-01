@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { DesignDocument, FrameElement, ComponentElement, InstanceElement, getActivePage, updateActivePageElements } from "../src/core/dsl/types";
+import { DesignDocument, FrameElement, ComponentElement, InstanceElement, getActivePage, updateActivePageElements, updatePageCanvas } from "../src/core/dsl/types";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
 import { validateDocument } from "../src/core/validate";
 import { findMasterComponent } from "../src/core/interactions/component-inventory";
@@ -149,5 +149,29 @@ describe("Multi-Page Document Engine", () => {
     expect(updated.pages[0].children[0].id).toBe("frame_hero");
     // Ensure second page is untouched
     expect(updated.pages[1].children[0].id).toBe("comp_btn");
+  });
+
+  it("writes a page's canvas by id, not the active page's", () => {
+    // The deck can switch pages without committing `activePageId`, so a write
+    // keyed on "the active page" would land on the canvas behind the slide.
+    const doc = createTestDoc();
+    const inactiveId = doc.pages[1].id;
+    const updated = updatePageCanvas(doc, inactiveId, { presentBackground: true });
+
+    expect(updated.pages[1].canvas?.presentBackground).toBe(true);
+    expect(updated.pages[0].canvas?.presentBackground).toBeUndefined();
+    expect(updated.activePageId).toBe(doc.activePageId);
+  });
+
+  it("keeps a page's own background when it opts into the deck backdrop", () => {
+    const doc = createTestDoc();
+    doc.pages[1] = {
+      ...doc.pages[1],
+      canvas: { ...doc.canvas, background: { type: "solid", color: "#123456" } }
+    };
+    const updated = updatePageCanvas(doc, doc.pages[1].id, { presentBackground: true });
+
+    expect(updated.pages[1].canvas?.background).toEqual({ type: "solid", color: "#123456" });
+    expect(updated.pages[1].canvas?.presentBackground).toBe(true);
   });
 });

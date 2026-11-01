@@ -1,9 +1,11 @@
-import { createId } from "../id";
-import { DEFAULT_STROKE_COLOR } from "../dsl/defaults";
-import type { PathElement } from "../dsl/types";
-import { fetchCollections, fetchIconBodies, fetchIconNames, resolveAlias, type IconifyCollection } from "../assets/iconify";
-import { parseIconBody } from "../assets/svg-body";
-import { ICON_PAGE_SIZE, type AssetCredit, type AssetProvider, type AssetInsertResult, type AssetSearchResult } from "./types";
+import { createId } from "../../../core/id";
+import type { PathElement } from "../../../core/dsl/types";
+import { fetchCollections, fetchIconBodies, fetchIconNames, resolveAlias, type IconifyCollection } from "./iconify";
+import { parseIconBody } from "./svg-body";
+import type { AssetCredit, AssetProvider, AssetInsertResult, AssetInsertTarget, AssetSearchResult } from "../../../core/plugins/types";
+
+const DEFAULT_STROKE_COLOR = "#000000";
+const ICON_PAGE_SIZE = 60;
 
 /**
  * A provider backed by one Iconify set. Everything the two shipped sets have in
@@ -57,7 +59,16 @@ export interface IconifyProviderOptions {
   name: string;
 }
 
-export function createIconifyProvider(options: IconifyProviderOptions): AssetProvider {
+/**
+ * An icon provider inserts synchronously, and the drag payload reads `.element`
+ * off the call. `AssetProvider` admits a Promise for network sources
+ * (openverse), so the narrow signature is what a caller can actually rely on.
+ */
+export type SyncAssetProvider = Omit<AssetProvider, "insert"> & {
+  insert(result: AssetSearchResult, target: AssetInsertTarget): AssetInsertResult;
+};
+
+export function createIconifyProvider(options: IconifyProviderOptions): SyncAssetProvider {
   const { prefix } = options;
 
   const setMeta = async (): Promise<IconifyCollection | undefined> => {
@@ -170,3 +181,17 @@ export function createIconifyProvider(options: IconifyProviderOptions): AssetPro
     }
   };
 }
+
+/** Outline set: bodies carry `fill="none" stroke="currentColor"`. */
+export const lucideProvider = createIconifyProvider({
+  prefix: "lucide",
+  name: "Lucide Icons",
+  nameKey: "assets.sourceLucide"
+});
+
+/** Solid set: every body is one `fill="currentColor"` path. */
+export const remixProvider = createIconifyProvider({
+  prefix: "ri",
+  name: "Remix Icons",
+  nameKey: "assets.sourceRemix"
+});

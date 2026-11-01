@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { readSource } from "./doc-source";
+import { readDocument } from "./doc-source";
 import { normalizeDesignDocument } from "../dsl/normalize";
 import { parseLenientJson } from "../dsl/lenient-json";
 import { countElements } from "../geometry/tree-ops";
@@ -169,19 +169,12 @@ function findContextFile(docFile: string, names: readonly string[]): string | nu
 }
 
 export function brief(file: string, opts: { json: boolean }): number {
-  const src = readSource(file);
-  if (typeof src === "string") {
-    console.error(src);
-    return 2;
+  const read = readDocument(file);
+  if ("error" in read) {
+    console.error(read.error);
+    return read.code;
   }
-  let value: unknown;
-  try {
-    value = parseLenientJson(src.text.trim() || "{}");
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(`${src.file}: the #design-doc block is not valid JSON — ${message}`);
-    return 1;
-  }
+  const { src, value } = read;
 
   const { document } = normalizeDesignDocument(value);
   const r = reconDocument(document);

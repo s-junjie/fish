@@ -6,9 +6,12 @@ import { getActivePage } from "../../core/dsl/types";
 import { parseReportRequest, screenshotPlan } from "../../core/export-request";
 import { measureElement } from "../../core/measure";
 import { validateDocument } from "../../core/validate";
-import { auditTextInk, DEFAULT_TOLERANCE } from "../../core/audit/text-ink";
+import { laidOutDocument } from "../../core/layout-report";
+import { AUDITED_RULES, auditTextInk, DEFAULT_TOLERANCE } from "../../core/audit/text-ink";
 import { collectTextInk, scaledTolerance } from "../canvas/text-ink-samples";
 import { fontsSettled } from "../canvas/fonts-settled";
+import { scopeValidate } from "../../core/report-scope";
+import type { CompileDiagnostic } from "../../core/compile";
 
 /**
  * `?report=1&element=<id>` — put what the engine knows about this document into
@@ -80,16 +83,24 @@ export function useHeadlessReport(
     const publish = async () => {
       const current = docRef.current;
       const raw = rawBlockRepairs();
-      const page = getActivePage(current);
+      const rawDoc = rawBlockDocument();
+      // The same document `fish check` grades: the loader's layout, built from
+      // the block the file wrote. Without it a report and a check of one file
+      // could disagree, and the caller has no way to see which question each
+      // answered. The findings it produces are published below for the same
+      // reason — `x/y` an auto-layout child cannot use is invisible otherwise.
+      const prepared = laidOutDocument(current, rawDoc);
+      const live = prepared.document;
+      const page = getActivePage(live);
       const canvas = {
-        width: page.canvas?.width ?? current.canvas?.width ?? 0,
-        height: page.canvas?.height ?? current.canvas?.height ?? 0
+        width: page.canvas?.width ?? live.canvas?.width ?? 0,
+        height: page.canvas?.height ?? live.canvas?.height ?? 0
       };
       const scale = request.scale;
       const wholePage = screenshotPlan(canvas.width, canvas.height, scale);
       const report: Record<string, unknown> = {
         ok: true,
-        version: current.version,
+        version: live.version,
         canvas,
         scale,
         // `window` is CSS pixels for `--window-size`; `expected` is the bitmap the
@@ -101,7 +112,8 @@ export function useHeadlessReport(
         // longer tell anyone: this is the only report of it to a caller who cannot
         // run `normalize` themselves.
         repairs: raw.repairs,
-        validate: validateDocument(current)
+        validate: validateDocument(live),
+        ...(prepared.findings.length > 0 ? { layout: prepared.findings } : {})
       };
 
       if (raw.parseError) {
@@ -114,7 +126,7 @@ export function useHeadlessReport(
       }
 
       if (request.elementId) {
-        const measured = measureElement(current, request.elementId);
+        const measured = measureElement(live, request.elementId);
         if (!measured) {
           // No silent whole-page fallback: a plausible-looking number for an id that
           // does not exist is the failure this channel exists to prevent. The
@@ -130,6 +142,15 @@ export function useHeadlessReport(
           report.window = region.window;
           report.expected = region.expected;
           report.origin = `${measured.x},${measured.y}`;
+          // The picture is cropped; the verdicts have to be cropped with it, or
+          // five per-screen exports read as five screens with the same defect.
+          // Nothing is dropped: the rest is published beside it, named as such.
+          const scoped = scopeValidate(live, request.elementId, report.validate as CompileDiagnostic[]);
+          if (scoped) {
+            report.validate = scoped.inScope;
+            report.validateElsewhere = scoped.elsewhere;
+            report.scope = { elementId: scoped.elementId, elements: scoped.elements };
+          }
         }
       }
 
@@ -138,19 +159,25 @@ export function useHeadlessReport(
         // only reader that looks at the painted page, and the page is what the
         // caller cannot see for itself.
         const fontsReady = await fontsSettled();
-        const collection = collectTextInk(current, rawBlockDocument());
+        const collection = collectTextInk(live, rawDoc);
         // The default is 1px, which is the sub-pixel-kerned line; a caller who
         // asks for more is asking for a coarser grade, not a different rule.
         const px = request.auditTolerance ?? DEFAULT_TOLERANCE.x;
         const tolerance = scaledTolerance(collection, { x: px, y: px });
+        const findings = auditTextInk(collection.samples, tolerance);
         report.audit = {
-          ok: true,
+          // "Nothing failed", the same word the top level uses: a block reading
+          // `ok: true` beside an `error` finding is a pass a caller will believe.
+          ok: !findings.some((f) => f.level === "error"),
           fontsReady,
           zoom: Math.round(collection.zoom * 1000) / 1000,
           tolerance,
           checked: collection.samples.length,
           skipped: collection.skipped,
-          findings: auditTextInk(collection.samples, tolerance)
+          findings,
+          // What this runtime LOOKED for, so a reader can tell a clean document
+          // from one graded by rules that no longer exist.
+          rules: [...AUDITED_RULES]
         };
       }
 

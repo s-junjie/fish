@@ -5,10 +5,9 @@ import {
   useEffect,
   dragPayload,
   getActivePage,
-  lucideProvider,
-  remixProvider,
   updateActivePageElements
 } from "../_host";
+import { lucideProvider, remixProvider } from "./provider";
 import { SearchGlyph, SpinnerGlyph } from "../_shared/glyphs";
 import { iconsStrings as i18n } from "./i18n";
 
@@ -148,9 +147,10 @@ export function IconsPluginView({ context }: IconsPluginViewProps) {
               const render = icon.iconRender;
               const isFill = render?.mode === "fill";
               const paths = icon.iconPaths || [];
+              const insertRes = activeProvider.insert(icon, { x: 0, y: 0 });
               const payload: AssetInsertPayload = {
-                providerId: providerType === "lucide" ? "lucide" : "ri",
-                result: icon
+                insert: "element",
+                element: insertRes.element
               };
 
               return (

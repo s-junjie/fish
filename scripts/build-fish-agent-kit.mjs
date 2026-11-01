@@ -17,6 +17,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { renderSkill, skillVariables } from "./lib/skill-render.mjs";
+import { STABLE_KIT, STABLE_MANIFEST } from "./lib/release-layout.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const kit = path.join(root, "dist", "fish-agent-kit");
@@ -51,6 +52,10 @@ if (kitUrl) {
     process.exit(2);
   }
 }
+
+// The origin the kit reports itself against. Empty for a local build, which is
+// what turns the freshness check off in the CLI rather than pointing it nowhere.
+const kitOrigin = kitUrl ? new URL(kitUrl).origin : "";
 
 /**
  * Nothing in the kit may need installing. `shot.sh` uses bash, coreutils and a
@@ -163,10 +168,17 @@ for (const { from, to } of BUNDLES) {
       platform: "node",
       format: "cjs",
       target: "node18",
-      // Without this the CLI reports `APP_VERSION` as "dev", and `--version`
+      // Without these the CLI reports `APP_VERSION` as "dev", and `--version`
       // would be the one answer in the kit that cannot be checked against the
-      // `SKILL.md` shipped beside it.
-      define: { __FISH_APP_VERSION__: JSON.stringify(pkg.version) },
+      // `SKILL.md` shipped beside it. The two URLs are the release the kit came
+      // from, derived from the layout module rather than typed into `src/`: a
+      // local build has no origin, and the freshness check then says nothing at
+      // all instead of asking a URL that does not exist.
+      define: {
+        __FISH_APP_VERSION__: JSON.stringify(pkg.version),
+        __FISH_KIT_MANIFEST_URL__: JSON.stringify(kitOrigin ? `${kitOrigin}/${STABLE_MANIFEST}` : ""),
+        __FISH_KIT_INSTALL_URL__: JSON.stringify(kitOrigin ? `${kitOrigin}/${STABLE_KIT}` : "")
+      },
       legalComments: "none",
       logLevel: "warning"
     });

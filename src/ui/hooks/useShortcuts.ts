@@ -46,7 +46,8 @@ interface UseShortcutsOptions {
   canvasContainerRef: { current: HTMLDivElement | null };
   handleUndo: () => void;
   handleRedo: () => void;
-  triggerSave: () => void;
+  /** Absent on a read-only file, where there is no file this tab may write. */
+  triggerSave?: () => void;
   triggerSaveAs?: () => void;
   startRenaming: (id: string, name: string) => void;
   startCanvasTextEdit: (el: TextElement) => void;
@@ -502,6 +503,9 @@ export function useShortcuts({
 
       // Save: Cmd+S / Save As: Shift+Cmd+S
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        // No handler means this file may not be written: leave the browser's own
+        // ⌘S alone rather than swallowing it on a document that cannot save.
+        if (!triggerSave) return;
         e.preventDefault();
         if (e.shiftKey && triggerSaveAs) {
           triggerSaveAs();

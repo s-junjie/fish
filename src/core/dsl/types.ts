@@ -184,6 +184,32 @@ export function updateActivePageElements(
 }
 
 /**
+ * Writes one page's canvas BY ID.
+ *
+ * The page a deck is playing is not necessarily the document's active page: the
+ * presentation switches pages without committing `activePageId`, so a write keyed
+ * on "the active page" lands on the wrong canvas — the one behind the deck rather
+ * than the one being presented.
+ *
+ * The document's canvas is the base of the merge rather than the page's alone, so
+ * a page whose canvas predates a field — an imported file, a fixture — gains that
+ * field's document value instead of writing a canvas with no `background`.
+ */
+export function updatePageCanvas(
+  doc: DesignDocument,
+  pageId: string,
+  patch: Partial<CanvasSpec>
+): DesignDocument {
+  const pages = doc.pages && doc.pages.length > 0 ? doc.pages : [getActivePage(doc)];
+  return {
+    ...doc,
+    pages: pages.map((p) =>
+      p.id === pageId ? { ...p, canvas: { ...doc.canvas, ...p.canvas, ...patch } } : p
+    )
+  };
+}
+
+/**
  * A tree written at the top level — a fixture, a plugin payload, a single-page
  * document — is given to the first page. An explicit page always wins, so
  * running this on a paged document is a no-op.
@@ -215,6 +241,7 @@ export interface CanvasSpec {
   height?: number;
   background: Paint;
   unit: "px";
+  presentBackground?: boolean;
 }
 
 export type CornerRadius = number | [number, number, number, number];
@@ -257,20 +284,6 @@ export interface BackdropBlurEffect {
   tokenBindings?: Record<string, string>;
 }
 
-/**
- * Apple's Liquid Glass, authored on Figma's parameter surface.
- *
- * Figma's glass effect and Apple's material are one target rather than two —
- * Apple's own iOS 27 UI kit is built with Figma's glass effect — so every field
- * here is one of Figma's nine, under Figma's name, with Figma's range. The unit
- * of each is in `core/dsl/liquid-glass.ts`, which also owns the defaults and the
- * geometry both renderers read.
- *
- * `saturation` and `brightness` are gone. They came from a third-party reverse
- * engineering of the material, neither Figma nor Apple has them, and a flat
- * `brightness(1.08)` lift is most of why the effect read as a fogged window: the
- * official illustration leaves the interior at the backdrop's own level.
- */
 export interface LiquidGlassEffect {
   type: "liquid-glass";
   /** Frost — how much the backdrop is blurred, 0-100, taken 1:1 as a px radius. */
