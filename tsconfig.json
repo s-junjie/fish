@@ -12,13 +12,15 @@
     "skipLibCheck": true,
     "esModuleInterop": true,
     "isolatedModules": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true
   },
   "include": [
     "src/**/*",
     "tests/**/*",
-    "scripts/*.d.mts",
-    "scripts/lib/*.d.ts",
-    "scripts/lib/*.d.mts"
+    "scripts/**/*.ts",
+    "scripts/**/*.mts",
+    "scripts/lib/*.d.ts"
   ]
 }

@@ -258,6 +258,48 @@ await page.waitForTimeout(400);
 check("an Alt-drop of another component swaps in place", await elementCount(), before);
 check("the instance now projects that component", (await setNode("inst_toggle")).componentId, "c_on");
 
+// --- 9. the canvas "+" ACTS, not merely appears -----------------------------
+// A variant copied out of its set keeps the `setId` it had, so the layer claims a
+// set that does not hold it. The command read that claim, found no node to add to
+// and returned: the button drew itself, took the press and did nothing — which is
+// what made it look like "the + cannot be clicked".
+//
+// The press is delivered to the button rather than to a screen point: §5 framed the
+// canvas on another component, so where this layer lands on screen is not this
+// section's business (and a screen point would grade the viewport, not the button).
+await page.evaluate(() => {
+  window.__FISH_BRIDGE__.insertElement({
+    id: "c_orphan",
+    type: "component",
+    name: "Orphan",
+    x: 400,
+    y: 800,
+    width: 100,
+    height: 40,
+    setId: "set_gone",
+    variantProperties: { "Property 1": "Default" }
+  });
+});
+await page.waitForTimeout(250);
+await page.evaluate(() => window.__FISH_BRIDGE__.selectElement("c_orphan"));
+await page.waitForTimeout(250);
+const orphanAdd = await page.$('[data-canvas-add-variant="c_orphan"]');
+check("a component whose set is gone still offers the canvas +", orphanAdd !== null, true);
+await orphanAdd.evaluate((el) =>
+  el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }))
+);
+await page.waitForTimeout(400);
+const holdingSet = () =>
+  page.evaluate(
+    () =>
+      window.__FISH_BRIDGE__.getElements().find(
+        (el) => el.type === "componentSet" && (el.children || []).some((c) => c.id === "c_orphan")
+      )?.id ?? null
+  );
+const orphanSet = await holdingSet();
+check("pressing it really promotes the layer to a set", Boolean(orphanSet), true);
+check("and leaves that set selected", [...(await selected())], orphanSet ? [orphanSet] : []);
+
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} passed`);
 console.log("pageErrors", errors.slice(0, 5));

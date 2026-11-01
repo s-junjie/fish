@@ -87,35 +87,49 @@ function makePng(size: number): Buffer {
 
 const PNG_64 = makePng(64);
 
-const images: Record<string, Uint8Array> = {};
-const index: Record<string, string> = {};
-const paint = (node: unknown): void => {
-  const record = node as { fills?: Array<{ type?: string; imageRef?: string }>; children?: unknown[] };
-  for (const fill of record.fills ?? []) {
-    if (fill.type === "IMAGE" && fill.imageRef && !images[fill.imageRef]) {
-      images[fill.imageRef] = new Uint8Array(PNG_64);
-      index[fill.imageRef] = `assets/${fill.imageRef}.png`;
+const FIXTURE_PATH = path.join(root, "scripts/fixtures/figma-bundle-sample.zip");
+
+/**
+ * The bytes the checked-in fixture should have. Exported so
+ * `tests/figma-bundle.test.ts` can rebuild it and compare: the fixture is the
+ * only thing the e2e spec imports, and a generator that no longer runs is a
+ * fixture nobody can refresh.
+ */
+export async function buildFixtureZip(): Promise<Buffer> {
+  const images: Record<string, Uint8Array> = {};
+  const index: Record<string, string> = {};
+  const paint = (node: unknown): void => {
+    const record = node as { fills?: Array<{ type?: string; imageRef?: string }>; children?: unknown[] };
+    for (const fill of record.fills ?? []) {
+      if (fill.type === "IMAGE" && fill.imageRef && !images[fill.imageRef]) {
+        images[fill.imageRef] = new Uint8Array(PNG_64);
+        index[fill.imageRef] = `assets/${fill.imageRef}.png`;
+      }
     }
-  }
-  for (const child of record.children ?? []) paint(child);
-};
-paint(rest.document);
+    for (const child of record.children ?? []) paint(child);
+  };
+  paint(file.document);
 
-const manifest = {
-  format: "fish.figma.export",
-  version: 1,
-  source: { plugin: "FISH Export", api: "1.0.0", scope: "selection", exportedAt: "2026-10-10T00:00:00.000Z" },
-  document: rest.document,
-  images: index,
-  unreadable: {}
-};
+  const manifest = {
+    format: "fish.figma.export",
+    version: 1,
+    source: { plugin: "FISH Export", api: "1.0.0", scope: "selection", exportedAt: "2026-10-10T00:00:00.000Z" },
+    document: file.document,
+    images: index,
+    unreadable: {}
+  };
 
-const entries = [
-  { path: FISH_BUNDLE_MANIFEST, bytes: new TextEncoder().encode(JSON.stringify(manifest)) },
-  ...Object.entries(index).map(([ref, at]) => ({ path: at, bytes: images[ref] }))
-];
+  const entries = [
+    { path: FISH_BUNDLE_MANIFEST, bytes: new TextEncoder().encode(JSON.stringify(manifest)) },
+    ...Object.entries(index).map(([ref, at]) => ({ path: at, bytes: images[ref] }))
+  ];
+  const blob = buildStoredZip(entries, new Date("2026-10-10T00:00:00Z"));
+  return Buffer.from(await blob.arrayBuffer());
+}
 
-const out = path.join(root, "scripts/fixtures/figma-bundle-sample.zip");
-const blob = buildStoredZip(entries, new Date("2026-10-10T00:00:00Z"));
-fs.writeFileSync(out, Buffer.from(await blob.arrayBuffer()));
-console.log(`wrote ${path.relative(root, out)} — ${Object.keys(index).length} image(s), ${fs.statSync(out).size} bytes`);
+// Only when run directly: importing this module (the test does) must not write.
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const bytes = await buildFixtureZip();
+  fs.writeFileSync(FIXTURE_PATH, bytes);
+  console.log(`wrote ${path.relative(root, FIXTURE_PATH)} — ${bytes.length} bytes`);
+}

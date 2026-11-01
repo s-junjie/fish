@@ -15,7 +15,7 @@ import {
 } from "../geometry/tree-ops";
 import { createId } from "../id";
 import { fitComponentSet, nextVariantOrigin } from "../layout/component-set";
-import { assembleComponentSet, dissolveComponentSet, ensureComponentSet } from "./component-set-tree";
+import { assembleComponentSet, dissolveComponentSet, ensureComponentSet, setNodeHolding } from "./component-set-tree";
 import { nextVariantPropertyName, nextVariantValueName, parseSlashNaming, variantName } from "./variant-naming";
 
 /**
@@ -182,6 +182,11 @@ function writeSet(
  * Returns the set, or null when the component is already in one: Figma's control
  * is "Add property", and adding a property to a set that has one is a different
  * command (`addVariantProperty`) rather than this one.
+ *
+ * "Already in one" is decided by the NODE that holds the component, not by its
+ * `setId`. A stale field answered "yes, in a set" for a component that belongs to
+ * none, so the promote branch every caller relies on was skipped and the click did
+ * nothing at all.
  */
 export function addVariantProperty(
   doc: DesignDocument,
@@ -191,7 +196,7 @@ export function addVariantProperty(
 ): { doc: DesignDocument; set: ComponentSetElement | null; property: string | null } {
   const comp = locate(doc, componentId);
   if (!comp) return { doc, set: null, property: null };
-  const existing = locateSet(doc, comp.setId);
+  const existing = setNodeHolding(doc, comp.id);
   if (existing) return { doc, set: existing, property: null };
 
   const property = name?.trim() || nextVariantPropertyName([], labels.property);
@@ -253,16 +258,21 @@ export function addVariant(
 ): { doc: DesignDocument; variant: ComponentElement | null } {
   const comp = locate(doc, componentId);
   if (!comp) return { doc, variant: null };
-  const set = locateSet(doc, comp.setId);
+  const set = setNodeHolding(doc, comp.id);
   if (!set) return { doc, variant: null };
-
-  const table = set.variantGroupProperties ?? {};
-  const columns = Object.keys(table);
-  const column = property && property in table ? property : columns[0];
-  if (!column) return { doc, variant: null };
 
   const source = (set.children || []).find((c) => c.id === comp.id) as ComponentElement | undefined;
   if (!source) return { doc, variant: null };
+
+  // The table is the authority, but a member that carries a coordinate the table
+  // forgot still names a column: refusing here left "Add variant" dead on the files
+  // that need it most — one whose table was never written, or was emptied by hand.
+  const table: Record<string, string[]> = { ...(set.variantGroupProperties ?? {}) };
+  for (const [key, value] of Object.entries(source.variantProperties ?? {})) {
+    if (!table[key]) table[key] = [value];
+  }
+  const column = property && property in table ? property : Object.keys(table)[0];
+  if (!column) return { doc, variant: null };
 
   const value = nextVariantValueName(table[column] ?? [], valueLabels(labels));
   const coordinates = { ...(source.variantProperties ?? {}), [column]: value };
@@ -435,10 +445,10 @@ export function removeVariantProperty(
 /** Removes one member. A set of one is not a set, so it goes too. */
 export function removeVariant(doc: DesignDocument, componentId: string): DesignDocument | null {
   const comp = locate(doc, componentId);
-  if (!comp || !comp.setId) return null;
-  const set = locateSet(doc, comp.setId);
+  if (!comp) return null;
+  const set = setNodeHolding(doc, comp.id);
   if (!set) return null;
-  const setId = comp.setId;
+  const setId = set.id;
   const remaining = (set.children || []).map((c) => c.id).filter((id) => id !== componentId);
 
   const [elements, removed] = removeElementFromTree(getActivePage(doc).children, componentId);

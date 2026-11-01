@@ -494,6 +494,69 @@ describe("a set with no node behind it", () => {
   });
 });
 
+describe("a component whose set membership outlived its set", () => {
+  /**
+   * `clipboard-fragment` remaps a pasted component's `setId` only when the set came
+   * along with it, so a variant copied on its own keeps naming a set it is not in.
+   * Reading the field instead of the node made "Add variant" skip its promote
+   * branch — the canvas "+" drew itself, took the press and did nothing.
+   */
+  const orphan = (): ComponentElement =>
+    ({
+      ...button("c_orphan", "Button", "Buy"),
+      setId: "set_gone",
+      variantProperties: { "Property 1": "Default" }
+    }) as ComponentElement;
+
+  it("is a lone component, so adding a variant promotes it to a set", () => {
+    const made = addVariantProperty(doc([orphan()]), "c_orphan", LABELS);
+    expect(made.set).not.toBeNull();
+    expect(onlySet(made.doc).children[0].id).toBe("c_orphan");
+    expect((onlySet(made.doc).children[0] as ComponentElement).setId).toBe(onlySet(made.doc).id);
+  });
+
+  it("adds nothing to the set it only claims", () => {
+    expect(addVariant(doc([orphan()]), "c_orphan", LABELS).variant).toBeNull();
+  });
+});
+
+describe("a member the set node holds but the field forgets", () => {
+  /** A set written by anything but this app: the node holds the member, `setId` is absent. */
+  const set = (declared: Record<string, string[]>): DesignDocument =>
+    doc([
+      {
+        id: "set_x",
+        type: "componentSet",
+        name: "Set",
+        x: 0,
+        y: 0,
+        width: 200,
+        height: 100,
+        variantGroupProperties: declared,
+        children: [
+          {
+            ...button("c_m", "State=Default", "Buy"),
+            variantProperties: { State: "Default" }
+          }
+        ]
+      } as ComponentSetElement
+    ]);
+
+  it("gains a sibling, because ancestry says it is a member", () => {
+    const res = addVariant(set({ State: ["Default"] }), "c_m", LABELS);
+    expect(res.variant).not.toBeNull();
+    expect((onlySet(res.doc).children as ComponentElement[]).map((c) => c.variantProperties)).toEqual([
+      { State: "Default" },
+      { State: "Variant 2" }
+    ]);
+  });
+
+  it("names its column from the member when the table declares nothing", () => {
+    const res = addVariant(set({}), "c_m", LABELS);
+    expect(onlySet(res.doc).variantGroupProperties).toEqual({ State: ["Default", "Variant 2"] });
+  });
+});
+
 describe("taking a set apart", () => {
   const three = () => addVariant(addVariant(started(), "c_btn", LABELS).doc, "c_btn", LABELS).doc;
 

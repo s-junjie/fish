@@ -9,6 +9,7 @@ import {
 import {
   computeParentOrigin,
   findComponentSetNode,
+  findElementById,
   findParentById,
   isContainer
 } from "../geometry/tree-ops";
@@ -102,6 +103,34 @@ function spliceOut(
     }
   }
   return changed ? out : list;
+}
+
+/**
+ * The `componentSet` node holding `componentId`: the node whose `children` contain
+ * it. `setId` is only used to find that node, never trusted on its own.
+ *
+ * The two disagree on files this app did not write, and on files it did: copying a
+ * variant out of a set leaves `setId` pointing at a set the copy is not inside
+ * (`clipboard-fragment` remaps the field only when the set came along), and dragging
+ * a member out leaves it behind the same way. A caller that reads the field alone
+ * concludes the layer already belongs to a set, finds no node it may add to, and
+ * silently does nothing — which is what made the canvas "+" a dead button on a lone
+ * component that had once been a variant.
+ *
+ * Containment is checked rather than merely looked up, because a stale `setId` is
+ * exactly the case this has to answer correctly: it resolves to a real node the
+ * layer is not in.
+ */
+export function setNodeHolding(doc: DesignDocument, componentId: string): ComponentSetElement | null {
+  const elements = getActivePage(doc).children;
+  const el = findElementById(elements, componentId);
+  if (!el) return null;
+  const holds = (set: ComponentSetElement | null) =>
+    set && (set.children ?? []).some((c) => c.id === componentId) ? set : null;
+  const byField = holds(findComponentSetNode(elements, (el as ComponentElement).setId));
+  if (byField) return byField;
+  const parent = findParentById(elements, componentId);
+  return parent && parent.type === "componentSet" ? (parent as ComponentSetElement) : null;
 }
 
 /**

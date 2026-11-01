@@ -194,6 +194,27 @@ describe("the plugin's archive, read by the app", () => {
     expect(() => parseFigmaExport(bundle.manifest)).not.toThrow();
   });
 
+  it("is still what the generator writes", async () => {
+    // A generator that no longer runs cannot refresh the fixture, and nothing would
+    // say so: only the e2e opens the file, and only where the e2e runs. It was dead
+    // for a rename — `rest` had become `file` — a ReferenceError the type check
+    // never saw, because `scripts/` was outside `tsconfig`'s include.
+    const { buildFixtureZip } = await import("../scripts/make-figma-bundle-fixture");
+    const fixture = path.join(ROOT, "scripts/fixtures/figma-bundle-sample.zip");
+    const load = async (bytes: Uint8Array) => readFigmaBundle(new Blob([bytes as BlobPart]));
+
+    const rebuilt = await load(new Uint8Array(await buildFixtureZip()));
+    const committed = await load(new Uint8Array(fs.readFileSync(fixture)));
+
+    // Content, not bytes: the images go through the platform zlib, whose output for
+    // fixed input is allowed to change between Node releases.
+    expect(rebuilt.manifest, "the committed fixture is stale — run scripts/make-figma-bundle-fixture.ts").toEqual(
+      committed.manifest
+    );
+    expect([...rebuilt.images.keys()].sort()).toEqual([...committed.images.keys()].sort());
+    expect(rebuilt.missing).toEqual(committed.missing);
+  });
+
   it("refuses an archive that is not a FISH export", async () => {
     const archive = plugin.buildStoredZip([{ path: "readme.txt", bytes: new TextEncoder().encode("hi") }]);
     await expect(readFigmaBundle(new Blob([archive as BlobPart]))).rejects.toThrow(/export\.json/);

@@ -15,7 +15,8 @@ import {
   setComponentSetCollapsed
 } from "../../core/interactions/component-variants";
 import { promotionTargets, promoteSelectionToComponents } from "../../core/interactions/component-batch";
-import { findComponentSet, findMasterComponent, groupComponentSets } from "../../core/interactions/component-inventory";
+import { findMasterComponent, groupComponentSets } from "../../core/interactions/component-inventory";
+import { setNodeHolding } from "../../core/interactions/component-set-tree";
 import { resolveInstanceSelection, isStoredNode } from "../../core/interactions/instance-resolve";
 import { VARIANT_LABELS } from "../inspector/variant-labels";
 import { registerEditorCommand } from "../commands/editor-commands";
@@ -179,6 +180,13 @@ export function useComponentCommands({
        * A lone main component becomes a set with its first axis — that is what
        * the command means before there is a matrix to add a column to — and a
        * member gains a sibling in its set otherwise.
+       *
+       * Which of those two it is, is decided by the set NODE that holds the
+       * component. Asking the inventory instead ("does anything group this id?")
+       * answered yes for a component whose `setId` outlived its set — a variant
+       * copied out of one keeps the field — and the add-a-member branch then found
+       * no node and returned: a button that drew itself, took the press and did
+       * nothing.
        */
       registerEditorCommand("addVariant", {
         run: () => {
@@ -188,26 +196,30 @@ export function useComponentCommands({
           // more member of the default cell" — the clicked thing is a container,
           // not a component that can be a source.
           if (el.type === "componentSet") {
-            const set = groupComponentSets(docRef.current).sets.find(
-              (s) => s.setId === (el as ComponentSetElement).id
+            const set = groupComponentSets(docRef.current).sets.find((s) => s.setNodeId === el.id);
+            const source =
+              set?.defaultMember.id ?? (el as ComponentSetElement).children?.[0]?.id;
+            if (!source) return;
+            const res = addVariant(
+              docRef.current,
+              source,
+              VARIANT_LABELS,
+              Object.keys((el as ComponentSetElement).variantGroupProperties ?? {})[0]
             );
-            if (!set) return;
-            const res = addVariant(docRef.current, set.defaultMember.id, VARIANT_LABELS, set.properties[0]?.property);
             if (!res.doc) return;
             commitSnapshot(res.doc);
             if (res.variant) setSelectedIds(new Set([res.variant.id]));
             return;
           }
           if (el.type !== "component") return;
-          const set = findComponentSet(docRef.current, el.id);
-          if (!set) {
+          if (!setNodeHolding(docRef.current, el.id)) {
             const made = addVariantProperty(docRef.current, el.id, VARIANT_LABELS);
             if (!made.set) return;
             commitSnapshot(made.doc);
             setSelectedIds(new Set([made.set.id]));
             return;
           }
-          const res = addVariant(docRef.current, el.id, VARIANT_LABELS, set.properties[0]?.property);
+          const res = addVariant(docRef.current, el.id, VARIANT_LABELS);
           if (!res.doc) return;
           commitSnapshot(res.doc);
           if (res.variant) setSelectedIds(new Set([res.variant.id]));
