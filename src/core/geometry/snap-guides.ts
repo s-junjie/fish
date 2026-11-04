@@ -14,7 +14,18 @@ export interface SnapResult {
   guides: GuideLine[];
 }
 
-const SNAP_THRESHOLD = 6;
+/**
+ * The magnet's reach under the hand, in SCREEN pixels.
+ *
+ * Every comparison below is in document units, so it is divided by the caller's
+ * zoom before use. A constant in document units grows with the zoom instead:
+ * at 2000% a 6-unit magnet reaches 120 screen px, which makes an edge
+ * impossible to place near a sibling — the drag is swallowed by the guide long
+ * before the pointer gets where the user is aiming.
+ */
+const SNAP_REACH_PX = 6;
+
+const snapReach = (zoom: number): number => SNAP_REACH_PX / (zoom > 0 ? zoom : 1);
 
 export type ResizeHandleType = "tl" | "tr" | "br" | "bl" | "tm" | "bm" | "ml" | "mr";
 
@@ -32,6 +43,7 @@ interface SnapCandidate {
 export function calculateResizeSnapping(
   handle: ResizeHandleType,
   bounds: { x: number; y: number; width: number; height: number },
+  zoom: number,
   canvasWidth?: number,
   canvasHeight?: number,
   siblingElements: DesignElement[] = []
@@ -41,6 +53,7 @@ export function calculateResizeSnapping(
   let width = bounds.width;
   let height = bounds.height;
   const guides: GuideLine[] = [];
+  const reach = snapReach(zoom);
 
   const vCandidates: SnapCandidate[] = [];
   const hCandidates: SnapCandidate[] = [];
@@ -80,7 +93,7 @@ export function calculateResizeSnapping(
     let best: SnapCandidate | null = null;
     for (const c of candidates) {
       const d = Math.abs(value - c.pos);
-      if (d <= SNAP_THRESHOLD && (!best || d < Math.abs(value - best.pos))) best = c;
+      if (d <= reach && (!best || d < Math.abs(value - best.pos))) best = c;
     }
     return best;
   };
@@ -127,6 +140,7 @@ export function calculateResizeSnapping(
 
 export function calculateSnapping(
   draggingBounds: { x: number; y: number; width: number; height: number },
+  zoom: number,
   canvasWidth?: number,
   canvasHeight?: number,
   siblingElements: DesignElement[] = []
@@ -134,6 +148,7 @@ export function calculateSnapping(
   let snappedX = draggingBounds.x;
   let snappedY = draggingBounds.y;
   const guides: GuideLine[] = [];
+  const reach = snapReach(zoom);
 
   const targetLeft = draggingBounds.x;
   const targetRight = draggingBounds.x + draggingBounds.width;
@@ -146,25 +161,25 @@ export function calculateSnapping(
   // 1. Canvas Center & Edges (if canvas bounds are defined)
   if (canvasWidth !== undefined && canvasWidth > 0 && canvasHeight !== undefined && canvasHeight > 0) {
     const canvasCenterX = canvasWidth / 2;
-    if (Math.abs(targetCenterX - canvasCenterX) <= SNAP_THRESHOLD) {
+    if (Math.abs(targetCenterX - canvasCenterX) <= reach) {
       snappedX = canvasCenterX - draggingBounds.width / 2;
       guides.push({ orientation: "vertical", position: canvasCenterX, start: 0, end: canvasHeight });
-    } else if (Math.abs(targetLeft - 0) <= SNAP_THRESHOLD) {
+    } else if (Math.abs(targetLeft - 0) <= reach) {
       snappedX = 0;
       guides.push({ orientation: "vertical", position: 0, start: 0, end: canvasHeight });
-    } else if (Math.abs(targetRight - canvasWidth) <= SNAP_THRESHOLD) {
+    } else if (Math.abs(targetRight - canvasWidth) <= reach) {
       snappedX = canvasWidth - draggingBounds.width;
       guides.push({ orientation: "vertical", position: canvasWidth, start: 0, end: canvasHeight });
     }
 
     const canvasCenterY = canvasHeight / 2;
-    if (Math.abs(targetCenterY - canvasCenterY) <= SNAP_THRESHOLD) {
+    if (Math.abs(targetCenterY - canvasCenterY) <= reach) {
       snappedY = canvasCenterY - draggingBounds.height / 2;
       guides.push({ orientation: "horizontal", position: canvasCenterY, start: 0, end: canvasWidth });
-    } else if (Math.abs(targetTop - 0) <= SNAP_THRESHOLD) {
+    } else if (Math.abs(targetTop - 0) <= reach) {
       snappedY = 0;
       guides.push({ orientation: "horizontal", position: 0, start: 0, end: canvasWidth });
-    } else if (Math.abs(targetBottom - canvasHeight) <= SNAP_THRESHOLD) {
+    } else if (Math.abs(targetBottom - canvasHeight) <= reach) {
       snappedY = canvasHeight - draggingBounds.height;
       guides.push({ orientation: "horizontal", position: canvasHeight, start: 0, end: canvasWidth });
     }
@@ -177,7 +192,7 @@ export function calculateSnapping(
     const siblingCenterY = sib.y + sib.height / 2;
 
     // Vertical guides (matching X coordinates)
-    if (Math.abs(targetLeft - sib.x) <= SNAP_THRESHOLD) {
+    if (Math.abs(targetLeft - sib.x) <= reach) {
       snappedX = sib.x;
       guides.push({
         orientation: "vertical",
@@ -185,7 +200,7 @@ export function calculateSnapping(
         start: Math.min(targetTop, sib.y),
         end: Math.max(targetBottom, sib.y + sib.height)
       });
-    } else if (Math.abs(targetRight - (sib.x + sib.width)) <= SNAP_THRESHOLD) {
+    } else if (Math.abs(targetRight - (sib.x + sib.width)) <= reach) {
       snappedX = sib.x + sib.width - draggingBounds.width;
       guides.push({
         orientation: "vertical",
@@ -193,7 +208,7 @@ export function calculateSnapping(
         start: Math.min(targetTop, sib.y),
         end: Math.max(targetBottom, sib.y + sib.height)
       });
-    } else if (Math.abs(targetCenterX - siblingCenterX) <= SNAP_THRESHOLD) {
+    } else if (Math.abs(targetCenterX - siblingCenterX) <= reach) {
       snappedX = siblingCenterX - draggingBounds.width / 2;
       guides.push({
         orientation: "vertical",
@@ -204,7 +219,7 @@ export function calculateSnapping(
     }
 
     // Horizontal guides (matching Y coordinates)
-    if (Math.abs(targetTop - sib.y) <= SNAP_THRESHOLD) {
+    if (Math.abs(targetTop - sib.y) <= reach) {
       snappedY = sib.y;
       guides.push({
         orientation: "horizontal",
@@ -212,7 +227,7 @@ export function calculateSnapping(
         start: Math.min(targetLeft, sib.x),
         end: Math.max(targetRight, sib.x + sib.width)
       });
-    } else if (Math.abs(targetBottom - (sib.y + sib.height)) <= SNAP_THRESHOLD) {
+    } else if (Math.abs(targetBottom - (sib.y + sib.height)) <= reach) {
       snappedY = sib.y + sib.height - draggingBounds.height;
       guides.push({
         orientation: "horizontal",
@@ -220,7 +235,7 @@ export function calculateSnapping(
         start: Math.min(targetLeft, sib.x),
         end: Math.max(targetRight, sib.x + sib.width)
       });
-    } else if (Math.abs(targetCenterY - siblingCenterY) <= SNAP_THRESHOLD) {
+    } else if (Math.abs(targetCenterY - siblingCenterY) <= reach) {
       snappedY = siblingCenterY - draggingBounds.height / 2;
       guides.push({
         orientation: "horizontal",

@@ -130,6 +130,24 @@ describe("resolve-values — the pure helper", () => {
     const { unresolved } = resolveValueTokens({ a: "var(--x)" }, {});
     expect(unresolved).toEqual([{ path: "/a", text: "var(--x)" }]);
   });
+
+  /**
+   * The bitmap table is skipped rather than walked, because the tables are the
+   * bulk of a photo-heavy document: `hasVarCall` cannot answer without scanning
+   * the whole base64 payload, and that scan is what a save pays. Skipping is
+   * only sound while nothing in an `AssetRef` is a length or a `var()`, so this
+   * test also pins that the rest of the document still resolves.
+   */
+  it("leaves the bitmap table as it stands, without reporting its strings", () => {
+    const assets = [
+      { id: "a1", name: "a.svg", uri: 'data:image/svg+xml,<svg fill="var(--brand)"/>', width: 4000, height: 4000 }
+    ];
+    const input = { variables: { "--gap": "1rem" }, assets, layout: { gap: "var(--gap)" } };
+    const { value, unresolved } = resolveValueTokens(input, collectVariables(input.variables));
+    expect((value as { assets: unknown }).assets).toBe(assets);
+    expect((value as { layout: { gap: string } }).layout.gap).toBe("16px");
+    expect(unresolved).toEqual([]);
+  });
 });
 
 /**

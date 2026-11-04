@@ -516,6 +516,7 @@ export function createGeometryGestures(ctx: GeometryGestureContext) {
             width: newW,
             height: newH
           },
+          zoom,
           pageCanvas.width,
           pageCanvas.height,
           siblings

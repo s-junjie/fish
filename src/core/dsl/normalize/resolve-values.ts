@@ -8,7 +8,9 @@
  * learn a unit. Two things are deliberately NOT general string rewriting:
  *
  *  - `var()` is resolved in EVERY string, because `var(--x)` is explicit syntax
- *    and useful in copy as much as in a length.
+ *    and useful in copy as much as in a length. The document's `assets` table is
+ *    the one exception, and it is skip-by-bulk rather than by semantics: those
+ *    strings are bitmaps, and scanning them is the pass's whole cost.
  *  - the length rewrite is confined to keys that HOLD a length (`LENGTH_KEYS`),
  *    plus the per-side keys of a box object (`padding: { top: "2rem" }`), so a
  *    text element whose `text` is literally `"2rem"` is left as written — a
@@ -436,7 +438,18 @@ function walk(
     // reached the reader un-folded and the reader's own `?? 0` zeroed the side.
     const forceChildren = key !== undefined && BOX_SHAPE_KEYS.has(canonicalKey(key));
     const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value)) out[k] = walk(v, k, vars, `${path}/${k}`, unresolved, forceChildren);
+    for (const [k, v] of Object.entries(value)) {
+      // The document's bitmap table, and the one subtree that is bulk rather
+      // than markup: a `data:` URI holds neither a `var()` nor a length, and it
+      // costs `hasVarCall` a full scan of the payload to establish that — twice,
+      // because the caller checks the result as well. Handed over as it stands;
+      // `normalizeAssetRefs` reads the table itself.
+      if (path === "" && k === "assets") {
+        out[k] = v;
+        continue;
+      }
+      out[k] = walk(v, k, vars, `${path}/${k}`, unresolved, forceChildren);
+    }
     return out;
   }
   return value;

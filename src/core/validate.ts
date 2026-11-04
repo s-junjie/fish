@@ -129,6 +129,27 @@ function checkAxisDowngrades(el: DesignElement, parent: ContainerElement | null,
 const strokePaintsOf = (el: DesignElement): Paint[] =>
   (el.strokes ?? []).map((stroke) => stroke.paint).filter((paint): paint is Paint => Boolean(paint));
 
+/**
+ * A bare `lineHeight` is a font-size MULTIPLIER (CSS's `<number>`), so a pixel
+ * value written without its unit multiplies the line box instead of setting it:
+ * `24` on a 24px font is a 576px line. The overflow estimate below cannot catch
+ * that one — an inflated line makes a hug-height text taller, and a hug taller
+ * than its content is exactly what `fit-content` asked for. Above 4 nothing
+ * plausible remains (real ratios live between 0.8 and 4), and every token-bound
+ * leading arrives as `"<n>px"` (`numberTokenPropValue`).
+ */
+function checkLineHeightUnit(el: DesignElement, out: CompileDiagnostic[]) {
+  if (el.type !== "text") return;
+  const lineHeight = (el as TextElement).style?.lineHeight;
+  if (typeof lineHeight !== "number" || lineHeight <= 4) return;
+  const fontSize = el.style?.fontSize || DEFAULT_FONT_SIZE;
+  out.push({
+    level: "warning",
+    message: `Text "${el.name || el.id}" sets lineHeight ${lineHeight} without a unit — a bare number is a font-size MULTIPLIER, so each line box is ${Math.round(resolveDynamicLineHeight(fontSize, lineHeight))}px on a ${fontSize}px font; write "${lineHeight}px" for pixels`,
+    elementId: el.id
+  });
+}
+
 function checkElement(el: DesignElement, parent: ContainerElement | null, out: CompileDiagnostic[], inMaster: boolean) {
   checkPaints(el.fills, el.id, out);
   checkPaints(strokePaintsOf(el), el.id, out);
@@ -144,6 +165,21 @@ function checkElement(el: DesignElement, parent: ContainerElement | null, out: C
           message: `Path data outside local box (${ext.minX.toFixed(1)}..${ext.maxX.toFixed(1)} x ${ext.minY.toFixed(1)}..${ext.maxY.toFixed(1)} in 0..${el.width} x 0..${el.height}); overhang will clip if parent frame clips content`,
           elementId: el.id
         });
+      } else {
+        // The other half of the same invariant, and the one that used to be
+        // silent: `d` is not a viewBox, so a box resized without its outline
+        // leaves the drawing sitting in a corner at its old size. Both axes at a
+        // THIRD or less is not an optical margin — it is a shape whose box was
+        // written at another scale.
+        const drawnW = ext.maxX - ext.minX;
+        const drawnH = ext.maxY - ext.minY;
+        if (drawnW <= el.width * 0.3 && drawnH <= el.height * 0.3) {
+          out.push({
+            level: "info",
+            message: `Path "${el.name || el.id}" draws ${drawnW.toFixed(1)}×${drawnH.toFixed(1)} inside its ${el.width}×${el.height} box — d is not a viewBox and width/height do not scale it. Resize the layer (the factor is baked into d), or author d at the target size. Ignore this when the box is padding on purpose.`,
+            elementId: el.id
+          });
+        }
       }
     }
   }
@@ -179,6 +215,7 @@ function checkElement(el: DesignElement, parent: ContainerElement | null, out: C
 
   checkGridBox(el, out);
   checkAxisDowngrades(el, parent, out);
+  checkLineHeightUnit(el, out);
 
   // A content-driven size on a container with no layout pass to compute it: the
   // element keeps the box it was authored with, and nothing says why.

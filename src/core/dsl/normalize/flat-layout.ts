@@ -119,6 +119,22 @@ function parseFlatGridTemplate(
   return { sizes: raw };
 }
 
+/**
+ * `display` values that name FREE PLACEMENT rather than a layout. `block` is the
+ * CSS spelling of "no auto-layout" here, and `none` / `off` / `false` are the
+ * dialect's own ways of saying the same thing (see `normalizeAutoLayout`).
+ */
+const NO_LAYOUT_DISPLAYS: ReadonlySet<string> = new Set([
+  "block",
+  "none",
+  "off",
+  "disabled",
+  "false"
+]);
+
+const displayModeOf = (raw: unknown): string | undefined =>
+  typeof raw === "string" ? canonicalKey(raw).replace(/^inline-/, "") : undefined;
+
 export function readFlatAutoLayout(
   el: Record<string, unknown>,
   path: string,
@@ -137,7 +153,7 @@ export function readFlatAutoLayout(
   const get = (c: string) => flat.get(c)?.value;
 
   const displayRaw = get("display");
-  const isGrid = canonicalKey(String(displayRaw ?? "")).replace(/^inline-/, "") === "grid";
+  const isGrid = displayModeOf(displayRaw) === "grid";
 
   const raw: Record<string, unknown> = {};
   if (get("display") !== undefined) raw.mode = get("display");
@@ -163,9 +179,13 @@ export function readFlatAutoLayout(
   const hasFlat = Object.keys(raw).length > 0;
   if (!hasFlat) return undefined;
 
-  if (displayRaw === undefined) {
-    // No `display` => no layout at all. Nothing is invented: each flat key is
-    // named back rather than silently creating a flex box.
+  // No layout to hold these keys: either no `display` at all, or one that names
+  // free placement (`block` / `none`). Nothing is invented — each key is named
+  // back rather than silently creating a flex box — and both spellings have to
+  // answer the same way, because they are the same mistake: `display: "block"` +
+  // `padding` used to drop the padding without a word and pass `check`.
+  const display = displayModeOf(displayRaw);
+  if (display === undefined || NO_LAYOUT_DISPLAYS.has(display)) {
     for (const key of FLAT_LAYOUT_KEYS) {
       if (key === "display") continue;
       const entry = flat.get(key);

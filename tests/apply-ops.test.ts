@@ -3,7 +3,7 @@ import { getActivePage } from "../src/core/dsl/types";
 import { describe, it, expect } from "vitest";
 import { applyOps } from "../src/core/ops/apply-ops";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
-import type { DesignDocument, DesignElement, InstanceElement } from "../src/core/dsl/types";
+import type { DesignDocument, DesignElement, InstanceElement, PathElement } from "../src/core/dsl/types";
 
 const canvas = { width: 800, height: 600, unit: "px" as const, background: { type: "solid" as const, color: "#101010" } };
 
@@ -34,6 +34,46 @@ const byId = (d: DesignDocument, id: string): DesignElement | undefined =>
   getActivePage(d).children.find((el) => el.id === id);
 
 describe("applyOps", () => {
+  it("scales a path's outline when a patch writes its box", () => {
+    // A path's box is its bounding box, not a viewBox. The drag bakes the factor
+    // into `d`, so a patch that only writes width/height has to as well.
+    const logo = {
+      id: "logo", type: "path", name: "logo", x: 0, y: 0,
+      width: 194, height: 76, d: "M0 0 L194 0 L194 76 L0 76 Z"
+    } as unknown as PathElement;
+    const { doc: next } = applyOps(doc([logo]), [
+      { op: "patch", targetId: "logo", props: { width: 388, height: 152 } }
+    ]);
+    const after = byId(next, "logo") as PathElement;
+    expect(after.width).toBe(388);
+    expect(after.height).toBe(152);
+    expect(after.d).not.toBe(logo.d);
+    expect(after.d).toContain("388");
+    expect(after.d).toContain("152");
+  });
+
+  it("does not scale a path whose outline is written in the same patch", () => {
+    const logo = {
+      id: "logo", type: "path", name: "logo", x: 0, y: 0,
+      width: 194, height: 76, d: "M0 0 L194 0 L194 76 L0 76 Z"
+    } as unknown as PathElement;
+    const { doc: next } = applyOps(doc([logo]), [
+      { op: "patch", targetId: "logo", props: { width: 388, height: 152, d: "M0 0 L10 10" } }
+    ]);
+    expect((byId(next, "logo") as PathElement).d).toBe("M0 0 L10 10");
+  });
+
+  it("leaves the outline alone when the patch does not touch the box", () => {
+    const logo = {
+      id: "logo", type: "path", name: "logo", x: 0, y: 0,
+      width: 194, height: 76, d: "M0 0 L194 0 L194 76 L0 76 Z"
+    } as unknown as PathElement;
+    const { doc: next } = applyOps(doc([logo]), [
+      { op: "patch", targetId: "logo", props: { x: 40 } }
+    ]);
+    expect((byId(next, "logo") as PathElement).d).toBe(logo.d);
+  });
+
   it("patches nested props and deletes on null", () => {
     const start = doc([{ ...rect("a"), style: { fontSize: 12, color: "#FFF" } } as DesignElement]);
     const { doc: next, outcomes } = applyOps(start, [

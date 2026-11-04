@@ -46,7 +46,7 @@ describe("snapCandidates", () => {
     // answering through its own geometry.
     const line: DesignElement = { id: "line", type: "line", x: 40, y: 60, dx: -80, dy: -20, width: 80, height: 20 } as DesignElement;
     const list = snapCandidates([line], none, none, null);
-    const snap = calculateSnapping({ x: 0, y: 0, width: 10, height: 10 }, 2000, 2000, list);
+    const snap = calculateSnapping({ x: 0, y: 0, width: 10, height: 10 }, 1, 2000, 2000, list);
     expect(snap.guides.length).toBeGreaterThan(0);
   });
 });

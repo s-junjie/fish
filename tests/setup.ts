@@ -1,4 +1,5 @@
 import { afterEach } from "vitest";
+import { resetRenderUris } from "../src/core/assets/render-uri";
 import { clearHeldMasters } from "../src/core/interactions/detached-masters";
 import { clearTextMeasureCache, setTextMeasurer } from "../src/core/geometry/text-measure";
 
@@ -26,4 +27,7 @@ afterEach(() => {
   clearTextMeasureCache();
   // Restores the analytic fallback, and clears the cache with it.
   setTextMeasurer(null);
+  // Releases each bake's blob handle. Its key is a whole base64 bitmap, so an
+  // entry left behind pins megabytes that the file that made it has dropped.
+  resetRenderUris();
 });

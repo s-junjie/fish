@@ -70,7 +70,14 @@ export function sourceUriFor(uri: string): string {
 
 function entryFor(uri: string): Entry {
   const existing = entries.get(uri);
-  if (existing) return existing;
+  if (existing) {
+    // Re-stamp on every use: eviction has to take the bake nobody is painting,
+    // and this map is keyed by one huge string per image, so the entry it drops
+    // is also the only thing keeping that bitmap reachable.
+    entries.delete(uri);
+    entries.set(uri, existing);
+    return existing;
+  }
   if (entries.size >= MAX_ENTRIES) {
     const oldest = entries.keys().next().value;
     if (oldest !== undefined) {

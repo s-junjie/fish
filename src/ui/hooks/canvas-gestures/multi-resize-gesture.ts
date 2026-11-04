@@ -198,6 +198,7 @@ export function createMultiResizeGesture(ctx: MultiResizeGestureContext) {
       const snap = calculateResizeSnapping(
         handle,
         boxFromAnchor(anchor, start, width, height),
+        zoom,
         pageCanvas.width,
         pageCanvas.height,
         siblings

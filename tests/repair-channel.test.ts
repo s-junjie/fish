@@ -47,6 +47,28 @@ describe("repair channel", () => {
     expect(hit?.message).toContain("needs a layout");
   });
 
+  it("reports it the same way when `display` names free placement", () => {
+    // `block` is a documented spelling of "no auto-layout", and it used to be the
+    // one spelling that lost the padding without a word — `check` even passed.
+    const result = normalizeDesignDocument(docWithElement({ display: "block", padding: 16 }));
+    const hit = result.repairs.find((r) => r.message.includes("padding"));
+    expect(hit?.kind).toBe("dropped-property");
+    expect(hit?.message).toContain("needs a layout");
+    expect((result.document.pages?.[0]?.children?.[0] as any)?.padding).toBeUndefined();
+  });
+
+  it("keeps the flat keys when `display` does name a layout", () => {
+    // A frame, because the flat keys are stored on the container that reads them.
+    const result = normalizeDesignDocument({
+      pages: [{ id: "p1", name: "Page 1", children: [
+        { id: "el1", type: "frame", name: "f", x: 0, y: 0, display: "flex", padding: 16 }
+      ] }],
+      activePageId: "p1"
+    });
+    expect(result.repairs.find((r) => r.message.includes("needs a layout"))).toBeUndefined();
+    expect((result.document.pages?.[0]?.children?.[0] as any)?.padding).toBeDefined();
+  });
+
   it("reports `wrap` when there is no layout, instead of a silent no-op", () => {
     // `wrap` is a known key to the normalizer, so it never reached the "unknown
     // property" path above — and nothing read it either. A document that wrote

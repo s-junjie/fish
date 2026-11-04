@@ -152,6 +152,40 @@ describe("validateDocument", () => {
     expect(validateDocument(doc([el]))).toHaveLength(0);
   });
 
+  it("reports a path whose outline was left behind by a box resize", () => {
+    // 194×76 of geometry inside a 760×298 box: `d` is not a viewBox, so the box
+    // grew and the drawing did not. `info`, because a padded box is legal.
+    const el = pathEl("logo", 0, 0, 760, 298, "M0 0 L194 0 L194 76 L0 76 Z");
+    const diags = validateDocument(doc([el]));
+    expect(diags).toHaveLength(1);
+    expect(diags[0].level).toBe("info");
+    expect(diags[0].message).toContain("not a viewBox");
+  });
+
+  it("stays quiet on a box that is only a little larger than the drawing", () => {
+    // A 20×20 icon in a 24×24 box is optical padding, not a lost resize.
+    const el = pathEl("icon", 0, 0, 24, 24, "M2 2 L22 2 L22 22 L2 22 Z");
+    expect(validateDocument(doc([el]))).toHaveLength(0);
+  });
+
+  it("flags a lineHeight written as a bare number, which can only be pixels", () => {
+    const el = textEl("pill", 0, 0, 200, 40, "Pill", 24);
+    el.style.lineHeight = 24;
+    const diags = validateDocument(doc([el]));
+    const hit = diags.find((d) => d.message.includes("MULTIPLIER"));
+    expect(hit?.level).toBe("warning");
+    expect(hit?.message).toContain('"24px"');
+    expect(hit?.message).toContain("576px");
+  });
+
+  it("stays quiet on a real multiplier and on an explicit px lineHeight", () => {
+    const tight = textEl("tight", 0, 0, 200, 40, "Tight", 24);
+    tight.style.lineHeight = 1.4;
+    const absolute = textEl("absolute", 0, 80, 200, 40, "Px", 24);
+    absolute.style.lineHeight = "24px";
+    expect(validateDocument(doc([tight, absolute]))).toHaveLength(0);
+  });
+
   it("flags text that wraps past its box", () => {
     const el = textEl("pill", 0, 0, 88, 20, "#M5-125-006 Auction", 8);
     const diags = validateDocument(doc([el]));
@@ -226,7 +260,7 @@ describe("validateDocument", () => {
   });
 
   it("reports children entirely outside their parent frame as info", () => {
-    const inner = pathEl("stray", 900, 900, 50, 50, "M 0 0 L 10 10");
+    const inner = pathEl("stray", 900, 900, 50, 50, "M 0 0 L 50 50");
     const parent = frame("card", 10, 10, 200, 200, [inner]);
     const diags = validateDocument(doc([parent]));
     expect(diags).toHaveLength(1);

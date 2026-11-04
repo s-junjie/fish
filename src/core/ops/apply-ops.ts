@@ -36,6 +36,7 @@ import { REPEAT_IDENT, substituteTemplate } from "./repeat-template";
 import { applyComponentIntent } from "./component-intent";
 import { absoluteOriginOf, placeElement, wrapInLayout } from "./placement";
 import { isObj, mintId, num, str, type OpOutcome } from "./op-primitives";
+import { scaleElementGeometry } from "../geometry/scale-geometry";
 
 export type { OpOutcome } from "./op-primitives";
 
@@ -43,6 +44,26 @@ export interface ApplyOpsResult {
   doc: DesignDocument;
   outcomes: OpOutcome[];
   changed: boolean;
+}
+
+/**
+ * A path keeps its outline in `d`; `width`/`height` are its bounding box, never a
+ * viewBox. The drag and Scale gestures therefore bake the factor into `d`
+ * (`geometry-gestures`), and a `patch` that writes only the box has to do the
+ * same — otherwise one resize means two different things depending on who asked
+ * for it, and the drawing quietly stays at its old size in the corner.
+ *
+ * An outline written in the same patch wins: that is the author saying what the
+ * geometry is, and scaling it too would apply the factor twice.
+ */
+function scalePatchedPath(before: DesignElement, after: DesignElement, props: Record<string, unknown>): DesignElement {
+  if (before.type !== "path" || after.type !== "path") return after;
+  const canon = new Set(Object.keys(props).map(canonicalKey));
+  if (canon.has("d") || canon.has("path") || canon.has("path-data")) return after;
+  if (!canon.has("width") && !canon.has("height")) return after;
+  if (!(before.width > 0 && before.height > 0)) return after;
+  if (!(after.width > 0 && after.height > 0)) return after;
+  return scaleElementGeometry(after, after.width / before.width, after.height / before.height);
 }
 
 export function applyOps(doc: DesignDocument, input: unknown): ApplyOpsResult {
@@ -110,8 +131,11 @@ function applyOne(doc: DesignDocument, raw: unknown): { doc: DesignDocument; out
         mapElements(els, (el) => {
           if (el.id !== targetId) return el;
           const prepared = preparePatch(el, props);
-          if (!prepared.css) return mergeProps(el as unknown as Record<string, unknown>, props) as unknown as DesignElement;
-          return normalizePatchedElement(prepared.element, parentLayout, vars);
+          if (!prepared.css) {
+            const merged = mergeProps(el as unknown as Record<string, unknown>, props) as unknown as DesignElement;
+            return scalePatchedPath(el, merged, props);
+          }
+          return scalePatchedPath(el, normalizePatchedElement(prepared.element, parentLayout, vars), props);
         })
       );
       // A variant's NAME is its coordinates, so a patch that moved one has to move

@@ -396,6 +396,7 @@ export function createDragApply(ctx: DragApplyContext) {
             });
         const snap = calculateSnapping(
           { x: startBox.x + totalDx, y: startBox.y + totalDy, width: startBox.width, height: startBox.height },
+          zoom,
           pageCanvas.width,
           pageCanvas.height,
           siblings

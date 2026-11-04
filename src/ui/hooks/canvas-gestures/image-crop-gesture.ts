@@ -168,7 +168,7 @@ export function createImageCropGesture(
     // edges are a boundary inside the picture rather than an alignment with the
     // page — and a guide is a MAGNET: an edge that starts on one (a photo that
     // fills its frame, which is the usual case) is dragged back onto it for
-    // `SNAP_THRESHOLD` px before it lets go, which the hand reads as a dead zone
+    // `SNAP_REACH_PX` px before it lets go, which the hand reads as a dead zone
     // and then a jump. Cropping has no use for the alignment it buys.
     snapEnabled: false,
     setDoc: (updater) =>

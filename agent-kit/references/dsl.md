@@ -221,7 +221,7 @@ FISH reads a fixed subset of CSS. This document names the common surface and the
 
 ### 2. Auto-Layout (Flex & Grid)
 Keys are stored flat on the container using CSS names. A nested `layout` object or a compact `layout` string is not read: write `display` plus the flat keys. Only these points differ from standard CSS:
-- `display: "flex" | "grid"`; omit or use `"none"` / `"block"` for free placement.
+- `display: "flex" | "grid"`; omit or use `"none"` / `"block"` for free placement. A gap, padding or direction beside a free-placed frame is dropped and **reported** (`"padding" needs a layout`) — those keys exist only inside a layout pass, so omitting `display` and writing `display: "block"` behave identically.
 - `gap`, `row-gap`, `column-gap`, `padding`, `margin` take a number, a tuple, or a CSS shorthand string; the file writes the shorthand.
 - `align-items` on a grid container is cell alignment; `align-content` is the line axis.
 - `align-self` overrides the parent's `align-items`. A positive `flex-grow` implies `sizing` fill along the parent's main axis.
@@ -255,8 +255,8 @@ A CSS spelling can be accepted, ignored, or stored differently:
 - **A lone `text-overflow` is dropped and reported**: with no `maxLines` there is no line count to clamp, so there is nothing to ellipsize. `line-clamp` / `maxLines` must be written beside it.
 - **`text-decoration` carries no colour.** `"underline #f00"` keeps the underline and drops the colour.
 - **`background: "url(...)"` is a solid colour literal.** Use an image fill.
-- **`line-height` numbers are unitless multipliers, not px.** `lineHeight: 1.4` means `1.4 * fontSize`. A bare number `27` on a 23px font resolves to `23 * 27 = 621px` and fails height check. Write `"27px"` for absolute pixels.
-- **`path` commands (`d`) do not auto-scale to `width`/`height`.** Unlike SVG `<svg viewBox="0 0 24 24">`, a `path` element's `d` attribute defines raw coordinates; `width` and `height` are its bounding box, not a viewBox scale. Author `d` directly in the target size.
+- **`line-height` numbers are unitless multipliers, not px.** `lineHeight: 1.4` means `1.4 * fontSize`. A bare number `27` on a 23px font resolves to `23 * 27 = 621px` and fails height check; a hug-height text hides that overflow, so `check` reports any bare number above `4` by name. Write `"27px"` for absolute pixels.
+- **`path` commands (`d`) do not auto-scale to `width`/`height`.** Unlike SVG `<svg viewBox="0 0 24 24">`, a `path` element's `d` attribute defines raw coordinates; `width` and `height` are its bounding box, not a viewBox scale. Author `d` directly in the target size. Resizing the LAYER — a canvas drag, the Scale tool, or `apply` patching `width`/`height` — bakes the factor into `d`, so patch a path's box instead of hand-transforming its commands. A `d` that covers under a third of its box is reported as an `info`, because an outline left behind by a box edit is otherwise invisible.
 - **A top-level frame's name is editor chrome, not artwork.** The canvas paints it above the frame while you edit; no export and no `?view=canvas` render carries it. Wrapping a design in an extra artboard frame to hide the name changes nothing — and the name is still editable in the Layers panel.
 
 ## Paints, Strokes & Fills
