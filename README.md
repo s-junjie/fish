@@ -4,6 +4,8 @@ FISH is a modern, high-performance vector design editor that lives entirely insi
 
 Open it in Chrome, create professional vector designs, save directly to your local disk, or send the file to anyone. **No installation, no account, no cloud lock-in, and zero external dependencies.**
 
+[**Official Website**](https://fish.themindstudio.cc) • [**Live Editor**](https://dl.fish.themindstudio.cc/stable/fish.html) • [**Agent Kit**](#2-design-with-ai-agents-agent-kit) • [**Releases**](https://github.com/s-junjie/fish/releases/latest)
+
 ---
 
 ## Highlights
@@ -30,7 +32,7 @@ Open it in Chrome, create professional vector designs, save directly to your loc
 
 FISH requires no installation, accounts, or cloud setup:
 
-1. **Open the editor**: Open [`fish.html`](https://dl.fish.themindstudio.cc/stable/fish.html) directly in **Google Chrome** (or Chromium-based browsers).
+1. **Open the editor**: Visit the [official website](https://fish.themindstudio.cc) or launch [`fish.html`](https://dl.fish.themindstudio.cc/stable/fish.html) directly in **Google Chrome** (or Chromium-based browsers).
 2. **Enable auto-save**: Click the **"Grant Access"** button in the top toolbar to authorize writing to your `.fish.html` file.
    > **Why?** Due to browser sandbox security policies, Chromium's File System Access API requires explicit user consent before allowing a local page to modify files on your disk. Granting permission allows FISH to save changes directly back to your file in place and auto-save silently as you edit — zero duplicate downloads, zero cloud upload, and completely private.
 3. **Create & Save**: Press `F` to create Frames, `R` for Rectangles, `T` for Typography, or drag and drop SVGs, images, and HTML files onto the canvas. Press `Cmd + S` (macOS) or `Ctrl + S` (Windows/Linux) to save in place anytime.
