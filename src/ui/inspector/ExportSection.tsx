@@ -87,19 +87,26 @@ export function ExportSection({
    * below runs over `paintedElements` — it drops hidden subtrees for exactly the
    * reason the renderer does.
    */
-  const liveCanvasIsShort = (crop: ExportBounds): boolean => {
+  const liveCanvasIsShort = (crops: readonly ExportBounds[]): boolean => {
     const live = canvasContainerRef.current?.querySelector("svg");
     if (!live) return true;
-    for (const el of paintedElements(getActivePage(doc).children)) {
+    // Measured once for the batch: the boxes do not depend on the crop, and a
+    // batch of fifty units would otherwise walk the page fifty times.
+    const probes = paintedElements(getActivePage(doc).children).map((el) => {
       const box = elementAABB(el);
       const origin = worldOriginOf(doc, el);
-      const x = box.x + origin.x;
-      const y = box.y + origin.y;
-      if (x > crop.x + crop.width || x + box.width < crop.x) continue;
-      if (y > crop.y + crop.height || y + box.height < crop.y) continue;
-      if (!live.querySelector(`[data-element-id="${CSS.escape(el.id)}"]`)) return true;
-    }
-    return false;
+      return { id: el.id, x: box.x + origin.x, y: box.y + origin.y, width: box.width, height: box.height };
+    });
+    return crops.some((crop) =>
+      probes.some(
+        (p) =>
+          p.x <= crop.x + crop.width &&
+          p.x + p.width >= crop.x &&
+          p.y <= crop.y + crop.height &&
+          p.y + p.height >= crop.y &&
+          !live.querySelector(`[data-element-id="${CSS.escape(p.id)}"]`)
+      )
+    );
   };
 
   /** Every id a unit paints through — the export keeps these and drops the rest. */
@@ -139,7 +146,7 @@ export function ExportSection({
       const crops: ExportBounds[] =
         units.length > 0 ? units.map((unit) => exportBounds(doc, [unit])) : [exportBounds(doc, [])];
 
-      needsMirror = crops.some((crop) => liveCanvasIsShort(crop));
+      needsMirror = liveCanvasIsShort(crops);
       let source: HTMLElement | null = canvasContainerRef.current;
       if (needsMirror) {
         flushSync(() => setMirrorMounted(true));

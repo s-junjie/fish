@@ -146,6 +146,22 @@ export function EditableTextContent({
   };
 
   /**
+   * Where the caret sits after a history step.
+   *
+   * The step changed the text under the caret, so the offsets saved before it
+   * may point past the end — and the layout effect would pin the caret there.
+   * The old offset, clamped to the new length, is the closest honest answer:
+   * undoing a run of typing lands at the old end, undoing a deletion keeps the
+   * offset the restored characters re-opened.
+   */
+  const saveSelectionAfterHistory = (text: string) => {
+    const node = rootRef.current;
+    const cur = node ? getTextSelectionOffsets(node) : null;
+    const at = Math.min(cur?.start ?? text.length, text.length);
+    saveSel({ start: at, end: at });
+  };
+
+  /**
    * Replace a range in the MODEL, and put the caret after what was inserted.
    *
    * The only way a run-bearing text may be edited through the keyboard. The
@@ -292,13 +308,16 @@ export function EditableTextContent({
           // `preventDefault`s (a return, a paste), which is why those were the
           // two that could not be undone at all.
           e.preventDefault();
-          if (e.shiftKey) ctx.onRedoCanvasText?.();
-          else ctx.onUndoCanvasText?.();
+          const next = e.shiftKey
+            ? ctx.onRedoCanvasText?.()
+            : ctx.onUndoCanvasText?.();
+          if (typeof next === "string") saveSelectionAfterHistory(next);
           return;
         }
         if ((e.metaKey || e.ctrlKey) && (e.key === "y" || e.key === "Y")) {
           e.preventDefault();
-          ctx.onRedoCanvasText?.();
+          const next = ctx.onRedoCanvasText?.();
+          if (typeof next === "string") saveSelectionAfterHistory(next);
           return;
         }
         if (e.key === "Enter" || e.code === "Enter") {

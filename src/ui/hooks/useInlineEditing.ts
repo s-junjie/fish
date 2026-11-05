@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import {
   DesignDocument,
   TextElement,
+  TextSpan,
   getActivePage,
   updateActivePageElements
 } from "../../core/dsl/types";
 import { EditorStore } from "../../core/store/editor-store";
-import { mapElements } from "../../core/geometry/tree-ops";
+import { mapElements, findElementById } from "../../core/geometry/tree-ops";
 import { useVectorPathEditing } from "./useVectorPathEditing";
 import { relayoutDocumentTree } from "../../core/compile";
 import { commitInstanceOverrides } from "../../core/interactions/instance-resolve";
@@ -178,8 +179,35 @@ export function useInlineEditing(deps: InlineEditingDeps) {
    * own history of drafts, and every step is applied through the model.
    */
   const draftRef = useRef<string>("");
-  const draftUndoRef = useRef<{ value: string; at: number; typed: boolean }[]>([]);
-  const draftRedoRef = useRef<string[]>([]);
+  const draftUndoRef = useRef<{ value: string; spans: TextSpan[] | undefined; at: number; typed: boolean }[]>([]);
+  const draftRedoRef = useRef<{ value: string; spans: TextSpan[] | undefined }[]>([]);
+
+  /**
+   * The runs the edited element holds RIGHT NOW, cloned.
+   *
+   * A history step has to restore the whole draft state, not just the string:
+   * an edit that deleted a styled range already stripped the runs off the model,
+   * so re-reconciling the old string against the trimmed model would bring the
+   * characters back with their styling gone for good.
+   */
+  const currentDraftSpans = (): TextSpan[] | undefined => {
+    if (!editingCanvasTextId) return undefined;
+    const virtual = virtualTextTarget(editingCanvasTextId);
+    const el = virtual
+      ? (virtual.node as TextElement)
+      : findElementById(getActivePage(docRef.current).children, editingCanvasTextId);
+    const spans = el ? (el as TextElement).spans : undefined;
+    if (!spans || spans.length === 0) return undefined;
+    return spans.map((s) => ({
+      ...s,
+      style: s.style
+        ? {
+            ...s.style,
+            ...(s.style.textDecoration ? { textDecoration: [...s.style.textDecoration] } : {})
+          }
+        : undefined
+    }));
+  };
 
   /**
    * One undo step per burst of typing, one per discrete edit.
@@ -203,7 +231,7 @@ export function useInlineEditing(deps: InlineEditingDeps) {
     if (typed && top?.typed && now - top.at < 800) {
       top.at = now;
     } else {
-      stack.push({ value: prev, at: now, typed });
+      stack.push({ value: prev, spans: currentDraftSpans(), at: now, typed });
       if (stack.length > 200) stack.shift();
     }
     draftRedoRef.current.length = 0;
@@ -376,36 +404,77 @@ export function useInlineEditing(deps: InlineEditingDeps) {
   };
 
   /**
+   * Write a draft AND its runs into the document verbatim.
+   *
+   * This is the undo/redo path: the step carries the runs the text had at the
+   * time, so there is nothing to reconcile — reconciling would rebuild the runs
+   * from whatever the model holds NOW, which is exactly the state being stepped
+   * away from.
+   */
+  const writeCanvasTextState = (value: string, spans: TextSpan[] | undefined) => {
+    setCanvasTextDraft(value);
+    if (!editingCanvasTextId) return;
+    const applyRuns = (el: TextElement): TextElement => {
+      const updated: TextElement = { ...el, content: value };
+      if (spans && spans.length > 0) updated.spans = spans;
+      else delete updated.spans;
+      return updated;
+    };
+    const virtual = virtualTextTarget(editingCanvasTextId);
+    if (virtual) {
+      const next = commitInstanceOverrides(docRef.current, [virtual], (el) => applyRuns(el as TextElement));
+      if (next) setDoc(next);
+      return;
+    }
+    const curActive = getActivePage(docRef.current);
+    let boxCouldMove = false;
+    const nextElements = mapElements(curActive.children, (el) => {
+      if (el.id !== editingCanvasTextId) return el;
+      const updated = applyRuns(el as TextElement);
+      boxCouldMove = textBoxCouldMove(el as TextElement, updated);
+      return updated;
+    });
+    setDoc(updateActivePageElements(docRef.current, boxCouldMove ? relayoutDocumentTree(nextElements) : nextElements));
+  };
+
+  /**
    * ⌘Z in the caret: step the draft back, through the model.
    *
    * With nothing recorded, this backs out of the whole edit (`cancelCanvasText`
    * rolls the gesture back and closes the editor) — the one step left, and the
-   * same thing Escape does. Reporting `true` either way is what tells the key
+   * same thing Escape does. Reporting the draft either way is what tells the key
    * handler the browser's own undo must not run: that stack replays DOM edits
    * against a tree Preact re-renders from the model, and it is empty for exactly
-   * the gestures that were `preventDefault`ed.
+   * the gestures that were `preventDefault`ed. The returned string is the text
+   * the step landed on, so the editor can put its caret somewhere the new
+   * length actually allows.
    */
-  const undoCanvasText = (): boolean => {
-    if (!editingCanvasTextId) return false;
+  const undoCanvasText = (): string | null => {
+    if (!editingCanvasTextId) return null;
     const step = draftUndoRef.current.pop();
     if (!step) {
       cancelCanvasText();
-      return true;
+      return draftRef.current;
     }
-    draftRedoRef.current.push(draftRef.current);
+    draftRedoRef.current.push({ value: draftRef.current, spans: currentDraftSpans() });
     draftRef.current = step.value;
-    writeCanvasTextDraft(step.value);
-    return true;
+    writeCanvasTextState(step.value, step.spans);
+    return step.value;
   };
 
-  const redoCanvasText = (): boolean => {
-    if (!editingCanvasTextId) return false;
-    const value = draftRedoRef.current.pop();
-    if (value === undefined) return true;
-    draftUndoRef.current.push({ value: draftRef.current, at: Date.now(), typed: false });
-    draftRef.current = value;
-    writeCanvasTextDraft(value);
-    return true;
+  const redoCanvasText = (): string | null => {
+    if (!editingCanvasTextId) return null;
+    const step = draftRedoRef.current.pop();
+    if (!step) return draftRef.current;
+    draftUndoRef.current.push({
+      value: draftRef.current,
+      spans: currentDraftSpans(),
+      at: Date.now(),
+      typed: false
+    });
+    draftRef.current = step.value;
+    writeCanvasTextState(step.value, step.spans);
+    return step.value;
   };
 
   const commitCanvasText = () => {
@@ -415,7 +484,10 @@ export function useInlineEditing(deps: InlineEditingDeps) {
     if (isTextEditCancelledRef.current) return;
     if (!editingCanvasTextId) return;
     clearEditorDomSelection();
-    const val = canvasTextDraft;
+    // draftRef, not the state: a blur or ⌘Enter in the same tick as an edit or
+    // a ⌘Z runs before Preact re-renders, and the state still holds the
+    // previous frame's text.
+    const val = draftRef.current;
     const virtual = virtualTextTarget(editingCanvasTextId);
     if (virtual) {
       const next = commitInstanceOverrides(docRef.current, [virtual], (el) =>

@@ -71,8 +71,8 @@ export interface SvgElementRendererProps {
   onStartCanvasTextEdit: (el: TextElement) => void;
   onCommitCanvasText: () => void;
   onCancelCanvasText: () => void;
-  onUndoCanvasText?: () => void;
-  onRedoCanvasText?: () => void;
+  onUndoCanvasText?: () => string | null;
+  onRedoCanvasText?: () => string | null;
   onOnPathTextBounds?: (id: string, box: { x: number; y: number; width: number; height: number }) => void;
   editingPathId?: string | null;
   frameTitles?: boolean;

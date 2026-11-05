@@ -70,8 +70,8 @@ export interface NodeRenderContext {
    * browser's must not run (it replays DOM edits against a tree the renderer
    * rebuilds from the model). See `useInlineEditing`.
    */
-  onUndoCanvasText?: () => void;
-  onRedoCanvasText?: () => void;
+  onUndoCanvasText?: () => string | null;
+  onRedoCanvasText?: () => string | null;
   /** Renderer measured the painted glyph-run box of an on-path text; write it
    * back into the element so selection/marquee/cull/alignment read real geometry. */
   onOnPathTextBounds?: (id: string, box: { x: number; y: number; width: number; height: number }) => void;

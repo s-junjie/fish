@@ -162,8 +162,8 @@ interface CanvasAreaProps {
   onTextSelect?: (range: { start: number; end: number } | null) => void;
   onCommitCanvasText: () => void;
   onCancelCanvasText: () => void;
-  onUndoCanvasText?: () => void;
-  onRedoCanvasText?: () => void;
+  onUndoCanvasText?: () => string | null;
+  onRedoCanvasText?: () => string | null;
   onInsertImage?: (file: File | Blob, worldX: number, worldY: number) => void;
   /**
    * `swap` is the Alt/Option modifier at the moment of the drop.
