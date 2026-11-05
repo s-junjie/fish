@@ -286,11 +286,17 @@ function wrapLines(run: TextLayoutInput, spec: TextMeasureSpec): LaidLine[] {
   const source = applyTextTransform(run.content, run.textTransform);
   const lines: LaidLine[] = [];
   let paragraphStart = 0;
-  for (const paragraph of source.split("\n")) {
+  for (const raw of source.split("\n")) {
     const start = paragraphStart;
     // The separator the split consumed. Counted here rather than added per
     // line, so a range is never off by the characters nobody paints.
-    paragraphStart += paragraph.length + 1;
+    paragraphStart += raw.length + 1;
+    // `pre-line` strips the whitespace a hard break left at the start of the
+    // line before laying it out — the canvas wraps and paints from the first
+    // glyph. Laying the raw paragraph out put that space into the exported
+    // ink: one space advance the canvas never had, on every line after a break.
+    const lead = raw.length - raw.trimStart().length;
+    const paragraph = raw.slice(lead);
     if (!paragraph) {
       lines.push({ text: "", start, end: start });
       continue;
@@ -301,7 +307,7 @@ function wrapLines(run: TextLayoutInput, spec: TextMeasureSpec): LaidLine[] {
       !Number.isFinite(maxWidth) ||
       maxWidth <= 0
     ) {
-      lines.push({ text: paragraph, start, end: start + paragraph.length });
+      lines.push({ text: paragraph, start: start + lead, end: start + raw.length });
       continue;
     }
     let currentLine = "";
@@ -309,7 +315,7 @@ function wrapLines(run: TextLayoutInput, spec: TextMeasureSpec): LaidLine[] {
     // CONSUMED, not by what was painted: `token.trimStart()` drops the
     // whitespace a break landed on, and that whitespace still has to be
     // accounted for or every later line shifts left by it.
-    let lineStart = start;
+    let lineStart = start + lead;
     for (const token of breakTokens(paragraph)) {
       const testLine = currentLine + token;
       if (measureText(testLine, spec, Infinity).width > maxWidth && currentLine.length > 0) {
@@ -327,8 +333,16 @@ function wrapLines(run: TextLayoutInput, spec: TextMeasureSpec): LaidLine[] {
       }
     }
     if (currentLine) {
-      lines.push({ text: currentLine, start: lineStart, end: start + paragraph.length });
+      lines.push({ text: currentLine, start: lineStart, end: start + raw.length });
     }
+  }
+  // A trailing newline CLOSES the last line — the browser opens no line box for
+  // the empty paragraph after it (measured: "a\n" lays out one line, "a\n\n"
+  // two). Keeping the split's trailing "" laid every such run one line taller
+  // than the canvas paints it, so a middle-aligned block that overflowed its
+  // box started half a line height too high and crossed whatever sat above it.
+  if (lines.length > 0 && source.endsWith("\n") && lines[lines.length - 1].text === "") {
+    lines.pop();
   }
   return applyLineClamp(lines, run.content, run, spec);
 }

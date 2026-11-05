@@ -1,12 +1,8 @@
-import { DesignDocument, getActivePage, updateActivePageElements } from "../../../core/dsl/types";
-import { calculateVisibleViewport, isElementInViewport } from "../../../core/geometry/cull";
+import { DesignDocument, DesignElement, getActivePage, updateActivePageElements } from "../../../core/dsl/types";
+import { calculateVisibleViewport } from "../../../core/geometry/cull";
 import { calculateResizeSnapping, GuideLine, ResizeHandleType } from "../../../core/geometry/snap-guides";
-import {
-  collectDescendantIds,
-  computeParentOrigin,
-  elementWorldAABB,
-  flattenElements
-} from "../../../core/geometry/tree-ops";
+import { snapCandidates } from "../../../core/geometry/snap-candidates";
+import { collectDescendantIds, flattenElements } from "../../../core/geometry/tree-ops";
 import {
   ANCHOR_FROM_HANDLE,
   ScaleAnchor,
@@ -36,6 +32,9 @@ import { createRafCoalescer } from "../../raf";
  */
 
 const CORNERS: ResizeHandleType[] = ["tl", "tr", "br", "bl"];
+
+/** Nothing beyond the dragged subtree is excluded from this gesture's magnets. */
+const NO_IDS: ReadonlySet<string> = new Set();
 
 /** The anchor Alt/Option swaps in: both edges travel, so the centre stays put. */
 const CENTER_ANCHOR: ScaleAnchor = { x: 0.5, y: 0.5 };
@@ -131,6 +130,8 @@ export function createMultiResizeGesture(ctx: MultiResizeGestureContext) {
       if (!selectedIds.has(el.id)) continue;
       for (const child of collectDescendantIds(el)) ownIds.add(child);
     }
+    /** The gesture's magnets: listed once, re-listed only when the viewport moves. */
+    let snapCache: { viewportKey: string; list: DesignElement[] } | null = null;
 
     const coalescer = createRafCoalescer<{ x: number; y: number; shiftKey: boolean; altKey: boolean }>((p) => {
       const dx = (p.x - startClientX) / zoom;
@@ -172,18 +173,21 @@ export function createMultiResizeGesture(ctx: MultiResizeGestureContext) {
         // two coordinate systems (LESSONS §34).
         const rect = currentContainerRect();
         const vp = rect ? calculateVisibleViewport(pan, zoom, rect.width, rect.height, 0) : null;
-        const siblings = flattenElements(getActivePage(docRef.current).children)
-          .filter((item) => {
-            if (ownIds.has(item.id)) return false;
-            const origin = computeParentOrigin(getActivePage(docRef.current).children, item.id);
-            const worldBox = elementWorldAABB(item, origin.x, origin.y);
-            if (vp && !isElementInViewport(worldBox, vp)) return false;
-            return true;
-          })
-          .map((item) => {
-            const origin = computeParentOrigin(getActivePage(docRef.current).children, item.id);
-            return { ...item, ...elementWorldAABB(item, origin.x, origin.y) };
-          });
+        // The same candidate set the single-layer resize and the move drag read:
+        // hidden layers are not magnets, and the walk stops at the dragged roots'
+        // siblings and the containers above them instead of descending into every
+        // unrelated frame on the page. Listed once for the gesture — nothing in
+        // the set moves while the selection is being scaled, so only the viewport
+        // (a wheel can still zoom mid-drag) can invalidate it.
+        const vpKey = vp ? `${vp.x}|${vp.y}|${vp.width}|${vp.height}` : "";
+        const siblings =
+          snapCache && snapCache.viewportKey === vpKey
+            ? snapCache.list
+            : (() => {
+                const list = snapCandidates(getActivePage(docRef.current).children, ownIds, NO_IDS, vp);
+                snapCache = { viewportKey: vpKey, list };
+                return list;
+              })();
         const pageCanvas = getActivePage(docRef.current).canvas;
         const snap = calculateResizeSnapping(
           handle,

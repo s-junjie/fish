@@ -307,10 +307,15 @@ export function createGradientGesture(ctx: GeometryGestureContext) {
       });
     };
 
-    const onPointerUp = () => {
-      coalescer.flush();
+    const stopListening = () => {
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerCancel);
+    };
+
+    const onPointerUp = () => {
+      coalescer.flush();
+      stopListening();
       document.body.style.cursor = origCursor;
       setGradientDrag(null);
       if (isAxis && !axisDragging) {
@@ -329,8 +334,28 @@ export function createGradientGesture(ctx: GeometryGestureContext) {
       endDragGesture();
     };
 
+    /**
+     * A cancelled pointer — window blur, a trackpad gesture, the browser taking
+     * the pointer back — ends the drag where it stands, but it is NOT a click:
+     * the axis must not drop a stop at a position nobody released on, so the
+     * branch above has no counterpart here. The pending frame is dropped rather
+     * than flushed for the same reason: nobody ever saw it.
+     *
+     * Without this listener the gesture stayed open and `document.body.style
+     * .cursor` kept saying "grabbing" for the rest of the session — the knob's
+     * own `pointercancel` listener only released the knob's hover state.
+     */
+    const onPointerCancel = () => {
+      stopListening();
+      document.body.style.cursor = origCursor;
+      setGradientDrag(null);
+      if (isAxis) axisDragging = false;
+      endDragGesture();
+    };
+
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerCancel);
   };
 
   const localPoint = (el: DesignElement, clientX: number, clientY: number) => {
@@ -387,15 +412,27 @@ export function createGradientGesture(ctx: GeometryGestureContext) {
 
     const onPointerMove = (moveEvt: PointerEvent) =>
       coalescer.push({ x: moveEvt.clientX, y: moveEvt.clientY });
-    const onPointerUp = () => {
-      coalescer.flush();
+    const stopListening = () => {
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerCancel);
+    };
+    const onPointerUp = () => {
+      coalescer.flush();
+      stopListening();
+      document.body.style.cursor = origCursor;
+      endDragGesture();
+    };
+    // Same reason as the handle drag above: a cancelled pointer must still put
+    // the body cursor back and close the undo entry the press opened.
+    const onPointerCancel = () => {
+      stopListening();
       document.body.style.cursor = origCursor;
       endDragGesture();
     };
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerCancel);
   };
 
   /** Insert a stop at an exact offset — the visible add grip's whole gesture. */

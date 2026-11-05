@@ -3,9 +3,8 @@ import { flushSync } from "preact/compat";
 import { DesignDocument, DesignElement, getActivePage } from "../../core/dsl/types";
 import { exportCanvasAsBlob, exportCanvasAsSvgBlob, ExportBounds } from "../../core/export";
 import { exportBounds } from "./export-bounds";
-import { exportNames, exportUnits } from "./export-units";
+import { exportNames, exportUnits, paintedElements } from "./export-units";
 import { elementAABB } from "../../core/geometry/element-bounds";
-import { flattenElements } from "../../core/geometry/tree-ops";
 import { worldOriginOf } from "../../core/interactions/component-swap";
 import { ExportMirror } from "../canvas/ExportMirror";
 import { t } from "../../i18n";
@@ -79,14 +78,19 @@ export function ExportSection({
    * point: the mirror costs a full tree build, and this is what keeps that cost
    * off the path where it would buy nothing.
    *
-   * Asked once for the whole batch, against the box that contains every unit: an
-   * element that overlaps one unit's crop overlaps the union too, so one answer
-   * covers them all.
+   * Asked per unit. A single box around the whole batch is the union of boxes
+   * that can be far apart, and a culled layer in the gap between two exported
+   * frames is not missing from EITHER file — it used to arm the mirror for a
+   * batch that the live canvas could have served whole.
+   *
+   * A layer the canvas never painted proves nothing about culling, so the walk
+   * below runs over `paintedElements` — it drops hidden subtrees for exactly the
+   * reason the renderer does.
    */
   const liveCanvasIsShort = (crop: ExportBounds): boolean => {
     const live = canvasContainerRef.current?.querySelector("svg");
     if (!live) return true;
-    for (const el of flattenElements(getActivePage(doc).children)) {
+    for (const el of paintedElements(getActivePage(doc).children)) {
       const box = elementAABB(el);
       const origin = worldOriginOf(doc, el);
       const x = box.x + origin.x;
@@ -120,15 +124,6 @@ export function ExportSection({
     URL.revokeObjectURL(url);
   };
 
-  /** The box that contains every unit — what the culling probe is asked about. */
-  const unionCrop = (boxes: readonly ExportBounds[]): ExportBounds => {
-    const minX = Math.min(...boxes.map((b) => b.x));
-    const minY = Math.min(...boxes.map((b) => b.y));
-    const maxX = Math.max(...boxes.map((b) => b.x + b.width));
-    const maxY = Math.max(...boxes.map((b) => b.y + b.height));
-    return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
-  };
-
   const handleExport = async () => {
     if (!canvasContainerRef.current) return;
 
@@ -144,7 +139,7 @@ export function ExportSection({
       const crops: ExportBounds[] =
         units.length > 0 ? units.map((unit) => exportBounds(doc, [unit])) : [exportBounds(doc, [])];
 
-      needsMirror = liveCanvasIsShort(unionCrop(crops));
+      needsMirror = crops.some((crop) => liveCanvasIsShort(crop));
       let source: HTMLElement | null = canvasContainerRef.current;
       if (needsMirror) {
         flushSync(() => setMirrorMounted(true));

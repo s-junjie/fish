@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { DesignDocument, DesignElement, FrameElement, RectElement } from "../src/core/dsl/types";
-import { exportNames, exportUnits } from "../src/ui/inspector/export-units";
+import { exportNames, exportUnits, paintedElements } from "../src/ui/inspector/export-units";
 
 const canvas = { width: 1200, height: 800, unit: "px" as const, background: { type: "solid" as const, color: "#FFFFFF" } };
 
@@ -85,5 +85,25 @@ describe("the images one Export press produces", () => {
 
   it("falls back to the layer type when the layer has no name", () => {
     expect(exportNames([frame("a"), rect("b")])).toEqual(["frame", "rect"]);
+  });
+});
+
+/**
+ * What the mirror probe is allowed to ask the live DOM about.
+ *
+ * A hidden layer is not in the SVG at all, so asking whether it is there answers
+ * "no" on every export — and one hidden section anywhere on the page made the
+ * probe report a short canvas, which mounts the mirror and rebuilds the whole
+ * tree for an export the live canvas could have served.
+ */
+describe("the layers the canvas can have painted", () => {
+  it("drops a hidden layer and everything under it", () => {
+    const hidden = { ...frame("hidden", "Hidden", [rect("inside")]), visible: false as const };
+    expect(paintedElements([hidden, rect("shown")]).map((el) => el.id)).toEqual(["shown"]);
+  });
+
+  it("keeps a visible frame but drops the hidden child inside it", () => {
+    const shown = frame("shown", "Shown", [rect("kept"), { ...rect("gone"), visible: false as const }]);
+    expect(paintedElements([shown]).map((el) => el.id)).toEqual(["shown", "kept"]);
   });
 });

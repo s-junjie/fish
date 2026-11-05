@@ -319,6 +319,19 @@ describe("syncTextSizing", () => {
     expect(syncedParent.children[0].height).toBe(lineHeight);
   });
 
+  it("still reaches an ABSOLUTE text inside a stack, which the pass does not place", () => {
+    // `applyAutoLayout` arranges `inFlowChildren` only, so an out-of-flow child
+    // keeps whatever box it was given — nobody but this pass can measure it.
+    const child = {
+      ...text("t", "hello", { sizing: { height: "fit-content" } }),
+      position: "absolute" as const
+    };
+    const parent = frame("f", { mode: "flex", direction: "row" }, [child]);
+    const [syncedParent] = syncTextSizing([parent]) as FrameElement[];
+    expect(syncedParent).not.toBe(parent);
+    expect(syncedParent.children[0].height).toBe(lineHeight);
+  });
+
   it("returns the same array when nothing needs measuring", () => {
     const elements = [rect("r"), text("t", "hello")];
     expect(syncTextSizing(elements)).toBe(elements);
@@ -349,6 +362,15 @@ describe("syncInstanceSizing", () => {
     // measurement is not the answer.
     const parent = frame("f", { mode: "flex", direction: "row" }, [inst("i")]);
     expect(syncInstanceSizing([parent], measured)[0]).toBe(parent);
+  });
+
+  it("reaches an ABSOLUTE instance inside a stack, which the pass does not place", () => {
+    // `position: "absolute"` opts out of the flow, so the parent never writes
+    // its slot — the hugging master's measurement is the only size it has.
+    const parking = { ...inst("i"), position: "absolute" as const };
+    const parent = frame("f", { mode: "flex", direction: "row" }, [parking]);
+    const [synced] = syncInstanceSizing([parent], measured) as FrameElement[];
+    expect([synced.children![0].width, synced.children![0].height]).toEqual([120, 24]);
   });
 
   it("returns the same array when nothing needs measuring", () => {

@@ -1,5 +1,5 @@
 import { AutoLayoutFields, DesignElement, LetterSpacing, LineHeight, TextElement, TextStyle } from "../dsl/types";
-import { layoutOf } from "../dsl/layout-flat";
+import { layoutOf, isInFlow } from "../dsl/layout-flat";
 import { resolveAxis } from "../geometry/resolve-axis";
 import { measureText, TextMeasureSpec } from "../geometry/text-measure";
 import { isContainer } from "../geometry/tree-ops";
@@ -196,8 +196,9 @@ export function measureTextBlockHeight(el: TextElement, content: string): number
 /**
  * Bakes the measured size of every `fit-content` text into the tree. Children of
  * an auto-layout container are skipped — `applyAutoLayout` already wrote their
- * resolved box — so this exists for text no layout owns: canvas level, or inside
- * a plain frame. Without it the painted box, the selection bounds and the
+ * resolved box, as long as it was allowed to place them (`isInFlow`) — so this
+ * exists for text no layout owns: canvas level, inside a plain frame, or
+ * alongside the slot it was opted out of. Without it the painted box, the selection bounds and the
  * Inspector all keep showing whatever size the text was created with.
  *
  * Returns the same array when nothing moved, so structural sharing survives.
@@ -210,7 +211,10 @@ function syncTextList(elements: DesignElement[], insideLayout: boolean): DesignE
   let changed = false;
   const next = elements.map((el) => {
     if (el.type === "text") {
-      if (insideLayout) return el;
+      // A child the layout pass placed is its owner — but only an in-flow one.
+      // An ABSOLUTE text inside a stack is not placed by anything, so its
+      // `fit-content` box is still this pass's to write.
+      if (insideLayout && isInFlow(el)) return el;
       const resolved = resolveElementSizing(el);
       if (resolved !== el) changed = true;
       return resolved;

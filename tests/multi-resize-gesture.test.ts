@@ -83,8 +83,11 @@ const down = () => ({ button: 0, clientX: 100, clientY: 100, stopPropagation() {
  * the right edge and 2px past the bottom edge the drag will land on, inside the
  * 6px magnet — anything that snaps will be pulled off the ratio.
  */
-function harness(options: { scaleMode?: boolean } = {}) {
-  const holder = { current: docOf([rect("a", 100, 100, 100, 60), rect("b", 300, 100, 100, 60), rect("mark", 702, 222, 10, 10)]) };
+function harness(options: { scaleMode?: boolean; hiddenMark?: boolean } = {}) {
+  const mark = options.hiddenMark
+    ? { ...rect("mark", 702, 222, 10, 10), visible: false as const }
+    : rect("mark", 702, 222, 10, 10);
+  const holder = { current: docOf([rect("a", 100, 100, 100, 60), rect("b", 300, 100, 100, 60), mark]) };
   let guides: GuideLine[] = [];
   const gesture = createMultiResizeGesture({
     docRef: holder,
@@ -141,5 +144,16 @@ describe("a multi-selection corner drag", () => {
     // left exactly where a free resize leaves it.
     expect(boxes(h)[0]).toEqual([200.67, 60]);
     expect(h.guides()).not.toEqual([]);
+  });
+
+  it("reads its magnets from the shared candidate list, so a hidden layer is not one", () => {
+    // Same stray mark, one difference: it is hidden, so the canvas never painted
+    // it and there is nothing to align to. The old walk listed the flat page and
+    // took whatever it found — hidden layers, deep children of unrelated frames —
+    // and pulled the drag onto geometry the user cannot see.
+    const h = harness({ hiddenMark: true });
+    drag(h, 300, false);
+    expect(boxes(h)[0]).toEqual([200, 60]);
+    expect(h.guides()).toEqual([]);
   });
 });

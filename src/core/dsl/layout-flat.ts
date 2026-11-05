@@ -14,7 +14,7 @@
  * where `cell-align` is CSS's own `start` / `end`).
  */
 
-import type { AutoLayout, AutoLayoutFields, TrackSize } from "./types";
+import type { AutoLayout, AutoLayoutFields, DesignElement, TrackSize } from "./types";
 
 /**
  * The flat key each `AutoLayout` field is stored as — the one place the stored
@@ -95,6 +95,21 @@ export function alignSelfOf(el: object | null | undefined): AutoLayout["align"] 
   const v = (el as Record<string, unknown>)["align-self"];
   return typeof v === "string" ? (toDslLine(v) as AutoLayout["align"]) : undefined;
 }
+
+/**
+ * Whether an auto-layout parent's pass owns this child's box.
+ *
+ * Two children opt out, for one reason: neither holds a slot. `position:
+ * "absolute"` is Figma's "ignore auto layout" and `visible: false` is not on
+ * screen at all, so the pass leaves both exactly where the document put them.
+ *
+ * Every measurement that runs AFTER the pass has to skip the same children. Skip
+ * fewer and a box nobody computed gets overwritten on every relayout; skip more
+ * and the child the pass never placed keeps a stale one. `inFlowChildren` and
+ * the text / instance syncs all read this, so the three cannot drift.
+ */
+export const isInFlow = (el: DesignElement): boolean =>
+  el.position !== "absolute" && el.visible !== false;
 
 /** Reconstruct the engine's `AutoLayout` view from the flat stored keys. */
 export function layoutOf(element: object | null | undefined): AutoLayout | undefined {

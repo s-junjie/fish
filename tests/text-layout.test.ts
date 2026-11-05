@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { layoutTextRun, TextLayoutInput } from "../src/core/text-layout";
+import { measureText, type TextMeasureSpec } from "../src/core/geometry/text-measure";
 
 // No DOM here, so `measureText` uses its analytic fallback: 0.6em per glyph.
 // At `fontSize: 10` that is exactly 6px a character, which is why every width
@@ -20,6 +21,15 @@ const run = (over: Partial<TextLayoutInput> = {}): TextLayoutInput => ({
   ...over
 });
 
+/** The spec `run()` lays out with, for asking `measureText` about it directly. */
+const SPEC: TextMeasureSpec = {
+  fontFamily: "Inter, sans-serif",
+  fontSize: 10,
+  fontWeight: 400,
+  lineHeight: 12,
+  letterSpacing: 0
+};
+
 describe("lines", () => {
   it("keeps a run that fits on one line", () => {
     expect(layoutTextRun(run({ content: "hello" })).lines).toEqual(["hello"]);
@@ -39,6 +49,66 @@ describe("lines", () => {
 
   it("keeps a blank line as a line", () => {
     expect(layoutTextRun(run({ content: "a\n\nb" })).lines).toEqual(["a", "", "b"]);
+  });
+
+  it("strips the whitespace a hard break left at the start of a line", () => {
+    // `pre-line` removes leading whitespace before laying the line out, so the
+    // canvas paints " thing" with no space advance. Laying the raw paragraph
+    // out exported one space of ink the canvas never had, and the line sat a
+    // space width right of where the editor put it.
+    expect(layoutTextRun(run({ content: "a\n b" })).lines).toEqual(["a", "b"]);
+    const ranged = layoutTextRun(run({ content: "aa\n bbb" }));
+    expect(ranged.lines).toEqual(["aa", "bbb"]);
+    expect(ranged.lineRanges).toEqual([
+      { start: 0, end: 2 },
+      { start: 4, end: 7 }
+    ]);
+    // The trimmed line is what wraps: the space does not spend box width.
+    expect(layoutTextRun(run({ content: "a\n bbbb cccc", width: 42 })).lines).toEqual([
+      "a",
+      "bbbb ",
+      "cccc"
+    ]);
+  });
+
+  it("opens no line box for a trailing newline, as the browser does not", () => {
+    // `white-space: pre-line` lays "a\n" out as ONE line box: the trailing
+    // newline closes the line instead of opening an empty one. Counting it made
+    // every such run one line taller than the canvas paints it, and a
+    // middle-aligned block that overflowed its box started half a line height
+    // too high — a 140px headline crossed the label above it.
+    expect(layoutTextRun(run({ content: "a\n" })).lines).toEqual(["a"]);
+    expect(layoutTextRun(run({ content: "a\n\n" })).lines).toEqual(["a", ""]);
+    expect(layoutTextRun(run({ content: "\n" })).lines).toEqual([""]);
+    // The dropped line is the split's zero-width tail: ranges stay contiguous
+    // and no span can live in what was removed.
+    const ranged = layoutTextRun(run({ content: "aa\n" }));
+    expect(ranged.lines).toEqual(["aa"]);
+    expect(ranged.lineRanges).toEqual([{ start: 0, end: 2 }]);
+  });
+
+  /**
+   * The same rule, stated where it is easy to break: `layoutTextRun` drops the
+   * empty paragraph a trailing newline leaves behind, and `measureText` — whose
+   * analytic fallback is what runs without a DOM — has to count lines the same
+   * way. It counted the empty tail, so `lines` came back one higher than the
+   * layout that painted the very same string, and `maxLines` clamps against it.
+   */
+  it("counts lines the way the layout does, trailing newline included", () => {
+    for (const content of ["a", "a\n", "a\n\n", "\n", "a\nb"]) {
+      expect(measureText(content, SPEC).lines, content).toBe(layoutTextRun(run({ content })).lines.length);
+    }
+  });
+
+  it("applies the same count to a span run", () => {
+    const spans = (texts: string[]): TextMeasureSpec => ({
+      ...SPEC,
+      spans: texts.map((text) => ({ text }))
+    });
+    expect(measureText("a\n", spans(["a\n"])).lines).toBe(1);
+    // A trailing empty span must not hide the break it follows.
+    expect(measureText("a\n", spans(["a\n", ""])).lines).toBe(1);
+    expect(measureText("a\n\n", spans(["a\n\n"])).lines).toBe(2);
   });
 
   it("applies text-transform before it measures", () => {

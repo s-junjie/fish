@@ -446,10 +446,18 @@ function estimate(content: string, spec: TextMeasureSpec, availableWidth: number
       }
     }
     intrinsicWidth = Math.max(intrinsicWidth, currentLineWidth);
+    // A trailing newline CLOSES the last line rather than opening an empty one —
+    // `wrapLines` records the measurement and drops that paragraph. Without the
+    // same rule here the estimate came back one line taller than the DOM path
+    // (`metricsOf` divides the painted height by the line height), so the
+    // fallback and the browser disagreed about the same string.
+    const tail = [...spec.spans].reverse().find((span) => span.text.length > 0)?.text ?? "";
+    if (tail.endsWith("\n") && spanLines > 1) spanLines--;
     lines = spanLines;
   } else {
     const advance = spec.fontSize * 0.6 + spec.letterSpacing;
-    const paragraphs = content.split("\n");
+    // Same rule, same reason: `"a\n"` is ONE line, `"a\n\n"` two.
+    const paragraphs = (content.endsWith("\n") ? content.slice(0, -1) : content).split("\n");
     for (const paragraph of paragraphs) {
       const width = paragraph.length * advance;
       intrinsicWidth = Math.max(intrinsicWidth, width);

@@ -1,5 +1,5 @@
 import { AutoLayoutFields, DesignElement, ContainerElement } from "../dsl/types";
-import { layoutOf } from "../dsl/layout-flat";
+import { layoutOf, isInFlow } from "../dsl/layout-flat";
 import { isContainer } from "../geometry/tree-ops";
 import { ChildSizeResolver, hugsAxis, resolvePadding } from "./box";
 import { fitComponentSet } from "./component-set";
@@ -160,7 +160,7 @@ function hugEmptyContainer<T extends ContainerElement>(frameEl: T): T {
  * row the canvas does not have.
  */
 export function inFlowChildren(children: readonly DesignElement[]): DesignElement[] {
-  return children.filter((c) => c.position !== "absolute" && c.visible !== false);
+  return children.filter(isInFlow);
 }
 
 export function applyAutoLayout<T extends ContainerElement>(

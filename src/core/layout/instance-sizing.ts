@@ -1,5 +1,5 @@
 import { AutoLayoutFields, DesignElement } from "../dsl/types";
-import { layoutOf } from "../dsl/layout-flat";
+import { layoutOf, isInFlow } from "../dsl/layout-flat";
 import { isContainer } from "../geometry/tree-ops";
 import type { ChildSizeResolver } from "./box";
 
@@ -11,8 +11,11 @@ import type { ChildSizeResolver } from "./box";
  * text override or a scale changes that measurement on every resolution. An
  * instance inside an auto-layout parent is written by that parent's pass, which
  * places it as a child — including the axes the parent owns, which the master's
- * own measurement must not overwrite. Everything else has no parent to do it:
- * canvas level, or inside a plain frame. Without this its stored box drifted away
+ * own measurement must not overwrite. That holds only for a child the pass was
+ * allowed to place (`isInFlow`): an absolute or hidden one holds no slot, keeps
+ * its box through the layout, and so belongs here like any other. Everything
+ * else has no parent to do it: canvas level, or inside a plain frame. Without
+ * this its stored box drifted away
  * from what the canvas drew, and everything that reads the tree rather than the
  * renderer — the selection box, the Scale panel's W/H, the scale reference —
  * disagreed with the artwork: the W/H fields jumped the moment the tool opened,
@@ -42,7 +45,11 @@ function syncInstanceList(
   let changed = false;
   const next = elements.map((el) => {
     if (el.type === "instance") {
-      if (insideLayout) return el;
+      // Only the child the parent's pass actually placed is off limits. An
+      // ABSOLUTE instance inside a stack holds no slot (`inFlowChildren`), so
+      // nobody writes its box but this pass — skipping the whole level left a
+      // hugging instance there storing the size it was authored with.
+      if (insideLayout && isInFlow(el)) return el;
       const box = resolve(el);
       if (!box || (box.width === el.width && box.height === el.height)) return el;
       changed = true;

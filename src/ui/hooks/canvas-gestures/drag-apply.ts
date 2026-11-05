@@ -434,7 +434,16 @@ export function createDragApply(ctx: DragApplyContext) {
               .filter((el) => el.type === "component" || el.type === "componentSet")
               .map((el) => el.id)
           : [ownMasterId(draggedEl)].filter((id): id is string => Boolean(id));
-      const target = findFrameAtPoint(getActivePage(docRef.current).children, curCx, curCy, [primary.id, ...forbidden]);
+      // Every moved root, not just the primary. The box above is the selection's
+      // UNION, so the centre it probes with can sit inside a second layer being
+      // dragged — which would then light up as a frame the group could be
+      // dropped into, while the drop itself lands on it. `primary.id` alone was
+      // enough before the union box existed, because the probe point was always
+      // the primary's own centre.
+      const target = findFrameAtPoint(getActivePage(docRef.current).children, curCx, curCy, [
+        ...draggedIds,
+        ...forbidden
+      ]);
       const parentId = findParentById(getActivePage(docRef.current).children, primary.id)?.id ?? null;
       // Figma parity: the frame the element already lives in never highlights;
       // only a genuinely new container flashes as a drop target (including a
