@@ -1,5 +1,7 @@
 import { ContainerElement, DesignDocument, DesignElement, updateActivePageElements } from "../dsl/types";
 import { getActivePage } from "../dsl/types";
+import { relayoutDocumentTree } from "../compile";
+import { instanceSizeResolver } from "./instance-size";
 import { containerSizesAxis, resolveAxis } from "../geometry/resolve-axis";
 import type { ResizeHandleType } from "../geometry/snap-guides";
 import { scaleSubtreeByFactor } from "../geometry/scale-geometry";
@@ -179,6 +181,31 @@ export function scalableAxes(
 }
 
 /**
+ * Which axes a scale of this SELECTION can write, for the panel that has to
+ * report a factor back.
+ *
+ * Per element the answer is `scalableAxes`; a union takes the union of them,
+ * because one layer with a free width still moves the selection's width. A
+ * selection where NO layer owns an axis is the case worth naming: every layer is
+ * `fill` (or stretched by its parent), so that axis reads back unchanged however
+ * far the other one travelled.
+ */
+export function selectionScalableAxes(
+  elements: DesignElement[],
+  selectedIds: Set<string>
+): { x: boolean; y: boolean } {
+  let x = false;
+  let y = false;
+  for (const el of flattenElements(elements)) {
+    if (!selectedIds.has(el.id)) continue;
+    const axes = scalableAxes(el, findParentById(elements, el.id));
+    if (axes.x) x = true;
+    if (axes.y) y = true;
+  }
+  return { x, y };
+}
+
+/**
  * True when a scale could move this layer at all — one axis it owns is enough. Both
  * axes engine-owned means there is no box here to write, and the whole operation is
  * a no-op the user deserves to be told about rather than watch.
@@ -313,6 +340,32 @@ export function selectionWorldBounds(
 }
 
 /**
+ * The factor the Scale panel should report, given the size the selection had
+ * when the tool opened and the size it has now.
+ *
+ * The panel has two numbers to read and only one of them is a statement about
+ * the scale that happened. An axis the layout engine owns — `fill`, a stretched
+ * cross axis — cannot be written by this layer at all, so its ratio is 1 for
+ * every scale: reporting it puts the field back at "1x" the moment a 2x scale
+ * lands, and the preset tick vanishes with it. The readable axis is the one
+ * `scalableAxes` said the tool could move.
+ *
+ * `uniform` is only a claim about two axes when both of them could move; a
+ * one-axis scale is not a "non-uniform" one.
+ */
+export function scaleReadout(
+  axes: { x: boolean; y: boolean } | null,
+  reference: { width: number; height: number } | null,
+  bounds: { width: number; height: number } | null
+): { factor: number; uniform: boolean } {
+  const widthFactor = reference && reference.width > 0 && bounds ? bounds.width / reference.width : 1;
+  const heightFactor = reference && reference.height > 0 && bounds ? bounds.height / reference.height : 1;
+  const factor = axes && !axes.x ? heightFactor : widthFactor;
+  const uniform = !axes || !(axes.x && axes.y) || Math.abs(widthFactor - heightFactor) < 0.005;
+  return { factor, uniform };
+}
+
+/**
  * The document-level entry points, mirroring `fitFrameInDocument` so a
  * context-menu item, an inspector control and a canvas drag cannot disagree about
  * what a scale does.
@@ -355,4 +408,28 @@ function runScale(
   const next = apply(elements, selectedIds);
   if (next === elements) return { doc, changed: false, refusal: "no-op" };
   return { doc: updateActivePageElements(doc, next), changed: true };
+}
+
+/**
+ * Settle a document a scale just rewrote: the layout pass, measured against the
+ * masters THIS document holds.
+ *
+ * The two must be the same document. `relayoutDocumentTree` falls back to the
+ * resolver the store published on its last commit, which describes the document
+ * from BEFORE this scale — so a scale that resizes a master and one of its
+ * instances in the same action would measure the instance against the master it
+ * used to be, and write that stale box into the tree the panel and the selection
+ * outline read. The resolver's contract already says an explicit argument wins
+ * for exactly this reason.
+ *
+ * A scale is discrete (the panel's fields) or per-frame (a drag), but it always
+ * needs this one pass: it writes sizes the engine can only derive — a
+ * `fit-content` text's width, a hugging frame's height, a `fill` child's box —
+ * and without it the stored tree holds a number the next relayout replaces.
+ */
+export function settleScaledDocument(doc: DesignDocument): DesignDocument {
+  return updateActivePageElements(
+    doc,
+    relayoutDocumentTree(getActivePage(doc).children, instanceSizeResolver(doc))
+  );
 }

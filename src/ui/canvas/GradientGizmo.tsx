@@ -1,11 +1,10 @@
 import type { JSX } from "preact";
 import type { DesignElement, Paint } from "../../core/dsl/types";
 import { getGradientStops } from "../../core/geometry/gradient-utils";
-import { getRotateCursor } from "../../core/geometry/transforms";
 import { t } from "../../i18n";
 import type { GradientHandle } from "../hooks/canvas-gestures/gradient-gesture";
 import { CANVAS_GUIDE, CANVAS_ON_SELECT, CANVAS_SELECT } from "./canvas-colors";
-import { GradientKnob, perpendicularResizeCursor } from "./GradientKnob";
+import { GradientKnob } from "./GradientKnob";
 import { stopAxisOf } from "./gradient-stop-axis";
 
 type GradientPaint = Extract<
@@ -88,7 +87,6 @@ export function buildGradientGizmo({
   onStopDelete
 }: BuildGradientGizmoArgs): JSX.Element {
   const stops = getGradientStops(grad);
-  const paintAngle = (grad as { angle?: number }).angle ?? 0;
   const radius = 5 / zoom;
   const hitRadius = 12 / zoom;
   const axis = stopAxisOf(el, grad, { x: originX, y: originY });
@@ -350,7 +348,7 @@ export function buildGradientGizmo({
           y: v1.y,
           shape: "square",
           fill: CANVAS_ON_SELECT,
-          cursor: getRotateCursor(paintAngle),
+          cursor: "grab",
           title: t("paint.lever.axis")
         })}
         {knob({
@@ -359,7 +357,7 @@ export function buildGradientGizmo({
           y: v2.y,
           shape: "square",
           fill: CANVAS_ON_SELECT,
-          cursor: perpendicularResizeCursor(paintAngle),
+          cursor: "grab",
           title: t("paint.lever.axisWidth")
         })}
       </g>
@@ -423,7 +421,7 @@ export function buildGradientGizmo({
         y: e1y,
         shape: "square",
         fill: CANVAS_ON_SELECT,
-        cursor: getRotateCursor(paintAngle),
+        cursor: "grab",
         title: t("paint.lever.axis")
       })}
       {knob({
@@ -432,7 +430,7 @@ export function buildGradientGizmo({
         y: e2y,
         shape: "square",
         fill: CANVAS_ON_SELECT,
-        cursor: perpendicularResizeCursor(paintAngle),
+        cursor: "grab",
         title: t("paint.lever.axisWidth")
       })}
     </g>

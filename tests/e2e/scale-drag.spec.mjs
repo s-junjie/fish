@@ -194,6 +194,67 @@ const autoFont = await page.evaluate(() => {
 });
 check("so its type can be scaled from the panel", autoFont, 32);
 
+// A `fill` width belongs to the parent, so it reads back 1x however far the other
+// axis travelled. The panel divided by that axis, so a 2x scale put "1x" back in
+// the field the instant it landed — and the preset tick went with it, over a box
+// whose type and height had plainly doubled.
+await page.evaluate(() => {
+  window.__FISH_BRIDGE__.setElements([
+    {
+      id: "stack",
+      type: "frame",
+      name: "stack",
+      x: 100,
+      y: 900,
+      width: 300,
+      height: 200,
+      display: "flex",
+      "flex-direction": "column",
+      gap: 0,
+      padding: 0,
+      children: [
+        {
+          id: "filling",
+          type: "text",
+          name: "filling",
+          x: 0,
+          y: 0,
+          width: 300,
+          height: 19,
+          content: "Fills the row",
+          sizing: { width: "fill", height: "fit-content" },
+          style: { fontFamily: "Inter", fontSize: 16, lineHeight: "19px", color: "#000000" }
+        }
+      ]
+    }
+  ]);
+});
+await settle();
+await page.evaluate(() => window.__FISH_BRIDGE__.selectElement("filling"));
+await settle();
+check("the Scale tool is still armed on the new selection", await page.locator("[data-scale-section]").count(), 1);
+
+await page.locator('[data-scale-factor-menu="true"]').click();
+await settle();
+await page.locator('[data-scale-preset-option="2"]').click();
+await settle();
+const filling = await page.evaluate(() => {
+  const t = window.__FISH_BRIDGE__.getElements()[0].children.find((c) => c.id === "filling");
+  return { w: t.width, h: t.height, font: t.style?.fontSize };
+});
+check("a fill width is still the parent's", filling.w, 300);
+check("while the type and the height double", [filling.font, filling.h], [32, 38]);
+check(
+  "the factor field reports the axis that did move",
+  await page.locator("[data-scale-factor] input").inputValue(),
+  "2"
+);
+await page.locator('[data-scale-factor-menu="true"]').click();
+await settle();
+check("and the preset is ticked", await page.locator('[data-scale-preset-option="2"] svg').count(), 1);
+await page.locator('[data-scale-factor-menu="true"]').click();
+await settle();
+
 check("no page errors", errors, []);
 
 let failed = 0;

@@ -1,9 +1,4 @@
-import {
-  DesignDocument,
-  getActivePage,
-  updateActivePageElements
-} from "../../../core/dsl/types";
-import { relayoutDocumentTree } from "../../../core/compile";
+import { DesignDocument, getActivePage, updateActivePageElements } from "../../../core/dsl/types";
 import { calculateVisibleViewport, isElementInViewport } from "../../../core/geometry/cull";
 import { calculateResizeSnapping, GuideLine, ResizeHandleType } from "../../../core/geometry/snap-guides";
 import {
@@ -16,7 +11,8 @@ import {
   ANCHOR_FROM_HANDLE,
   ScaleAnchor,
   scaleElementsByFactor,
-  selectionWorldBounds
+  selectionWorldBounds,
+  settleScaledDocument
 } from "../../../core/interactions/scale-ops";
 import { createRafCoalescer } from "../../raf";
 
@@ -157,42 +153,56 @@ export function createMultiResizeGesture(ctx: MultiResizeGestureContext) {
       if (movesHeight(handle)) {
         height = Math.max(10, Math.round(start.height + grow * (SOUTH.includes(handle) ? dy : -dy)));
       }
-      if (CORNERS.includes(handle) && (p.shiftKey || scaleMode)) {
+      // A corner is locked to the union's ratio while Shift is held or the Scale
+      // tool is on. The lock also settles the question below: a snap answers one
+      // edge at a time, so letting it rewrite the width would leave the height
+      // this line just derived from it — the union comes back squashed instead
+      // of scaled. `resolveResizeBox` holds the same invariant on the
+      // single-layer path and reports it as `aspectActive`; this is the multi
+      // selection's only statement of it.
+      const locked = CORNERS.includes(handle) && (p.shiftKey || Boolean(scaleMode));
+      if (locked) {
         height = Math.max(10, Math.round(width / aspect));
       }
 
-      // Snap in CANVAS space, like the single-layer path: the union is already a
-      // world-space box, so unlike a nested element it needs no parent rebase, and
-      // feeding it a parent-local rect is what made that path compare a child against
-      // two coordinate systems (LESSONS §34).
-      const rect = currentContainerRect();
-      const vp = rect ? calculateVisibleViewport(pan, zoom, rect.width, rect.height, 0) : null;
-      const siblings = flattenElements(getActivePage(docRef.current).children)
-        .filter((item) => {
-          if (ownIds.has(item.id)) return false;
-          const origin = computeParentOrigin(getActivePage(docRef.current).children, item.id);
-          const worldBox = elementWorldAABB(item, origin.x, origin.y);
-          if (vp && !isElementInViewport(worldBox, vp)) return false;
-          return true;
-        })
-        .map((item) => {
-          const origin = computeParentOrigin(getActivePage(docRef.current).children, item.id);
-          return { ...item, ...elementWorldAABB(item, origin.x, origin.y) };
-        });
-      const pageCanvas = getActivePage(docRef.current).canvas;
-      const snap = calculateResizeSnapping(
-        handle,
-        boxFromAnchor(anchor, start, width, height),
-        zoom,
-        pageCanvas.width,
-        pageCanvas.height,
-        siblings
-      );
-      // Unconditional, so guides from a frame that happened to hit something do not
-      // outlive the drag — they are a statement about where the pointer is now.
-      setActiveGuides(snap.guides);
-      if (movesWidth(handle)) width = Math.max(10, snap.width);
-      if (movesHeight(handle)) height = Math.max(10, snap.height);
+      if (!locked) {
+        // Snap in CANVAS space, like the single-layer path: the union is already a
+        // world-space box, so unlike a nested element it needs no parent rebase, and
+        // feeding it a parent-local rect is what made that path compare a child against
+        // two coordinate systems (LESSONS §34).
+        const rect = currentContainerRect();
+        const vp = rect ? calculateVisibleViewport(pan, zoom, rect.width, rect.height, 0) : null;
+        const siblings = flattenElements(getActivePage(docRef.current).children)
+          .filter((item) => {
+            if (ownIds.has(item.id)) return false;
+            const origin = computeParentOrigin(getActivePage(docRef.current).children, item.id);
+            const worldBox = elementWorldAABB(item, origin.x, origin.y);
+            if (vp && !isElementInViewport(worldBox, vp)) return false;
+            return true;
+          })
+          .map((item) => {
+            const origin = computeParentOrigin(getActivePage(docRef.current).children, item.id);
+            return { ...item, ...elementWorldAABB(item, origin.x, origin.y) };
+          });
+        const pageCanvas = getActivePage(docRef.current).canvas;
+        const snap = calculateResizeSnapping(
+          handle,
+          boxFromAnchor(anchor, start, width, height),
+          zoom,
+          pageCanvas.width,
+          pageCanvas.height,
+          siblings
+        );
+        // Unconditional, so guides from a frame that happened to hit something do not
+        // outlive the drag — they are a statement about where the pointer is now.
+        setActiveGuides(snap.guides);
+        if (movesWidth(handle)) width = Math.max(10, snap.width);
+        if (movesHeight(handle)) height = Math.max(10, snap.height);
+      } else {
+        // Guides from the frame before the lock went down describe a snap this
+        // frame is not taking.
+        setActiveGuides([]);
+      }
 
       setDoc((prev) => {
         const kx = start.width > 0 ? width / start.width : 1;
@@ -207,7 +217,10 @@ export function createMultiResizeGesture(ctx: MultiResizeGestureContext) {
         // ever looked necessary because the relayout below would otherwise take
         // an instance's hugging box back — a scaled hug now measures its own
         // scaled contents, so it lands where the drag put it.
-        return updateActivePageElements(prev, relayoutDocumentTree(scaled));
+        // Settled against the document this frame produces: the store's resolver
+        // describes the frame before it, so a drag that scales a master and its
+        // instance would measure the instance against the master's old box.
+        return settleScaledDocument(updateActivePageElements(prev, scaled));
       });
     });
 
@@ -224,9 +237,7 @@ export function createMultiResizeGesture(ctx: MultiResizeGestureContext) {
       coalescer.flush();
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
-      setDoc((prev) =>
-        updateActivePageElements(prev, relayoutDocumentTree(getActivePage(prev).children))
-      );
+      setDoc((prev) => settleScaledDocument(prev));
       endDragGesture();
     };
 

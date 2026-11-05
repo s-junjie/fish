@@ -19,7 +19,7 @@ import { isLineElement, elementAABB } from "../../../core/geometry/element-bound
 import { transformBoundsToAABB } from "../../../core/geometry/bounds";
 import { containerSizesAxis, modifierResizesOwnBox, resolveAxis, withAxisMode } from "../../../core/geometry/resolve-axis";
 import { isAspectLocked as elementIsAspectLocked } from "../../../core/geometry/aspect-lock";
-import { scalableAxes, ANCHOR_FROM_HANDLE } from "../../../core/interactions/scale-ops";
+import { scalableAxes, ANCHOR_FROM_HANDLE, settleScaledDocument } from "../../../core/interactions/scale-ops";
 import { scaleSubtreeByFactor } from "../../../core/geometry/scale-geometry";
 import { resizeContainerWithConstraints } from "../../../core/geometry/constraints";
 import { setLineEndpoint } from "../../../core/interactions/line-ops";
@@ -577,7 +577,12 @@ export function createGeometryGestures(ctx: GeometryGestureContext) {
           // which `propagateMasterSize` stops bringing it the master's next
           // resize. `pinInstanceBox` is the RESIZE gesture's answer, because a
           // resize carries no factor for the instance to follow.
-          return updateActivePageElements(prev, relayoutDocumentTree(scaled));
+          //
+          // Settled against the document this frame produces, not the store's
+          // resolver: that one describes the frame BEFORE the scale, and a drag
+          // that scales a master and its instance would measure the instance
+          // against the master's old box.
+          return settleScaledDocument(updateActivePageElements(prev, scaled));
         });
         return;
       }

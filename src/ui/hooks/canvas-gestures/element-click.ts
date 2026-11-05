@@ -7,7 +7,6 @@ import {
   elementWorldAABB,
   findElementById,
   findParentById,
-  flattenElements,
   isContainer
 } from "../../../core/geometry/tree-ops";
 import { editableIds } from "../../../core/geometry/lock";
@@ -17,6 +16,7 @@ import type { ToolType } from "../../../core/tools";
 import { getGradientEditTarget } from "../gradient-edit";
 import { isDerivedFrom, isDerivedNode } from "../../../core/interactions/component-inventory";
 import { owningInstanceId, resolvedRoute } from "../../../core/interactions/component-swap";
+import { selectionWorldBounds } from "../../../core/interactions/scale-ops";
 import {
   activeScopeFrameIds,
   collectFrameAncestry,
@@ -449,12 +449,16 @@ export function createElementClick(deps: ElementClickDeps) {
         // Nothing is minted until the pointer clears the threshold, so an
         // Alt+click that never moves is still a plain select.
 
-        const flat = flattenElements(elements);
-        const newPrimary = flat.find((f) => nextSelection.has(f.id));
-        if (newPrimary) {
-          const parentOrigin = computeParentOrigin(elements, newPrimary.id);
-          const worldBox = elementWorldAABB(newPrimary, parentOrigin.x, parentOrigin.y);
-          dragPrimary.current = { id: newPrimary.id, box: worldBox };
+        // The snap box is the selection's UNION bounds, so a multi-select drag
+        // aligns the whole group the dashed outline promises — the first element
+        // alone would snap the group by a box none of it sits in. The id stays
+        // the first moved root: it is only the clone-rebase and drop-target key.
+        const primaryId = topLevelSelected[0] ?? null;
+        const unionBox = primaryId
+          ? selectionWorldBounds(elements, new Set(topLevelSelected))
+          : null;
+        if (primaryId && unionBox) {
+          dragPrimary.current = { id: primaryId, box: unionBox };
         } else {
           dragPrimary.current = null;
         }

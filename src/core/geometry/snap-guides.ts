@@ -138,6 +138,25 @@ export function calculateResizeSnapping(
   return { x, y, width, height, guides };
 }
 
+interface AxisCandidate {
+  /** Where the target lands on this axis if this candidate wins. */
+  delta: number;
+  /** The guide line the candidate draws, and the span it covers. */
+  position: number;
+  start: number;
+  end: number;
+}
+
+/**
+ * Move snapping: the NEAREST candidate on each axis wins, and only guides
+ * collinear with the winning delta are drawn.
+ *
+ * The loop this replaced let every candidate within reach overwrite the result,
+ * so the last sibling listed won over the truly nearest one and a single drag
+ * could light up several guides on different X coordinates while the element
+ * sat on none of them. Collecting per axis and taking the minimum `|delta|`
+ * gives one answer per axis; the collinear filter keeps the guides honest.
+ */
 export function calculateSnapping(
   draggingBounds: { x: number; y: number; width: number; height: number },
   zoom: number,
@@ -145,106 +164,88 @@ export function calculateSnapping(
   canvasHeight?: number,
   siblingElements: DesignElement[] = []
 ): SnapResult {
-  let snappedX = draggingBounds.x;
-  let snappedY = draggingBounds.y;
-  const guides: GuideLine[] = [];
   const reach = snapReach(zoom);
-
   const targetLeft = draggingBounds.x;
-  const targetRight = draggingBounds.x + draggingBounds.width;
-  const targetCenterX = draggingBounds.x + draggingBounds.width / 2;
-
   const targetTop = draggingBounds.y;
-  const targetBottom = draggingBounds.y + draggingBounds.height;
-  const targetCenterY = draggingBounds.y + draggingBounds.height / 2;
+  const targetRight = targetLeft + draggingBounds.width;
+  const targetBottom = targetTop + draggingBounds.height;
+  const targetCenterX = targetLeft + draggingBounds.width / 2;
+  const targetCenterY = targetTop + draggingBounds.height / 2;
 
-  // 1. Canvas Center & Edges (if canvas bounds are defined)
+  const xCandidates: AxisCandidate[] = [];
+  const yCandidates: AxisCandidate[] = [];
+
   if (canvasWidth !== undefined && canvasWidth > 0 && canvasHeight !== undefined && canvasHeight > 0) {
-    const canvasCenterX = canvasWidth / 2;
-    if (Math.abs(targetCenterX - canvasCenterX) <= reach) {
-      snappedX = canvasCenterX - draggingBounds.width / 2;
-      guides.push({ orientation: "vertical", position: canvasCenterX, start: 0, end: canvasHeight });
-    } else if (Math.abs(targetLeft - 0) <= reach) {
-      snappedX = 0;
-      guides.push({ orientation: "vertical", position: 0, start: 0, end: canvasHeight });
-    } else if (Math.abs(targetRight - canvasWidth) <= reach) {
-      snappedX = canvasWidth - draggingBounds.width;
-      guides.push({ orientation: "vertical", position: canvasWidth, start: 0, end: canvasHeight });
-    }
-
-    const canvasCenterY = canvasHeight / 2;
-    if (Math.abs(targetCenterY - canvasCenterY) <= reach) {
-      snappedY = canvasCenterY - draggingBounds.height / 2;
-      guides.push({ orientation: "horizontal", position: canvasCenterY, start: 0, end: canvasWidth });
-    } else if (Math.abs(targetTop - 0) <= reach) {
-      snappedY = 0;
-      guides.push({ orientation: "horizontal", position: 0, start: 0, end: canvasWidth });
-    } else if (Math.abs(targetBottom - canvasHeight) <= reach) {
-      snappedY = canvasHeight - draggingBounds.height;
-      guides.push({ orientation: "horizontal", position: canvasHeight, start: 0, end: canvasWidth });
-    }
+    const centerX = canvasWidth / 2;
+    const centerY = canvasHeight / 2;
+    xCandidates.push(
+      { delta: centerX - targetCenterX, position: centerX, start: 0, end: canvasHeight },
+      { delta: -targetLeft, position: 0, start: 0, end: canvasHeight },
+      { delta: canvasWidth - targetRight, position: canvasWidth, start: 0, end: canvasHeight }
+    );
+    yCandidates.push(
+      { delta: centerY - targetCenterY, position: centerY, start: 0, end: canvasWidth },
+      { delta: -targetTop, position: 0, start: 0, end: canvasWidth },
+      { delta: canvasHeight - targetBottom, position: canvasHeight, start: 0, end: canvasWidth }
+    );
   }
 
-  // 2. Sibling elements
   for (const el of siblingElements) {
     const sib = elementAABB(el);
-    const siblingCenterX = sib.x + sib.width / 2;
-    const siblingCenterY = sib.y + sib.height / 2;
-
-    // Vertical guides (matching X coordinates)
-    if (Math.abs(targetLeft - sib.x) <= reach) {
-      snappedX = sib.x;
-      guides.push({
-        orientation: "vertical",
-        position: sib.x,
-        start: Math.min(targetTop, sib.y),
-        end: Math.max(targetBottom, sib.y + sib.height)
-      });
-    } else if (Math.abs(targetRight - (sib.x + sib.width)) <= reach) {
-      snappedX = sib.x + sib.width - draggingBounds.width;
-      guides.push({
-        orientation: "vertical",
-        position: sib.x + sib.width,
-        start: Math.min(targetTop, sib.y),
-        end: Math.max(targetBottom, sib.y + sib.height)
-      });
-    } else if (Math.abs(targetCenterX - siblingCenterX) <= reach) {
-      snappedX = siblingCenterX - draggingBounds.width / 2;
-      guides.push({
-        orientation: "vertical",
-        position: siblingCenterX,
-        start: Math.min(targetTop, sib.y),
-        end: Math.max(targetBottom, sib.y + sib.height)
-      });
+    const sibRight = sib.x + sib.width;
+    const sibBottom = sib.y + sib.height;
+    const gxStart = Math.min(targetTop, sib.y);
+    const gxEnd = Math.max(targetBottom, sibBottom);
+    const gyStart = Math.min(targetLeft, sib.x);
+    const gyEnd = Math.max(targetRight, sibRight);
+    // Edge-to-edge alignment plus the abutment that touches the sibling's
+    // opposite edge.
+    for (const c of [
+      { delta: sib.x - targetLeft, position: sib.x },
+      { delta: sib.x + sib.width / 2 - targetCenterX, position: sib.x + sib.width / 2 },
+      { delta: sibRight - targetRight, position: sibRight },
+      { delta: sib.x - targetRight, position: sib.x },
+      { delta: sibRight - targetLeft, position: sibRight }
+    ]) {
+      xCandidates.push({ ...c, start: gxStart, end: gxEnd });
     }
-
-    // Horizontal guides (matching Y coordinates)
-    if (Math.abs(targetTop - sib.y) <= reach) {
-      snappedY = sib.y;
-      guides.push({
-        orientation: "horizontal",
-        position: sib.y,
-        start: Math.min(targetLeft, sib.x),
-        end: Math.max(targetRight, sib.x + sib.width)
-      });
-    } else if (Math.abs(targetBottom - (sib.y + sib.height)) <= reach) {
-      snappedY = sib.y + sib.height - draggingBounds.height;
-      guides.push({
-        orientation: "horizontal",
-        position: sib.y + sib.height,
-        start: Math.min(targetLeft, sib.x),
-        end: Math.max(targetRight, sib.x + sib.width)
-      });
-    } else if (Math.abs(targetCenterY - siblingCenterY) <= reach) {
-      snappedY = siblingCenterY - draggingBounds.height / 2;
-      guides.push({
-        orientation: "horizontal",
-        position: siblingCenterY,
-        start: Math.min(targetLeft, sib.x),
-        end: Math.max(targetRight, sib.x + sib.width)
-      });
+    for (const c of [
+      { delta: sib.y - targetTop, position: sib.y },
+      { delta: sib.y + sib.height / 2 - targetCenterY, position: sib.y + sib.height / 2 },
+      { delta: sibBottom - targetBottom, position: sibBottom },
+      { delta: sib.y - targetBottom, position: sib.y },
+      { delta: sibBottom - targetTop, position: sibBottom }
+    ]) {
+      yCandidates.push({ ...c, start: gyStart, end: gyEnd });
     }
   }
 
-  return { snappedX, snappedY, guides };
+  const resolveAxis = (
+    candidates: AxisCandidate[],
+    base: number,
+    orientation: GuideLine["orientation"]
+  ): { value: number; guides: GuideLine[] } => {
+    let bestDelta: number | null = null;
+    for (const c of candidates) {
+      const d = Math.abs(c.delta);
+      if (d <= reach && (bestDelta === null || d < Math.abs(bestDelta))) bestDelta = c.delta;
+    }
+    if (bestDelta === null) return { value: base, guides: [] };
+    const merged = new Map<number, GuideLine>();
+    for (const c of candidates) {
+      if (Math.abs(c.delta - bestDelta) >= 1e-3) continue;
+      const existing = merged.get(c.position);
+      if (existing) {
+        existing.start = Math.min(existing.start, c.start);
+        existing.end = Math.max(existing.end, c.end);
+      } else {
+        merged.set(c.position, { orientation, position: c.position, start: c.start, end: c.end });
+      }
+    }
+    return { value: base + bestDelta, guides: [...merged.values()] };
+  };
+
+  const x = resolveAxis(xCandidates, targetLeft, "vertical");
+  const y = resolveAxis(yCandidates, targetTop, "horizontal");
+  return { snappedX: x.value, snappedY: y.value, guides: [...x.guides, ...y.guides] };
 }

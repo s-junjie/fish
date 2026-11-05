@@ -39,9 +39,52 @@ describe("FISH Smart Snapping Guides", () => {
   });
 
   it("widens the reach in document units when zoomed out, never past the screen", () => {
-    // 30 units away is 3 screen px at 10% — still under the hand's 6.
-    expect(calculateSnapping({ x: 70, y: 300, width: 50, height: 50 }, 0.1, 1080, 1080, siblings).snappedX).toBe(100);
+    // 20 units away is 2 screen px at 10% — still under the hand's 6. The
+    // nearest alignment is the target's right edge abutting the sibling's left
+    // edge (delta 20) rather than the coincident left edges (delta 30).
+    expect(calculateSnapping({ x: 70, y: 300, width: 50, height: 50 }, 0.1, 1080, 1080, siblings).snappedX).toBe(50);
     expect(calculateSnapping({ x: 70, y: 300, width: 50, height: 50 }, 1, 1080, 1080, siblings).snappedX).toBe(70);
+  });
+
+  it("the nearest candidate wins, not the last one listed", () => {
+    // The reported defect: every sibling within reach overwrote the result, so
+    // the later box at 103 won over the nearer one at 100.
+    const near = [
+      { id: "a", type: "rect", x: 100, y: 0, width: 40, height: 40 },
+      { id: "b", type: "rect", x: 103, y: 200, width: 40, height: 40 }
+    ] as RectElement[];
+    const res = calculateSnapping({ x: 101, y: 300, width: 50, height: 50 }, 1, undefined, undefined, near);
+    expect(res.snappedX).toBe(100);
+    expect(res.guides.filter((g) => g.orientation === "vertical")).toHaveLength(1);
+  });
+
+  it("a losing canvas centre leaves no guide behind", () => {
+    // The canvas centre is within reach but a sibling edge is nearer: the snap
+    // must land on the sibling and the centre line must not be drawn.
+    const res = calculateSnapping({ x: 94.5, y: 300, width: 10, height: 10 }, 1, 200, 200, [
+      { id: "s", type: "rect", x: 94.8, y: 100, width: 20, height: 20 }
+    ]);
+    expect(res.snappedX).toBe(94.8);
+    expect(res.guides.some((g) => g.position === 100)).toBe(false);
+  });
+
+  it("collinear guides merge into one segment", () => {
+    const stacked = [
+      { id: "a", type: "rect", x: 100, y: 0, width: 40, height: 40 },
+      { id: "b", type: "rect", x: 100, y: 200, width: 40, height: 40 }
+    ] as RectElement[];
+    const res = calculateSnapping({ x: 102, y: 90, width: 50, height: 50 }, 1, undefined, undefined, stacked);
+    const vertical = res.guides.filter((g) => g.orientation === "vertical");
+    expect(vertical).toHaveLength(1);
+    expect(vertical[0].position).toBe(100);
+    expect(vertical[0].start).toBe(0);
+    expect(vertical[0].end).toBe(240);
+  });
+
+  it("abuts the target's right edge onto a sibling's left edge", () => {
+    const res = calculateSnapping({ x: 157, y: 300, width: 40, height: 40 }, 1, undefined, undefined, siblings);
+    expect(res.snappedX).toBe(160);
+    expect(res.guides.some((g) => g.orientation === "vertical" && g.position === 200)).toBe(true);
   });
 });
 

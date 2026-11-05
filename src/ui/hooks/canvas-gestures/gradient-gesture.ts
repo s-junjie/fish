@@ -166,10 +166,14 @@ export function createGradientGesture(ctx: GeometryGestureContext) {
     // translates the gradient — so its drag starts on the first movement past a
     // threshold, not on the press. A press that never moves is a click, and the
     // panel's ramp has taught everyone that a click there adds a colour.
+    const origCursor = document.body.style.cursor;
     const isAxis = which === "axis";
     let axisDragging = false;
     let lastPointer = { x: e.clientX, y: e.clientY };
-    if (!isAxis) startDragGesture();
+    if (!isAxis) {
+      document.body.style.cursor = "grabbing";
+      startDragGesture();
+    }
 
     const rect = container.getBoundingClientRect();
     const toLocalPoint = (clientX: number, clientY: number) =>
@@ -292,6 +296,7 @@ export function createGradientGesture(ctx: GeometryGestureContext) {
       if (isAxis && !axisDragging) {
         if (Math.hypot(moveEvt.clientX - e.clientX, moveEvt.clientY - e.clientY) < 3) return;
         axisDragging = true;
+        document.body.style.cursor = "grabbing";
         startDragGesture();
       }
       coalescer.push({
@@ -306,6 +311,7 @@ export function createGradientGesture(ctx: GeometryGestureContext) {
       coalescer.flush();
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
+      document.body.style.cursor = origCursor;
       setGradientDrag(null);
       if (isAxis && !axisDragging) {
         // A click on the axis adds a stop where it landed — the canvas' version
@@ -366,6 +372,8 @@ export function createGradientGesture(ctx: GeometryGestureContext) {
     const stops0 = getGradientStops(paint);
     if (!stops0[stopIndex]) return;
 
+    const origCursor = document.body.style.cursor;
+    document.body.style.cursor = "grabbing";
     startDragGesture();
     const coalescer = createRafCoalescer<{ x: number; y: number }>((p) => {
       const local = localPoint(el, p.x, p.y);
@@ -383,6 +391,7 @@ export function createGradientGesture(ctx: GeometryGestureContext) {
       coalescer.flush();
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
+      document.body.style.cursor = origCursor;
       endDragGesture();
     };
     window.addEventListener("pointermove", onPointerMove);

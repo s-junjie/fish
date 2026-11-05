@@ -4,7 +4,8 @@ import { describe, it, expect } from "vitest";
 import { containerSizesAxis, resolveAxis, resolveAxisDetail, withAxisMode } from "../src/core/geometry/resolve-axis";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
 import { applyAutoLayout, resolveDynamicLineHeight, resolveElementSizing, syncTextSizing } from "../src/core/compile";
-import { FrameElement, AutoLayout, RectElement, TextElement } from "../src/core/dsl/types";
+import { syncInstanceSizing } from "../src/core/layout/instance-sizing";
+import { FrameElement, AutoLayout, RectElement, TextElement, InstanceElement } from "../src/core/dsl/types";
 
 const rect = (id: string, sizing?: RectElement["sizing"]): RectElement => ({
   id,
@@ -321,6 +322,38 @@ describe("syncTextSizing", () => {
   it("returns the same array when nothing needs measuring", () => {
     const elements = [rect("r"), text("t", "hello")];
     expect(syncTextSizing(elements)).toBe(elements);
+  });
+});
+
+describe("syncInstanceSizing", () => {
+  const inst = (id: string): InstanceElement =>
+    ({ id, type: "instance", componentId: "cmp", x: 0, y: 0, width: 60, height: 20 }) as InstanceElement;
+  const measured = () => ({ width: 120, height: 24 });
+
+  it("bakes the measured box onto a canvas-level instance", () => {
+    const [synced] = syncInstanceSizing([inst("i")], measured) as InstanceElement[];
+    expect([synced.width, synced.height]).toEqual([120, 24]);
+  });
+
+  it("still reaches an instance inside a plain frame", () => {
+    // A plain frame runs no pass over its children, so this one had no writer at
+    // all: the canvas drew the master's measured pill and the tree kept the 60 it
+    // was created with.
+    const parent = frame("f", undefined, [inst("i")]);
+    const [synced] = syncInstanceSizing([parent], measured) as FrameElement[];
+    expect([synced.children![0].width, synced.children![0].height]).toEqual([120, 24]);
+  });
+
+  it("leaves a stack's child to the layout pass", () => {
+    // The parent placed it — including the axes it owns, where the master's
+    // measurement is not the answer.
+    const parent = frame("f", { mode: "flex", direction: "row" }, [inst("i")]);
+    expect(syncInstanceSizing([parent], measured)[0]).toBe(parent);
+  });
+
+  it("returns the same array when nothing needs measuring", () => {
+    const elements = [rect("r"), inst("i")];
+    expect(syncInstanceSizing(elements, () => ({ width: 60, height: 20 }))).toBe(elements);
   });
 });
 

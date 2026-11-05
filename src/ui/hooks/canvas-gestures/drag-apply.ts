@@ -9,10 +9,10 @@ import { layoutOf } from "../../../core/dsl/layout-flat";
 import { calculateSnapping, GuideLine } from "../../../core/geometry/snap-guides";
 import { calculateVisibleViewport } from "../../../core/geometry/cull";
 import { snapCandidates } from "../../../core/geometry/snap-candidates";
-import { elementWorldAABB } from "../../../core/geometry/tree-ops";
 import { measureSpan } from "../../../core/perf";
 import { moveElementTo } from "../../../core/interactions/line-ops";
 import { insertClones } from "../../../core/interactions/clipboard";
+import { selectionWorldBounds } from "../../../core/interactions/scale-ops";
 import {
   collectDescendantIds,
   computeParentOrigin,
@@ -25,7 +25,6 @@ import {
   ownMasterId,
   removeElementFromTree
 } from "../../../core/geometry/tree-ops";
-
 interface Box {
   x: number;
   y: number;
@@ -269,11 +268,11 @@ export function createDragApply(ctx: DragApplyContext) {
       : undefined;
     const nextPrimary = primaryCloneId ? findElementById(after, primaryCloneId) : null;
     if (nextPrimary) {
-      const parentOrigin = computeParentOrigin(after, nextPrimary.id);
-      dragPrimary.current = {
-        id: nextPrimary.id,
-        box: elementWorldAABB(nextPrimary, parentOrigin.x, parentOrigin.y)
-      };
+      // The re-based box stays the selection's UNION bounds — the box the drag
+      // steered by before the mint — so a multi-select duplicate keeps snapping
+      // to the group rather than to one member of it.
+      const unionBox = selectionWorldBounds(after, cloneIds);
+      dragPrimary.current = unionBox ? { id: nextPrimary.id, box: unionBox } : null;
     } else {
       dragPrimary.current = null;
     }

@@ -822,6 +822,16 @@ check(
   (await cursorOf('[data-gradient-gizmo="radial"] line[data-gradient-axis]')) === "copy",
   await cursorOf('[data-gradient-gizmo="radial"] line[data-gradient-axis]')
 );
+check(
+  "radial rimX wears grab cursor",
+  (await cursorOf('[data-gradient-gizmo="radial"] [data-gradient-handle="rimX"]')) === "grab",
+  await cursorOf('[data-gradient-gizmo="radial"] [data-gradient-handle="rimX"]')
+);
+check(
+  "radial rimY wears grab cursor",
+  (await cursorOf('[data-gradient-gizmo="radial"] [data-gradient-handle="rimY"]')) === "grab",
+  await cursorOf('[data-gradient-gizmo="radial"] [data-gradient-handle="rimY"]')
+);
 {
   // The first radius is where a radial's stops live, so it is where a click
   // adds one. The grip's own box is the truth — re-deriving the geometry here
@@ -861,6 +871,20 @@ check(
 }
 await page.evaluate(() => window.__FISH_BRIDGE__.undo());
 await page.evaluate(() => window.__FISH_BRIDGE__.undo());
+await closePanel();
+
+await openFillPanel("gg_dia");
+await page.waitForSelector('[data-gradient-gizmo="diamond"]', { timeout: 3000 });
+check(
+  "diamond rimX wears grab cursor",
+  (await cursorOf('[data-gradient-gizmo="diamond"] [data-gradient-handle="rimX"]')) === "grab",
+  await cursorOf('[data-gradient-gizmo="diamond"] [data-gradient-handle="rimX"]')
+);
+check(
+  "diamond rimY wears grab cursor",
+  (await cursorOf('[data-gradient-gizmo="diamond"] [data-gradient-handle="rimY"]')) === "grab",
+  await cursorOf('[data-gradient-gizmo="diamond"] [data-gradient-handle="rimY"]')
+);
 await closePanel();
 
 await browser.close();

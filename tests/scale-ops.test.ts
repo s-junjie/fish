@@ -8,6 +8,8 @@ import {
   scaleElements,
   normalizeScaleFactor,
   scalableAxes,
+  scaleReadout,
+  selectionScalableAxes,
   selectionWorldBounds,
   SCALE_ANCHORS,
   SCALE_REFUSALS,
@@ -874,6 +876,58 @@ describe("a layout-owned axis is not the scale's to write", () => {
     const out = scaleSelectionToSizeInDocument(doc([holder(t)]), new Set(["t"]), { width: 400, height: 38 }, { x: 0, y: 0 });
     expect(out.changed, "a scale with no box to write is not a silent success").toBe(false);
     expect(out.refusal).toBe("engine-sized");
+  });
+});
+
+/**
+ * The panel's factor is the ratio of the axis the tool can actually WRITE. A
+ * `fill` width belongs to the parent, so it reads back 1x however far the height
+ * and the type travelled: the field snapped back to "1x" the moment a 2x scale
+ * landed, and the preset tick vanished with it.
+ */
+describe("the factor the panel reports", () => {
+  const label = (props: Partial<TextElement> = {}): TextElement =>
+    ({
+      id: "t",
+      type: "text",
+      content: "Hello world",
+      x: 10,
+      y: 10,
+      width: 200,
+      height: 19,
+      style: { fontFamily: "Inter", fontSize: 16, lineHeight: "19px", color: "#000" },
+      ...props
+    }) as TextElement;
+
+  const holder = (child: DesignElement): FrameElement =>
+    frame({
+      ...flattenLayout({ mode: "flex", direction: "column", align: "stretch", gap: 0, padding: 0 }),
+      children: [child]
+    });
+
+  it("reads the height of a fill-width child, which is free to move", () => {
+    const children = [holder(label({ sizing: { width: "fill", height: "fit-content" } }))];
+    const axes = selectionScalableAxes(children, new Set(["t"]));
+    expect(axes).toEqual({ x: false, y: true });
+    // The 2x the user asked for: width is the parent's and did not move.
+    expect(scaleReadout(axes, { width: 200, height: 19 }, { width: 200, height: 38 })).toEqual({
+      factor: 2,
+      uniform: true
+    });
+  });
+
+  it("reports the width when both axes moved, and calls a mismatch non-uniform", () => {
+    const axes = { x: true, y: true };
+    expect(scaleReadout(axes, { width: 100, height: 50 }, { width: 200, height: 100 })).toEqual({
+      factor: 2,
+      uniform: true
+    });
+    // 2x wide, 1.5x tall is not a "2x" — the tick must stay off rather than lie.
+    expect(scaleReadout(axes, { width: 100, height: 50 }, { width: 200, height: 75 }).uniform).toBe(false);
+  });
+
+  it("gives a canvas-level layer both axes", () => {
+    expect(selectionScalableAxes([label()], new Set(["t"]))).toEqual({ x: true, y: true });
   });
 });
 

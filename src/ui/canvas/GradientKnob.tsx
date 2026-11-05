@@ -124,19 +124,3 @@ export function GradientKnob({
     </g>
   );
 }
-
-/**
- * The cursor for a grip that only sizes ONE axis.
- *
- * A double-headed arrow has to point along the axis the drag will change, and a
- * radial's second axis is perpendicular to the one its angle names — so the
- * answer is the resize arrow nearest `angle + 90`, bucketed to 45° because the
- * cursor is a picture, not a measurement.
- */
-export function perpendicularResizeCursor(angleDeg: number): string {
-  const a = (((angleDeg + 90) % 180) + 180) % 180;
-  if (a < 22.5 || a >= 157.5) return "ns-resize";
-  if (a < 67.5) return "nesw-resize";
-  if (a < 112.5) return "ew-resize";
-  return "nwse-resize";
-}

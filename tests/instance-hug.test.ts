@@ -3,10 +3,11 @@ import { describe, it, expect } from "vitest";
 import { relayoutDocumentTree } from "../src/core/compile";
 import { resolveAxis, withAxisMode } from "../src/core/geometry/resolve-axis";
 import { instanceSizeResolver } from "../src/core/interactions/instance-size";
+import { scaleSelectionInDocument, settleScaledDocument } from "../src/core/interactions/scale-ops";
 import { createInstanceFromComponent, resetInstanceOverrides } from "../src/core/interactions/component-ops";
 import { propagateMasterSize } from "../src/core/interactions/instance-inherit";
 import { sizeModeOptions } from "../src/ui/size-modes";
-import { DesignDocument, DesignElement, FrameElement, InstanceElement, SizeMode } from "../src/core/dsl/types";
+import { DesignDocument, DesignElement, FrameElement, InstanceElement, SizeMode, getActivePage } from "../src/core/dsl/types";
 
 /**
  * An instance stores the box it was authored with and is resolved to what the
@@ -149,6 +150,72 @@ describe("an instance of a hugging master hugs, and its parent knows", () => {
     // own declaration is the one that has to resolve — the instance copies it and
     // may then override it per axis.
     expect(resolveAxis(tagMaster, null, "width")).toBe("max-content");
+  });
+});
+
+/**
+ * The box a hugging instance PAINTS is measured, so the tree has to be told.
+ * A canvas-level instance is written by `syncInstanceSizing` and a child of a
+ * stack by that stack's layout pass. A child of a plain frame had neither: the
+ * frame places nothing, and the sync only ever looked at the top level, so the
+ * stored box stayed at the authored 60 while the canvas drew the measured pill.
+ */
+describe("an instance no layout pass owns", () => {
+  const plain = (children: DesignElement[]): FrameElement =>
+    ({ id: "plain", type: "frame", x: 0, y: 0, width: 300, height: 200, children }) as FrameElement;
+
+  it("bakes the measured box onto an instance inside a plain frame", () => {
+    const doc = docOf([plain([instance("a", "A much longer label")])]);
+    const laid = relayoutDocumentTree([doc.pages![0].children[1]], instanceSizeResolver(doc))[0] as FrameElement;
+    const kid = laid.children![0] as InstanceElement;
+    const measured = instanceSizeResolver(doc)(instance("a", "A much longer label"))!;
+    expect(measured.width).toBeGreaterThan(90);
+    expect([kid.width, kid.height]).toEqual([measured.width, measured.height]);
+  });
+
+  it("still reaches one inside a plain frame nested in a stack", () => {
+    // The flag is about the level's own parent: the stack places the frame, not
+    // the frame's children, so those are still nobody's but this pass's.
+    const doc = docOf([row([plain([instance("a", "A much longer label")])])]);
+    const laid = relayoutDocumentTree([doc.pages![0].children[1]], instanceSizeResolver(doc))[0] as FrameElement;
+    const nested = (laid.children![0] as FrameElement).children![0] as InstanceElement;
+    expect(nested.width).toBeGreaterThan(90);
+  });
+
+  it("keeps the box the stack placed it at", () => {
+    // A `fill` instance's width is the parent's leftover, not the master's
+    // measurement — syncing it would undo the fill on every relayout.
+    const filling = {
+      ...(instance("a", "A much longer label") as InstanceElement),
+      width: 300,
+      sizing: { width: "fill" as const, height: "fit-content" as const }
+    };
+    const doc = docOf([row([filling])]);
+    const laid = relayoutDocumentTree([doc.pages![0].children[1]], instanceSizeResolver(doc))[0] as FrameElement;
+    expect((laid.children![0] as InstanceElement).width).toBe(300);
+  });
+});
+
+/**
+ * A scale measures against the masters IT just produced. The pass used to be
+ * handed no resolver and read the store's, which describes the document from
+ * before the scale — so resizing a master left its instances measured at the
+ * size the master used to have, and the row that places them put the next layer
+ * where the old width ended.
+ */
+describe("a scale settles against its own document", () => {
+  it("places a row's next child after the instance the master resize re-measured", () => {
+    const next: DesignElement = { id: "next", type: "rect", x: 220, y: 0, width: 40, height: 20 } as DesignElement;
+    const doc = docOf([row([instance("a", "A much longer label"), next])]);
+    const scaled = scaleSelectionInDocument(doc, new Set(["cmp/Tag"]), 2).doc;
+    const settled = settleScaledDocument(scaled);
+    const laid = getActivePage(settled).children[1] as FrameElement;
+    const [a, after] = laid.children!;
+    // The master doubled, so the instance measures doubled and the sibling starts
+    // after it. Measured against the master's old 60 it sat at 66, under a 120
+    // pill — the overlap `LESSONS §71` records, one document version too late.
+    expect(a.width).toBeGreaterThan(90);
+    expect(after.x).toBeCloseTo(a.width + 6, 5);
   });
 });
 

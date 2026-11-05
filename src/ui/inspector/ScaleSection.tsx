@@ -1,11 +1,14 @@
 import { useRef, useState } from "preact/hooks";
-import { DesignDocument, DesignElement, getActivePage, updateActivePageElements } from "../../core/dsl/types";
+import { DesignDocument, DesignElement, getActivePage } from "../../core/dsl/types";
 import { ScrubInput } from "../ScrubInput";
 import { useDismiss } from "../hooks/useDismiss";
 import { t } from "../../i18n";
 import {
   scaleSelectionToSizeInDocument,
+  scaleReadout,
+  selectionScalableAxes,
   selectionWorldBounds,
+  settleScaledDocument,
   SCALE_ANCHORS,
   SCALE_REFUSALS,
   ScaleAnchor,
@@ -13,7 +16,6 @@ import {
 } from "../../core/interactions/scale-ops";
 import { Scaling, ChevronDown, Check, X } from "lucide-react";
 import { floorScaleFactor } from "../../core/geometry/scale-geometry";
-import { relayoutDocumentTree } from "../../core/compile";
 import { Section } from "./SectionHeader";
 import { FieldDropdown } from "./FieldDropdown";
 import { Button } from "../Button";
@@ -79,15 +81,16 @@ export function ScaleSection({
   const ids = new Set(selectedElements.map((el) => el.id));
   // Read from the document, which is the only writer of a size: a local copy
   // would be one keystroke behind the W / H fields beside it.
-  const bounds = ids.size ? selectionWorldBounds(getActivePage(docRef.current).children, ids) : null;
-  const factor =
-    reference && reference.width > 0 && bounds ? bounds.width / reference.width : 1;
-  const heightFactor =
-    reference && reference.height > 0 && bounds ? bounds.height / reference.height : 1;
+  const page = getActivePage(docRef.current);
+  const bounds = ids.size ? selectionWorldBounds(page.children, ids) : null;
   // A uniform scale is the norm, so a factor that already differs per axis is
   // reported as the horizontal one and the preset tick is simply not shown —
-  // claiming "2x" for a box that is 2x wide and 1.5x tall would be a lie.
-  const uniform = Math.abs(factor - heightFactor) < 0.005;
+  // claiming "2x" for a box that is 2x wide and 1.5x tall would be a lie. An axis
+  // the layout engine owns cannot move at all, so the OTHER one is the answer:
+  // reading a `fill` width back reported 1x on a scale that visibly doubled the
+  // type and the height, and the preset tick went with it.
+  const axes = ids.size ? selectionScalableAxes(page.children, ids) : null;
+  const { factor, uniform } = scaleReadout(axes, reference, bounds);
 
   const commitResult = (result: ScaleResult, discrete = true) => {
     if (result.changed) {
@@ -96,10 +99,7 @@ export function ScaleSection({
       // stored tree holds a number the next relayout replaces, so the type is scaled
       // but not re-wrapped and the panel's own W/H are read off a box nobody paints.
       // The canvas gesture settles its frames the same way.
-      const settled = updateActivePageElements(
-        result.doc,
-        relayoutDocumentTree(getActivePage(result.doc).children)
-      );
+      const settled = settleScaledDocument(result.doc);
       if (discrete) onCommitSnapshot(settled);
       else setDoc(() => settled);
       return;

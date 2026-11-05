@@ -245,6 +245,7 @@ export class EditorStore {
     this.gestureInitialDoc = null;
     if (initial) {
       this.doc = initial;
+      this.publishChildSizeResolver();
       this.notify();
     }
     if (initial) this.notifyGesture();
@@ -374,6 +375,9 @@ export class EditorStore {
     const previous = this.past.pop()!;
     this.future.push(this.doc);
     this.doc = previous;
+    // The restored document's masters are the ones the next layout pass must
+    // measure against — the same rule a commit follows.
+    this.publishChildSizeResolver();
     this.notify();
     return true;
   }
@@ -384,6 +388,7 @@ export class EditorStore {
     const next = this.future.pop()!;
     this.past.push(this.doc);
     this.doc = next;
+    this.publishChildSizeResolver();
     this.notify();
     return true;
   }
