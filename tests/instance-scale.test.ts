@@ -11,6 +11,7 @@ import {
 } from "../src/core/dsl/types";
 import { propagateMasterSize, resolveInstanceBox, resolveInstanceTheme } from "../src/core/interactions/instance-inherit";
 import { resolveInstanceContent, resolveInstanceChildren } from "../src/core/interactions/instance-resolve";
+import { instanceSizeResolver } from "../src/core/interactions/instance-size";
 import { scaleElementsToSize, scaleSelectionInDocument, scalableAxes } from "../src/core/interactions/scale-ops";
 import { detachInstance, hasAnythingToReset, resetInstanceOverrides } from "../src/core/interactions/component-ops";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
@@ -494,5 +495,88 @@ describe("a scaled instance measures its own contents instead of multiplying", (
     const measured = resolveTextSizing({ ...scaled }, null).width;
     expect(scaled.width, "the resolved box IS the measurement").toBe(measured);
     expect(scaled.width, "and not 40 × 1.5").toBeGreaterThan(60);
+  });
+});
+
+/**
+ * An override is stored in the instance's own space — the inspector shows a
+ * resolved node and saves what was typed over it — so the numbers it holds are
+ * measurements of the box the instance had when it was written. Scaling the
+ * instance without scaling them left one headline at 1x inside a 2x component:
+ * the parts the user never touched doubled, the part they had restyled did not.
+ */
+describe("a scale takes the instance's own overrides with it", () => {
+  const master = (): ComponentElement => darkMaster();
+
+  const overridden = (): InstanceElement =>
+    instanceOf("cmp/page", {
+      overrides: [
+        { targetId: "headline", property: "style", value: { fontSize: 24, color: "#FF0000" } },
+        { targetId: "card", property: "borderRadius", value: 8 },
+        { targetId: "card", property: "strokes", value: [{ color: "#000000", width: 2 }] }
+      ]
+    });
+
+  it("scales the px values and leaves the ones that are not measurements", () => {
+    const out = scaleSelectionInDocument(documentOf([master(), overridden()]), new Set(["inst/page"]), 2);
+    const scaled = read(out.doc, "inst/page") as InstanceElement;
+    const [style, radius, strokes] = scaled.overrides!;
+    expect((style.value as { fontSize: number }).fontSize, "restyled type follows the box").toBe(48);
+    expect((style.value as { color: string }).color, "a colour is not a length").toBe("#FF0000");
+    expect(radius.value, "radius").toBe(16);
+    expect((strokes.value as { width: number }[])[0].width, "stroke").toBe(4);
+  });
+
+  it("lands the resolved child at its overridden, scaled size", () => {
+    const out = scaleSelectionInDocument(documentOf([master(), overridden()]), new Set(["inst/page"]), 2);
+    const scaled = read(out.doc, "inst/page") as InstanceElement;
+    const children = resolveInstanceChildren(scaled, read(out.doc, "cmp/page") as ComponentElement);
+    const headline = children.find((el) => el.id.endsWith("headline")) as TextElement;
+    expect(headline.style.fontSize, "48 in the instance's space, not 24 in a 2x box").toBe(48);
+  });
+});
+
+/**
+ * The layout pass answers with the size a hugging instance paints at; without
+ * writing it back, the selection outline and the Scale panel read the box the
+ * instance was authored with while the canvas drew the measured one.
+ */
+describe("a top-level instance stores the size it paints at", () => {
+  const tag = (): ComponentElement =>
+    withLayout(
+      {
+        id: "cmp/tag",
+        type: "component",
+        name: "Tag",
+        x: 0,
+        y: 0,
+        width: 120,
+        height: 40,
+        sizing: { width: "fit-content", height: "fit-content" },
+        children: [{ id: "label", type: "rect", x: 12, y: 12, width: 60, height: 20 } as DesignElement]
+      } as ComponentElement,
+      { mode: "flex", direction: "row", gap: 8, padding: 12 }
+    );
+
+  it("writes the measured box back, so the outline and the artwork agree", () => {
+    const instance = instanceOf("cmp/tag", { width: 999, height: 999, sizing: { width: "fit-content", height: "fit-content" } });
+    const doc = documentOf([tag(), instance]);
+    const resolved = resolveInstanceContent(instance, tag());
+    const laid = relayoutDocumentTree([instance], instanceSizeResolver(doc))[0];
+
+    expect([laid.width, laid.height], "the authored 999 is not a size anybody painted").toEqual([
+      resolved.width,
+      resolved.height
+    ]);
+    expect(laid.width, "and it is the content's measurement").toBe(84);
+  });
+
+  it("leaves a hand-sized instance alone", () => {
+    // `sizeOverride` is the user's "this box is mine", and a resolution already
+    // honours it — so the pass writes the same number back and nothing moves.
+    const instance = instanceOf("cmp/tag", { width: 240, height: 60, sizeOverride: true });
+    const doc = documentOf([tag(), instance]);
+    const laid = relayoutDocumentTree([instance], instanceSizeResolver(doc))[0];
+    expect([laid.width, laid.height]).toEqual([240, 60]);
   });
 });

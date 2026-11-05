@@ -5,6 +5,73 @@ import { convertForeignObjectsToSvg } from "../src/core/export-text";
 import { normalizeTextDecoration, textDecorationCss, toggledDecoration } from "../src/core/dsl/text-decoration";
 import type { TextElement } from "../src/core/dsl/types";
 
+/**
+ * The export builds its nodes through `document.createElementNS`, so the tests
+ * that grade a converted `<text>` need a document — and one that records what it
+ * was told to build. This is that document.
+ */
+class MockElement {
+  tagName: string;
+  attrs: Record<string, string> = {};
+  children: MockElement[] = [];
+  parent: MockElement | null = null;
+  textContent = "";
+  constructor(tagName: string) {
+    this.tagName = tagName;
+  }
+  setAttribute(k: string, v: string) {
+    this.attrs[k] = v;
+  }
+  getAttribute(k: string) {
+    return this.attrs[k];
+  }
+  appendChild(child: MockElement) {
+    child.parent = this;
+    this.children.push(child);
+    return child;
+  }
+  querySelector(tag: string): MockElement | null {
+    if (this.tagName === tag) return this;
+    for (const child of this.children) {
+      const res = child.querySelector(tag);
+      if (res) return res;
+    }
+    return null;
+  }
+  querySelectorAll(tag: string): MockElement[] {
+    const out: MockElement[] = [];
+    if (this.tagName === tag) out.push(this);
+    for (const child of this.children) {
+      out.push(...child.querySelectorAll(tag));
+    }
+    return out;
+  }
+  closest(sel: string): MockElement | null {
+    let cur: MockElement | null = this;
+    while (cur) {
+      if (cur.attrs["data-element-id"]) return cur;
+      cur = cur.parent;
+    }
+    return null;
+  }
+  remove() {
+    // mock remove
+  }
+  replaceWith(newNode: MockElement) {
+    // mock replace
+  }
+}
+
+function installMockDom() {
+  const orig = (globalThis as any).document;
+  (globalThis as any).document = {
+    createElementNS: (_ns: string, tag: string) => new MockElement(tag)
+  };
+  return () => {
+    (globalThis as any).document = orig;
+  };
+}
+
 describe("text decoration and rich text spans", () => {
   it("normalizes the decoration lines and structured spans", () => {
     const raw = {
@@ -219,62 +286,7 @@ describe("text decoration and rich text spans", () => {
   });
 
   it("exports the decoration lines and rich text spans to SVG tspans", () => {
-    class MockElement {
-      tagName: string;
-      attrs: Record<string, string> = {};
-      children: MockElement[] = [];
-      parent: MockElement | null = null;
-      textContent = "";
-      constructor(tagName: string) {
-        this.tagName = tagName;
-      }
-      setAttribute(k: string, v: string) {
-        this.attrs[k] = v;
-      }
-      getAttribute(k: string) {
-        return this.attrs[k];
-      }
-      appendChild(child: MockElement) {
-        child.parent = this;
-        this.children.push(child);
-        return child;
-      }
-      querySelector(tag: string): MockElement | null {
-        if (this.tagName === tag) return this;
-        for (const child of this.children) {
-          const res = child.querySelector(tag);
-          if (res) return res;
-        }
-        return null;
-      }
-      querySelectorAll(tag: string): MockElement[] {
-        const out: MockElement[] = [];
-        if (this.tagName === tag) out.push(this);
-        for (const child of this.children) {
-          out.push(...child.querySelectorAll(tag));
-        }
-        return out;
-      }
-      closest(sel: string): MockElement | null {
-        let cur: MockElement | null = this;
-        while (cur) {
-          if (cur.attrs["data-element-id"]) return cur;
-          cur = cur.parent;
-        }
-        return null;
-      }
-      remove() {
-        // mock remove
-      }
-      replaceWith(newNode: MockElement) {
-        // mock replace
-      }
-    }
-
-    const origDoc = (globalThis as any).document;
-    (globalThis as any).document = {
-      createElementNS: (_ns: string, tag: string) => new MockElement(tag)
-    };
+    const restoreDom = installMockDom();
 
     try {
       const doc = {
@@ -352,7 +364,61 @@ describe("text decoration and rich text spans", () => {
       expect(chunk1.getAttribute("letter-spacing")).toBeUndefined();
       expect(chunk2.getAttribute("letter-spacing")).toBe("0px");
     } finally {
-      (globalThis as any).document = origDoc;
+      restoreDom();
+    }
+  });
+
+  it("puts a run on the line its own characters are on", () => {
+    // A hard break costs the lines a character the source keeps, so a run sliced
+    // by a running total of line LENGTHS lands one character to the left of
+    // itself — "def" exported as italic "ef" and upright "d".
+    const restoreDom = installMockDom();
+    try {
+      const doc: any = {
+        version: "0.1",
+        canvas: { width: 800, height: 600, unit: "px" },
+        pages: [
+          {
+            id: "page_1",
+            name: "Page 1",
+            children: [
+              {
+                id: "t_runs",
+                type: "text",
+                x: 0,
+                y: 0,
+                width: 400,
+                height: 80,
+                content: "a\nbcdef",
+                style: { fontFamily: "Inter", fontSize: 16, color: "#FFFFFF" },
+                spans: [{ text: "a\nbc" }, { text: "def", style: { fontStyle: "italic" } }]
+              }
+            ]
+          }
+        ],
+        activePageId: "page_1"
+      };
+
+      const svg = (globalThis as any).document.createElementNS("", "svg");
+      const g = (globalThis as any).document.createElementNS("", "g");
+      g.setAttribute("data-element-id", "t_runs");
+      const fo = (globalThis as any).document.createElementNS("", "foreignObject");
+      let replacedWith: any = null;
+      fo.replaceWith = (node: any) => {
+        replacedWith = node;
+      };
+      g.appendChild(fo);
+      svg.appendChild(g);
+
+      convertForeignObjectsToSvg(svg as any, doc as any);
+
+      const secondLine = replacedWith.children[1];
+      const chunks = Array.from(secondLine.children as any[]);
+      expect(chunks.map((c) => c.textContent)).toEqual(["bc", "def"]);
+      expect(chunks[0].getAttribute("font-style")).toBeUndefined();
+      expect(chunks[1].getAttribute("font-style")).toBe("italic");
+    } finally {
+      restoreDom();
     }
   });
 

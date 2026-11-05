@@ -57,6 +57,7 @@ export function CanvasOnlyView({
         canvasTextInputRef={canvasTextInputRef}
         onCanvasMouseDown={() => {}}
         onCanvasMouseMove={() => {}}
+        onCanvasMouseLeave={() => {}}
         onWheel={() => {}}
         onCanvasClick={() => {}}
         onElementMouseDown={() => {}}

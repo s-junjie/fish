@@ -82,11 +82,52 @@ describe("where the lines sit", () => {
     expect(layoutTextRun(run({ ...two, verticalAlign: "bottom" })).startY).toBe(16);
   });
 
+  it("lets a block taller than its box spill out of both ends, as the canvas does", () => {
+    // Four 12px lines in a 40px box: the canvas is a flex column, so centring an
+    // overflowing block starts it ABOVE the top instead of pinning it there.
+    const four = { content: "a\nb\nc\nd", height: 40 };
+    expect(layoutTextRun(run({ ...four, verticalAlign: "middle" })).startY).toBe(-4);
+    expect(layoutTextRun(run({ ...four, verticalAlign: "bottom" })).startY).toBe(-8);
+  });
+
+  it("moves tracked ink by the trailing-space the anchor reserves", () => {
+    // `letter-spacing` is charged after the last glyph, so an anchor measured
+    // against the reserved width leaves centred ink half a tracking left of
+    // centre and right-aligned ink a whole one short of the edge.
+    expect(layoutTextRun(run({ align: "left", letterSpacing: 4 })).startX).toBe(0);
+    expect(layoutTextRun(run({ align: "center", letterSpacing: 4 })).startX).toBe(52);
+    expect(layoutTextRun(run({ align: "right", letterSpacing: 4 })).startX).toBe(104);
+  });
+
   it("steps every line but the first by one line height", () => {
     const layout = layoutTextRun(run({ content: "a\nb\nc" }));
     expect(layout.placement(0).dy).toBe("0");
     expect(layout.placement(1).dy).toBe("12px");
     expect(layout.placement(2).dy).toBe("12px");
+  });
+
+  it("reports each line's range in the source, the newlines included", () => {
+    // A run is sliced onto its line by SOURCE offsets. A running total of line
+    // lengths is not that total: the separator the split consumed belongs to no
+    // line, and two of them shift every later run two characters left — which
+    // exported an italic "thing" as upright "th" + italic "ing".
+    const layout = layoutTextRun(run({ content: "aa\nbbb\ncccc" }));
+    expect(layout.lines).toEqual(["aa", "bbb", "cccc"]);
+    expect(layout.lineRanges).toEqual([
+      { start: 0, end: 2 },
+      { start: 3, end: 6 },
+      { start: 7, end: 11 }
+    ]);
+  });
+
+  it("keeps the ranges contiguous across a soft break", () => {
+    // 6px a character: "aaaa bbbb " fits in 60 and "cccc" opens the second line.
+    const layout = layoutTextRun(run({ content: "aaaa bbbb cccc", width: 60 }));
+    expect(layout.lines).toEqual(["aaaa bbbb ", "cccc"]);
+    expect(layout.lineRanges).toEqual([
+      { start: 0, end: 10 },
+      { start: 10, end: 14 }
+    ]);
   });
 
   it("puts the baseline below the line box's top, by the line box's own rule", () => {

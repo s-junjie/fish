@@ -120,6 +120,16 @@ export function isConvertibleToPath(el: DesignElement): boolean {
   );
 }
 
+/**
+ * Whether the vector editor can open on this layer at all — a path it already
+ * holds, or a shape it can be converted into. Text, images and containers answer
+ * no, and a caller that offers Enter has to ask first: a rule that claims the key
+ * and then does nothing is a key that silently swallowed the press.
+ */
+export function isVectorEditable(el: DesignElement): boolean {
+  return el.type === "path" || isConvertibleToPath(el);
+}
+
 export function convertShapeToPathElement(el: DesignElement): PathElement | null {
   if (el.type === "path") return el as PathElement;
   if (!isConvertibleToPath(el)) return null;

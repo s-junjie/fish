@@ -7,6 +7,7 @@ import {
   scaleSelectionToSizeInDocument,
   scaleElements,
   normalizeScaleFactor,
+  scalableAxes,
   selectionWorldBounds,
   SCALE_ANCHORS,
   SCALE_REFUSALS,
@@ -14,10 +15,11 @@ import {
   type ScaleRefusal
 } from "../src/core/interactions/scale-ops";
 import { t } from "../src/i18n";
-import { DesignDocument, DesignElement, LineElement, PathElement, RectElement, TextElement, FrameElement } from "../src/core/dsl/types";
+import { ComponentElement, DesignDocument, DesignElement, LineElement, PathElement, RectElement, TextElement, FrameElement } from "../src/core/dsl/types";
 import { childrenOf } from "../src/core/geometry/tree-ops";
 import { parsePathData } from "../src/core/geometry/path-data";
 import { relayoutDocumentTree } from "../src/core/compile";
+import { resolveTextSizing } from "../src/core/layout/text-sizing";
 
 const rect = (props: Partial<RectElement>): RectElement => ({
   id: "r",
@@ -778,20 +780,22 @@ describe("selectionWorldBounds", () => {  it("measures the union across parent f
 });
 
 /**
- * The other half of the resize path's rule: an axis the layout engine owns is not
- * this layer's to resize.
+ * An axis the PARENT owns is not this layer's to scale, and an axis the layer's own
+ * CONTENT measures is.
  *
- * `fit-content` takes its size from its content and `fill` takes it from its parent,
- * so a box written there is one the engine is about to replace. The scale used to
- * write it anyway, and the replacement was invisible: the drag moved and the type
- * grew, then the relayout put the box back to the measured content width or to the
- * parent's width, so the one dimension the user was pointing at did nothing at all.
+ * The two used to be one rule, and that is what made the tool refuse the case it
+ * exists for: an Auto Width text has a `fit-content` width, so it had no handle and
+ * the panel answered `engine-sized`. A `fit-content` axis is not a size the engine
+ * invents — it is a measurement of content the scale is scaling, so the type doubles
+ * and the measurement doubles with it. `fill` is the one that really belongs to
+ * someone else: the parent hands it out, and a box written there is overwritten on
+ * the next pass.
  *
- * The guarantee pinned here: the scale leaves an engine-owned axis alone and still
- * takes the axis it does own, because a scale whose type did not grow along with the
- * line it sits on would leave the design internally inconsistent.
+ * The guarantee pinned here: a `fill` axis is left alone, the axis the drag actually
+ * moved still scales — type included — and a layer with no axis of its own refuses
+ * out loud instead of doing nothing.
  */
-describe("an engine-owned axis is not the scale's to write", () => {
+describe("a layout-owned axis is not the scale's to write", () => {
   const label = (props: Partial<TextElement> = {}): TextElement =>
     ({
       id: "t",
@@ -808,26 +812,50 @@ describe("an engine-owned axis is not the scale's to write", () => {
   /** A frame with a real layout pass, so `fill` has a parent to fill and
    *  `fit-content` has content to measure — the conditions that make the engine
    *  the owner. A parent without a layout downgrades both to `fixed`, which is
-   *  exactly why these cases need one. */
+   *  exactly why these cases need one. `align: flex-start` so the cross axis is the
+   *  child's: the default stretch is a third owner, covered below. */
   const holder = (child: DesignElement, props: Partial<FrameElement> = {}): FrameElement =>
-    frame({ ...flattenLayout({ mode: "flex", gap: 0, padding: 0 }), children: [child], ...props });
+    frame({
+      ...flattenLayout({ mode: "flex", direction: "row", align: "start", gap: 0, padding: 0 }),
+      children: [child],
+      ...props
+    });
 
-  it("leaves a fit-content width to the content, and still scales the line", () => {
+  it("scales a fit-content width with the type it is measured from", () => {
     const t = label({ sizing: { width: "fit-content" } });
     const out = scaleSelectionToSizeInDocument(doc([holder(t)]), new Set(["t"]), { width: 400, height: 38 }, { x: 0, y: 0 });
     const after = read(out.doc, "t") as TextElement;
-    expect(after.width, "the width is the content's to measure").toBe(200);
-    expect(after.height, "the height is the scale's to write").toBe(38);
-    expect(after.style.fontSize, "type grows with the line it sits on").toBe(32);
+    expect(after.style.fontSize, "the type is what the axis measures").toBe(32);
+    expect(after.width, "and the box takes the request until the pass re-measures it").toBe(400);
+    // The relayout writes back a MEASUREMENT, not the number the scale asked for —
+    // which is the whole difference between hugging and fixed, and why the request is
+    // only provisional on this axis.
+    const laid = relayoutDocumentTree([after])[0] as TextElement;
+    expect(laid.width, "the pass lands on the type's own width").toBe(resolveTextSizing(after, null).width);
   });
 
-  it("leaves a fill width to the parent, and still scales the type", () => {
+  it("leaves a fill width to the parent, and still scales the axis and its type", () => {
     const t = label({ sizing: { width: "fill" } });
     const out = scaleSelectionToSizeInDocument(doc([holder(t)]), new Set(["t"]), { width: 400, height: 38 }, { x: 0, y: 0 });
     const after = read(out.doc, "t") as TextElement;
     expect(after.width, "a fill child takes the parent's width, not the drag's").toBe(200);
     expect(after.height).toBe(38);
-    expect(after.style.fontSize).toBe(32);
+    expect(after.style.fontSize, "height moved, so the type follows that axis").toBe(32);
+  });
+
+  it("refuses a stretch height, which the parent writes on every pass", () => {
+    // The default `align-items: stretch` is the parent deciding the height. Writing
+    // 38 there would survive exactly until the next relayout, which is the dead
+    // control the refusal exists to prevent.
+    const t = label({ sizing: { width: "fill" } });
+    const out = scaleSelectionToSizeInDocument(
+      doc([holder(t, { ...flattenLayout({ mode: "flex", direction: "row", align: "stretch", gap: 0, padding: 0 }) })]),
+      new Set(["t"]),
+      { width: 400, height: 38 },
+      { x: 0, y: 0 }
+    );
+    expect(out.changed).toBe(false);
+    expect(out.refusal).toBe("engine-sized");
   });
 
   it("scales the box of a sibling that does own its axes", () => {
@@ -871,5 +899,91 @@ describe("a refused scale says why", () => {
       );
       expect(message.length).toBeGreaterThan(0);
     }
+  });
+});
+
+/**
+ * The three cases that made the tool unusable on the layers it exists for.
+ *
+ * A text is created hugging (`fit-content` on one or both axes) and a button is a
+ * component that hugs both, so a rule that refused every non-`fixed` axis refused
+ * exactly the layers a designer reaches for. Nothing about a hug is out of the
+ * scale's reach: the type, the padding and the children's boxes are all scaled here,
+ * so the box the layout pass measures afterwards is the scaled one.
+ */
+describe("a hugging layer scales with the content it measures", () => {
+  const text = (props: Partial<TextElement> = {}): TextElement =>
+    ({
+      id: "t",
+      type: "text",
+      content: "Auto width",
+      x: 0,
+      y: 0,
+      width: 120,
+      height: 19,
+      style: { fontFamily: "Inter", fontSize: 16, lineHeight: "19px", color: "#000" },
+      ...props
+    }) as TextElement;
+
+  it("scales an Auto Width text, which has no fixed axis at all", () => {
+    const out = scaleSelectionToSizeInDocument(
+      doc([text({ sizing: { width: "fit-content", height: "fit-content" } })]),
+      new Set(["t"]),
+      { width: 240, height: 38 }
+    );
+    expect(out.refusal, "an Auto Width text is a box the scale owns").toBeUndefined();
+    const after = read(out.doc, "t") as TextElement;
+    expect(after.style.fontSize).toBe(32);
+    expect([after.width, after.height]).toEqual([240, 38]);
+  });
+
+  it("scales the type of an Auto Height text instead of leaving it at 1x", () => {
+    // The bug this pins: the height is `fit-content`, so the scale passed `1` for it,
+    // and every property with no axis was read off the SHORTER side — which is the
+    // one that never moved. A 200x19 label doubled in width came back at 32px type
+    // under a 19px line, or (before the fix) at 16px under a 19px line, with only the
+    // tracking stretched.
+    const out = scaleSelectionToSizeInDocument(
+      doc([text({ sizing: { height: "fit-content" } })]),
+      new Set(["t"]),
+      { width: 240, height: 38 }
+    );
+    const after = read(out.doc, "t") as TextElement;
+    expect(after.style.fontSize, "type follows the axis that moved").toBe(32);
+    expect(after.style.lineHeight, "and so does the leading").toBe("38px");
+    expect([after.width, after.height]).toEqual([240, 38]);
+  });
+
+  it("scales a component that hugs both axes", () => {
+    const button: ComponentElement = {
+      id: "cmp/button",
+      type: "component",
+      x: 0,
+      y: 0,
+      width: 120,
+      height: 40,
+      sizing: { width: "fit-content", height: "fit-content" },
+      ...flattenLayout({ mode: "flex", direction: "row", gap: 8, padding: 12, align: "center" }),
+      children: [rect({ id: "dot", x: 12, y: 12, width: 16, height: 16, borderRadius: 8 })]
+    };
+    expect(scalableAxes(button, null), "a hug is not the layout refusing the scale").toEqual({ x: true, y: true });
+
+    const out = scaleSelectionInDocument(doc([button]), new Set(["cmp/button"]), 2);
+    expect(out.refusal).toBeUndefined();
+    const after = read(out.doc, "cmp/button") as ComponentElement;
+    expect([after.width, after.height]).toEqual([240, 80]);
+    expect(layoutOf(after), "the recipe scaled with the box").toMatchObject({ gap: 16, padding: 24 });
+    const dot = read(out.doc, "dot") as RectElement;
+    expect([dot.x, dot.y, dot.width, dot.borderRadius], "and so did the children").toEqual([24, 24, 32, 16]);
+  });
+
+  it("scales the bounds a derived size is clamped by, and a child's margin", () => {
+    // `maxWidth` is a length of the same box, not a ratio: a 300px limit on a 320px
+    // card that is doubled must become 600, or every later `fill` inside it stops at
+    // the size the design used to be allowed.
+    const card = rect({ id: "c", width: 320, height: 100, sizing: { maxWidth: 300, minWidth: 100 }, margin: [4, 8, 4, 8] });
+    const after = read(scaleSelectionInDocument(doc([card]), new Set(["c"]), 2).doc, "c") as RectElement;
+    expect(after.sizing, "bounds").toMatchObject({ minWidth: 200, maxWidth: 600 });
+    expect(after.margin, "margin follows the axis each edge belongs to").toEqual([8, 16, 8, 16]);
   });
 });

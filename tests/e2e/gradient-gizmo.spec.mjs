@@ -4,9 +4,10 @@ import path from "node:path";
 
 // On-canvas gradient lever, measured in the real editor:
 //
-//   1. activation — opening a gradient fill row's color panel shows the lever AND
-//      steps the transform box aside (no resize/rotate handles); a solid row's
-//      panel keeps the normal box; closing the panel hands the box back
+//   1. activation — opening a gradient fill row's color panel shows the lever and
+//      takes the transform box away (the mode owns the chrome, and a drag on the
+//      layer must not move it); closing the picker keeps the lever because it
+//      belongs to the selection; selecting another layer hands the box back
 //   2. linear   — the two handles are INDEPENDENT endpoints (Figma-style): the
 //      first drag materializes `start`/`end` box fractions, `angle` stays synced,
 //      stops ride through, one gesture is one undo step
@@ -121,6 +122,31 @@ const ELEMENTS = [
         ]
       }
     ]
+  },
+  {
+    id: "gg_stroke",
+    type: "rect",
+    name: "Stroke only",
+    x: 660,
+    y: 320,
+    width: W,
+    height: H,
+    fills: [],
+    strokes: [
+      {
+        width: 10,
+        paint: {
+          type: "linear-gradient",
+          from: "#000000",
+          to: "#FFFFFF",
+          angle: 90,
+          stops: [
+            { color: "#000000", offset: 0 },
+            { color: "#FFFFFF", offset: 1 }
+          ]
+        }
+      }
+    ]
   }
 ];
 
@@ -163,6 +189,20 @@ const topFill = async (id) => {
   const el = walk(doc.pages.find((p) => p.id === doc.activePageId).children);
   return el ? el.fills[el.fills.length - 1] : null;
 };
+const elementById = async (id) => {
+  const doc = await liveDoc();
+  const walk = (list) => {
+    for (const el of list) {
+      if (el.id === id) return el;
+      if (el.children) {
+        const hit = walk(el.children);
+        if (hit) return hit;
+      }
+    }
+    return null;
+  };
+  return walk(doc.pages.find((p) => p.id === doc.activePageId).children);
+};
 const boxOf = (sel) =>
   page.evaluate((q) => {
     const n = document.querySelector(q);
@@ -185,16 +225,20 @@ const closePanel = async () => {
   await page.keyboard.press("Escape");
   await page.waitForTimeout(300);
 };
-const dragBy = async (sel, dx, dy) => {
+const dragBy = async (sel, dx, dy, mods = {}) => {
   const hb = await boxOf(sel);
   if (!hb) return false;
   const x = Math.round(hb.left + hb.width / 2);
   const y = Math.round(hb.top + hb.height / 2);
+  if (mods.shift) await page.keyboard.down("Shift");
+  if (mods.alt) await page.keyboard.down("Alt");
   await page.mouse.move(x, y);
   await page.mouse.down();
   await page.mouse.move(x + dx / 2, y + dy / 2, { steps: 5 });
   await page.mouse.move(x + dx, y + dy, { steps: 5 });
   await page.mouse.up();
+  if (mods.alt) await page.keyboard.up("Alt");
+  if (mods.shift) await page.keyboard.up("Shift");
   await page.waitForTimeout(350);
   return true;
 };
@@ -227,14 +271,42 @@ check(
   (await handleCount('[data-gradient-gizmo="linear"] [data-gradient-handle]')) === 2
 );
 check(
-  "and the transform box stands aside: no resize or rotate handles",
-  (await handleCount("[data-resize-handle]")) === 0 && (await handleCount("[data-rotate-handle]")) === 0
+  "and gradient editing owns the chrome: no resize or rotate handles",
+  (await handleCount("[data-resize-handle]")) === 0 && (await handleCount("[data-rotate-handle]")) === 0,
+  `resize=${await handleCount("[data-resize-handle]")} rotate=${await handleCount("[data-rotate-handle]")}`
 );
+{
+  // The layer must not move under a press meant for the gradient. Aim at the
+  // element's upper half, clear of the axis, and drag: the box stays put.
+  const el = await elementById("gg_lin");
+  const { zoom, panX, panY } = await viewOf("gg_lin", 60, 80);
+  const px = Math.round((60 + 40) * zoom + panX);
+  const py = Math.round((80 + 30) * zoom + panY);
+  await page.mouse.move(px, py);
+  await page.mouse.down();
+  await page.mouse.move(px + 40, py + 30, { steps: 5 });
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+  const after = await elementById("gg_lin");
+  check(
+    "a drag on the layer in gradient editing moves nothing",
+    after.x === el.x && after.y === el.y,
+    `${el.x},${el.y} -> ${after.x},${after.y}`
+  );
+}
 
+await openFillPanel("gg_lin");
 await closePanel();
 check(
-  "closing the panel hands the box back",
-  (await handleCount("[data-gradient-gizmo]")) === 0 && (await handleCount("[data-resize-handle]")) > 0
+  "closing the picker keeps the lever: it belongs to the selection",
+  (await handleCount("[data-gradient-gizmo]")) === 1 && (await handleCount("[data-resize-handle]")) === 0
+);
+check(
+  "and selecting another layer ends the mode and hands the box back",
+  await (async () => {
+    await select("gg_sol");
+    return (await handleCount("[data-gradient-gizmo]")) === 0 && (await handleCount("[data-resize-handle]")) > 0;
+  })()
 );
 
 await openFillPanel("gg_sol");
@@ -506,6 +578,290 @@ check("diamond rimY drag opens", await dragBy('[data-gradient-handle="rimY"]', 0
   const svg = await exportSvg();
   check("the exported SVG carries the diamond's own geometry", svg.includes("pattern"));
 }
+
+// ---- 10. the lever answers back: cursor, hover, readout ------------------------
+await openFillPanel("gg_lin");
+const cursorOf = (q) =>
+  page.evaluate((sel) => {
+    const n = document.querySelector(sel);
+    return n ? getComputedStyle(n).cursor : "";
+  }, q);
+check(
+  "a translating grip wears grab, not crosshair",
+  (await cursorOf('[data-gradient-handle="start"]')) === "grab",
+  await cursorOf('[data-gradient-handle="start"]')
+);
+check(
+  "the axis wears the add cursor, like the panel's ramp",
+  (await cursorOf('[data-gradient-gizmo="linear"] line:nth-of-type(2)')) === "copy",
+  await cursorOf('[data-gradient-gizmo="linear"] line:nth-of-type(2)')
+);
+
+const markRadius = async (which) =>
+  page.evaluate((sel) => {
+    const mark = document.querySelector(`${sel} circle:last-of-type`);
+    return mark ? Number(mark.getAttribute("r")) : -1;
+  }, `[data-gradient-handle="${which}"]`);
+const restRadius = await markRadius("start");
+const startBox = await boxOf('[data-gradient-handle="start"]');
+await page.mouse.move(
+  Math.round(startBox.left + startBox.width / 2),
+  Math.round(startBox.top + startBox.height / 2)
+);
+await page.waitForTimeout(150);
+const hoverRadius = await markRadius("start");
+check("hover grows the mark", hoverRadius > restRadius, `${restRadius} -> ${hoverRadius}`);
+check(
+  "and announces itself for the spec",
+  await page.evaluate(() => !!document.querySelector('[data-gradient-handle="start"][data-gradient-hover="true"]'))
+);
+await page.mouse.move(8, 8);
+await page.waitForTimeout(150);
+check("leaving restores it", (await markRadius("start")) === restRadius);
+
+const endBox = await boxOf('[data-gradient-handle="end"]');
+const ex = Math.round(endBox.left + endBox.width / 2);
+const ey = Math.round(endBox.top + endBox.height / 2);
+await page.mouse.move(ex, ey);
+await page.mouse.down();
+await page.mouse.move(ex + 40, ey + 30, { steps: 4 });
+await page.waitForTimeout(150);
+const readout = await page.evaluate(
+  () => document.querySelector("[data-gradient-readout]")?.getAttribute("data-gradient-readout") ?? ""
+);
+check("a drag reads its value out beside the pointer", /∠\s*\d+°/.test(readout), readout);
+await page.mouse.up();
+await page.waitForTimeout(250);
+check("the readout goes away with the gesture", (await handleCount("[data-gradient-readout]")) === 0);
+await page.evaluate(() => window.__FISH_BRIDGE__.undo());
+await page.evaluate(() => window.__FISH_BRIDGE__.undo());
+
+// ---- 11. Shift snaps the angle, Alt mirrors the axis ---------------------------
+check("shift drag opens", await dragBy('[data-gradient-handle="end"]', 60, 40, { shift: true }));
+{
+  const paint = await topFill("gg_lin");
+  check("Shift lands the axis on a 15° step", !!paint && paint.angle % 15 === 0, `angle=${paint && paint.angle}`);
+}
+await page.evaluate(() => window.__FISH_BRIDGE__.undo());
+
+check("alt drag opens", await dragBy('[data-gradient-handle="end"]', 50, 30, { alt: true }));
+{
+  const paint = await topFill("gg_lin");
+  const mid =
+    paint && paint.start && paint.end
+      ? { x: (paint.start.x + paint.end.x) / 2, y: (paint.start.y + paint.end.y) / 2 }
+      : null;
+  check(
+    "Alt mirrors the far end about the axis' own midpoint",
+    !!mid && Math.abs(mid.x - 0.5) < 0.002 && Math.abs(mid.y - 0.5) < 0.002,
+    JSON.stringify(mid)
+  );
+}
+await page.evaluate(() => window.__FISH_BRIDGE__.undo());
+
+// ---- 12. the line body translates both ends ------------------------------------
+const linBox = await boxOf('[data-element-id="gg_lin"]');
+const lcx = Math.round(linBox.left + linBox.width / 2);
+const lcy = Math.round(linBox.top + linBox.height / 2);
+const AX = 32;
+const AY = 24;
+await page.mouse.move(lcx, lcy);
+await page.mouse.down();
+await page.mouse.move(lcx + AX, lcy + AY, { steps: 6 });
+await page.mouse.up();
+await page.waitForTimeout(350);
+{
+  const paint = await topFill("gg_lin");
+  const dx = AX / linBox.width;
+  const dy = AY / linBox.height;
+  check(
+    "dragging the line body materializes both ends",
+    !!paint && !!paint.start && !!paint.end,
+    paint && JSON.stringify([paint.start, paint.end])
+  );
+  check(
+    "both ends carry the same delta",
+    !!paint &&
+      Math.abs(paint.start.x - dx) < 0.01 &&
+      Math.abs(paint.start.y - (0.5 + dy)) < 0.01 &&
+      Math.abs(paint.end.x - (1 + dx)) < 0.01 &&
+      Math.abs(paint.end.y - (0.5 + dy)) < 0.01,
+    paint && JSON.stringify([paint.start, paint.end]) + ` expected dx=${dx.toFixed(3)} dy=${dy.toFixed(3)}`
+  );
+}
+await page.evaluate(() => window.__FISH_BRIDGE__.undo());
+await closePanel();
+
+// ---- 13. a gradient STROKE wears the same lever --------------------------------
+await select("gg_stroke");
+await page.click('[data-paint-swatch="0"]');
+await page.waitForTimeout(300);
+check(
+  "a gradient stroke shows the lever too",
+  (await handleCount('[data-gradient-gizmo="linear"] [data-gradient-handle]')) === 2
+);
+const strokeEnd0 = await worldOf('[data-gradient-handle="end"]', "gg_stroke", 660, 320);
+check("stroke end drag opens", await dragBy('[data-gradient-handle="end"]', 40, 20));
+{
+  const el = await elementById("gg_stroke");
+  const paint = el?.strokes?.[0]?.paint;
+  const exEnd = {
+    x: round4((strokeEnd0.x + 40 / strokeEnd0.zoom - 660) / W),
+    y: round4((strokeEnd0.y + 20 / strokeEnd0.zoom - 320) / H)
+  };
+  check(
+    "and writes the stroke's own paint, not a fill",
+    !!paint &&
+      paint.type === "linear-gradient" &&
+      Math.abs(paint.end.x - exEnd.x) < 0.001 &&
+      Math.abs(paint.end.y - exEnd.y) < 0.001,
+    JSON.stringify(paint)
+  );
+  check(
+    "the row's colour mirror follows the gradient",
+    typeof el?.strokes?.[0]?.color === "string" && el.strokes[0].color.startsWith("#"),
+    el?.strokes?.[0]?.color
+  );
+}
+await page.evaluate(() => window.__FISH_BRIDGE__.undo());
+await closePanel();
+
+// ---- 14. the ramp answers the keyboard ----------------------------------------
+await openFillPanel("gg_lin");
+const stopOffset = (i) =>
+  page.evaluate((q) => {
+    const n = document.querySelector(q);
+    return n ? Number(n.getAttribute("data-stop-offset")) : -1;
+  }, `[data-stop-index="${i}"]`);
+await page.click('[data-stop-index="1"]');
+const focusedStop = await page.evaluate(
+  () => document.activeElement?.getAttribute?.("data-stop-index") ?? ""
+);
+check("a press on a stop puts the keyboard there", focusedStop === "1", focusedStop);
+await page.keyboard.press("ArrowLeft");
+check("arrow keys nudge the focused stop by 1%", Math.abs((await stopOffset(1)) - 0.99) < 0.001, String(await stopOffset(1)));
+await page.keyboard.press("ArrowRight");
+await page.keyboard.press("ArrowRight");
+check("and back, one step at a time", Math.abs((await stopOffset(1)) - 1) < 0.001, String(await stopOffset(1)));
+await page.keyboard.press("Delete");
+check("Delete refuses to leave a ramp with one stop", (await handleCount("[data-stop-index]")) === 2);
+check("and the layer itself is untouched", (await elementById("gg_lin")) !== null);
+
+const barBox = await boxOf("[data-gradient-bar]");
+await page.mouse.click(Math.round(barBox.left + barBox.width / 2), Math.round(barBox.top + barBox.height / 2));
+await page.focus('[data-stop-index="1"]');
+await page.keyboard.press("Delete");
+check("Delete removes the focused stop", (await handleCount("[data-stop-index]")) === 2, `stops=${await handleCount("[data-stop-index]")}`);
+await closePanel();
+
+// ---- 15. stops are born, selected, and deleted ON THE CANVAS -------------------
+await openFillPanel("gg_lin");
+const axisPoint = async (frac) => {
+  const { zoom, panX, panY } = await viewOf("gg_lin", 60, 80);
+  return {
+    x: Math.round((60 + W * frac) * zoom + panX),
+    y: Math.round((80 + H / 2) * zoom + panY)
+  };
+};
+const p30 = await axisPoint(0.3);
+await page.mouse.click(p30.x, p30.y);
+await page.waitForTimeout(400);
+check(
+  "a click on the axis adds a stop",
+  (await handleCount("[data-gradient-stop]")) === 1 && (await handleCount("[data-stop-index]")) === 3,
+  `markers=${await handleCount("[data-gradient-stop]")} stops=${await handleCount("[data-stop-index]")}`
+);
+check(
+  "and the panel says which stop it just made",
+  await page.evaluate(() => (document.querySelector("[data-gradient-stop-bar]")?.textContent ?? "").includes("Stop 2/3"))
+);
+check(
+  "and the canvas marks that stop as the selected one",
+  await page.evaluate(
+    () => document.querySelector('[data-gradient-stop="1"]')?.getAttribute("data-gradient-stop-selected") === "true"
+  )
+);
+
+// Canvas → panel: pick the far stop in the panel, then the marker on the axis.
+await page.click('[data-stop-index="2"]');
+check(
+  "the panel can move off that stop",
+  await page.evaluate(() => (document.querySelector("[data-gradient-stop-bar]")?.textContent ?? "").includes("Stop 3/3"))
+);
+await page.mouse.click(p30.x, p30.y);
+await page.waitForTimeout(200);
+check(
+  "selecting a marker on the canvas selects that stop in the panel",
+  await page.evaluate(() => (document.querySelector("[data-gradient-stop-bar]")?.textContent ?? "").includes("Stop 2/3"))
+);
+
+await page.keyboard.press("Delete");
+await page.waitForTimeout(300);
+check(
+  "Delete on the canvas removes the stop, not the layer",
+  (await handleCount("[data-stop-index]")) === 2 && (await elementById("gg_lin")) !== null,
+  `stops=${await handleCount("[data-stop-index]")}`
+);
+check("and the gradient editor stays open", (await handleCount("[data-color-panel]")) === 1);
+
+// The dangerous path: focus somewhere in the panel that is NOT a stop.
+await page.click("[data-sv-area]");
+await page.keyboard.press("Delete");
+await page.waitForTimeout(250);
+check(
+  "Delete with the panel focused still never deletes the layer",
+  (await elementById("gg_lin")) !== null && (await handleCount("[data-color-panel]")) === 1
+);
+await closePanel();
+
+// ---- 16. every dialect takes a click on its own axis --------------------------
+await openFillPanel("gg_rad");
+await page.waitForSelector('[data-gradient-gizmo="radial"]', { timeout: 3000 });
+check(
+  "a radial's spoke wears the add cursor too",
+  (await cursorOf('[data-gradient-gizmo="radial"] line[data-gradient-axis]')) === "copy",
+  await cursorOf('[data-gradient-gizmo="radial"] line[data-gradient-axis]')
+);
+{
+  // The first radius is where a radial's stops live, so it is where a click
+  // adds one. The grip's own box is the truth — re-deriving the geometry here
+  // would be a second copy of it, free to drift from what is drawn.
+  const spoke = await boxOf('[data-gradient-gizmo="radial"] [data-gradient-axis]');
+  await page.mouse.click(
+    Math.round(spoke.left + spoke.width / 2),
+    Math.round(spoke.top + spoke.height / 2)
+  );
+  await page.waitForTimeout(400);
+}
+{
+  const paint = await topFill("gg_rad");
+  check(
+    "clicking it inserts a stop inside the ramp",
+    paint && paint.stops.length === 3 && paint.stops[1].offset > 0.1 && paint.stops[1].offset < 0.9,
+    paint && JSON.stringify(paint.stops)
+  );
+  check(
+    "and the new stop appears on the rim as a marker",
+    (await handleCount("[data-gradient-stop]")) === 1
+  );
+  check(
+    "wearing the selected ring",
+    await page.evaluate(
+      () => document.querySelector('[data-gradient-stop="1"]')?.getAttribute("data-gradient-stop-selected") === "true"
+    )
+  );
+  const before = paint.stops[1].offset;
+  check("the marker drags along the rim", await dragBy('[data-gradient-stop="1"]', 24, 6));
+  const moved = await topFill("gg_rad");
+  check(
+    "and the drag changes that stop's offset",
+    Math.abs(moved.stops[1].offset - before) > 0.01,
+    `${before} -> ${moved.stops[1].offset}`
+  );
+}
+await page.evaluate(() => window.__FISH_BRIDGE__.undo());
+await page.evaluate(() => window.__FISH_BRIDGE__.undo());
+await closePanel();
 
 await browser.close();
 const failed = results.filter((r) => !r).length;

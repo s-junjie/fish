@@ -48,6 +48,8 @@ export interface DocumentStageProps {
   onStartCanvasTextEdit?: (el: TextElement) => void;
   onCommitCanvasText?: () => void;
   onCancelCanvasText?: () => void;
+  onUndoCanvasText?: () => void;
+  onRedoCanvasText?: () => void;
   onOnPathTextBounds?: (id: string, box: { x: number; y: number; width: number; height: number }) => void;
   editingPathId?: string | null;
   /** Off in presentation: a slide carries no editor chrome. */
@@ -93,6 +95,8 @@ export function DocumentStage({
   onStartCanvasTextEdit = noop,
   onCommitCanvasText = noop,
   onCancelCanvasText = noop,
+  onUndoCanvasText,
+  onRedoCanvasText,
   onOnPathTextBounds,
   editingPathId = null,
   frameTitles
@@ -182,6 +186,8 @@ export function DocumentStage({
         onStartCanvasTextEdit={onStartCanvasTextEdit}
         onCommitCanvasText={onCommitCanvasText}
         onCancelCanvasText={onCancelCanvasText}
+        onUndoCanvasText={onUndoCanvasText}
+        onRedoCanvasText={onRedoCanvasText}
         onOnPathTextBounds={onOnPathTextBounds}
         editingPathId={editingPathId}
         frameTitles={frameTitles}

@@ -296,37 +296,41 @@ export function findElementAtPoint(
   return search(elements, identityMatrix());
 }
 
+/**
+ * Removes `frameId` and leaves its children in the frame's place, in the list
+ * the frame sat in.
+ *
+ * That list is the frame's PARENT, so a released child's new `x`/`y` are the
+ * parent's local space and the only offset to add is the frame's OWN — the
+ * exact inverse of the subtraction `reparentSelectionIntoFrame` performs when
+ * grouping. Walking the ancestor chain for a canvas-absolute origin instead
+ * added every ancestor a second time: the child is not going to the root, it is
+ * going to a parent whose origin (`computeParentOrigin`) it already inherits, so
+ * a group nested at (100, 200) threw its contents 100/200 away from the pixel
+ * they painted at. Only a TOP-level frame has an origin of zero, which is why
+ * the plain case never showed it.
+ *
+ * Translation only, like every other write path: `x` is a parent-local offset
+ * and the frame's own rotation/flip is not baked into the children (see
+ * `computeParentOrigin` for why the chain is carried separately).
+ */
 export function dissolveFrame(
   elements: DesignElement[],
   frameId: string
 ): { elements: DesignElement[]; releasedIds: string[] } {
   let releasedIds: string[] = [];
 
-  // Walk to find the parent's canvas-absolute origin so we can convert
-  // the frame's children from local → absolute when releasing to root.
-  const walk = (list: DesignElement[], originX: number, originY: number): DesignElement[] => {
+  const walk = (list: DesignElement[]): DesignElement[] => {
     const out: DesignElement[] = [];
     for (const el of list) {
       if (el.id === frameId && isContainer(el)) {
         const children = el.children || [];
         releasedIds = children.map((c) => c.id);
-        // Frame's canvas origin = parent origin + frame's local x/y
-        const frameAbsX = originX + el.x;
-        const frameAbsY = originY + el.y;
-        // Convert each child from frame-local → canvas-absolute
-        const released = children.map((child) => ({
-          ...child,
-          x: child.x + frameAbsX,
-          y: child.y + frameAbsY
-        }));
-        out.push(...released);
+        out.push(
+          ...children.map((child) => ({ ...child, x: child.x + el.x, y: child.y + el.y }))
+        );
       } else if (isContainer(el) && el.children) {
-        const absX = originX + el.x;
-        const absY = originY + el.y;
-        out.push({
-          ...el,
-          children: walk(el.children, absX, absY)
-        });
+        out.push({ ...el, children: walk(el.children) });
       } else {
         out.push(el);
       }
@@ -334,5 +338,5 @@ export function dissolveFrame(
     return out;
   };
 
-  return { elements: walk(elements, 0, 0), releasedIds };
+  return { elements: walk(elements), releasedIds };
 }

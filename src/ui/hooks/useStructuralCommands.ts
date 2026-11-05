@@ -174,8 +174,7 @@ export function useStructuralCommands({
     if (!isStoredNode(docRef.current, target.id)) return;
     // A set dissolves rather than dissolves-as-a-frame: the members have to lose
     // `setId` and `variant` too, or they would still group in the assets panel and
-    // Ungroup would read as having done nothing. `dissolveFrame` also releases to
-    // canvas-absolute coordinates, which is only right for a top-level frame.
+    // Ungroup would read as having done nothing.
     if (target.type === "componentSet") {
       const dissolved = dissolveComponentSet(docRef.current, target.id);
       if (!dissolved) return;

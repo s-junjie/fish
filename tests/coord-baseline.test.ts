@@ -191,14 +191,14 @@ describe("applyAutoLayout (v0.3 layout)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 7. dissolveFrame — released children get canvas-absolute coords
+// 7. dissolveFrame — released children keep their canvas position
 // ---------------------------------------------------------------------------
 
-describe("dissolveFrame (local → canvas on release)", () => {
-  it("children are released with canvas-absolute coords (local + frame canvas origin)", () => {
+describe("dissolveFrame (local → the parent's local space on release)", () => {
+  it("adds the frame's own offset, which is its canvas origin only at the root", () => {
     // child is at LOCAL (50, 60) inside the frame
-    // frame is at canvas (10, 10)
-    // expected released canvas position = (10+50, 10+60) = (60, 70)
+    // frame is at canvas (10, 10), and at the root
+    // expected released position = (10+50, 10+60) = (60, 70) — still canvas (60, 70)
     const child = makeRect("c", 50, 60, 30, 30);
     const frame = makeFrame("f", 10, 10, 200, 200, [child]);
     const { elements, releasedIds } = dissolveFrame([frame], "f");
@@ -206,6 +206,19 @@ describe("dissolveFrame (local → canvas on release)", () => {
     const released = elements.find(e => e.id === "c")!;
     expect(released.x).toBe(60); // 10 + 50
     expect(released.y).toBe(70); // 10 + 60
+  });
+
+  it("adds nothing for the ancestors it never leaves", () => {
+    // Same frame nested in a parent at (100, 200): the child lands in the
+    // PARENT's list, so its new x/y are parent-local and the ancestor origin is
+    // already inherited — adding it again is what made contents fly away.
+    const child = makeRect("c", 50, 60, 30, 30);
+    const frame = makeFrame("f", 10, 10, 200, 200, [child]);
+    const parent = makeFrame("p", 100, 200, 500, 500, [frame]);
+    const { elements } = dissolveFrame([parent], "f");
+    const released = elements[0] as FrameElement;
+    expect(released.children![0].x).toBe(60); // 10 + 50 -> canvas 100 + 60
+    expect(released.children![0].y).toBe(70); // 10 + 60 -> canvas 200 + 70
   });
 });
 

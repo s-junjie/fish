@@ -45,7 +45,7 @@ import { colorTokenColor } from "../../core/interactions/token-ops";
 import { ColorTokenPicker } from "./ColorTokenPicker";
 import { applySpanStyleToRange, spanStyleAt } from "../../core/interactions/text-spans";
 import type { ActiveTextRange } from "../hooks/useInlineEditing";
-import { setGradientEditTarget } from "../hooks/gradient-edit";
+import { getGradientEditTarget, setGradientEditTarget } from "../hooks/gradient-edit";
 import {
   beginImageCrop,
   getImageCropTarget,
@@ -217,10 +217,14 @@ export function FillSection({
     }
   });
 
-  // The open gradient row IS the on-canvas lever's target: while this panel is
-  // up, the canvas hides the transform box and shows the gradient handles for
-  // exactly this paint. Any other state (closed, solid row, other element)
-  // clears it, so plain selection keeps its resize handles.
+  // Which paint the canvas lever edits.
+  //
+  // The popover is the colour PICKER, not the gradient editor: closing it (or
+  // clicking the canvas, which dismisses it) used to take the lever away in the
+  // middle of aiming, and the very press that dismissed it was the one that
+  // moved the layer. The target therefore outlives the popover — it belongs to
+  // the SELECTION — and is cleared only by a different selection, by opening a
+  // row that is not a gradient, or by this section going away.
   //
   // Above the early return on purpose: this used to sit after it, so selecting a
   // line and then a rect changed the hook count between renders. Nothing threw —
@@ -230,13 +234,25 @@ export function FillSection({
   const openPaint = open ? displayFills[open.index] : undefined;
   const openIsGradient = !!open && isGradientPaint(openPaint);
   useEffect(() => {
-    if (open && openIsGradient && primarySelected) {
-      setGradientEditTarget({ elId: primarySelected.id, paintIndex: open.index });
-    } else {
+    if (!primarySelected) {
       setGradientEditTarget(null);
+      return;
     }
-    return () => setGradientEditTarget(null);
+    if (open) {
+      setGradientEditTarget(
+        openIsGradient ? { elId: primarySelected.id, paintIndex: open.index, stack: "fills" } : null
+      );
+      return;
+    }
+    // No row open: keep the lever only while it still names THIS element.
+    const current = getGradientEditTarget();
+    if (!current || current.elId !== primarySelected.id) setGradientEditTarget(null);
   }, [open?.index, openIsGradient, selectedId]);
+
+  // A section that goes away (another inspector tab) takes its lever with it —
+  // a canvas full of gradient grips with no panel behind them has no way to say
+  // which row they belong to.
+  useEffect(() => () => setGradientEditTarget(null), []);
 
   /**
    * Crop mode is entered from two places that cannot see each other: this row's

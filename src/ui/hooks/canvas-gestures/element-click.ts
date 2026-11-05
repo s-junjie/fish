@@ -14,6 +14,7 @@ import { editableIds } from "../../../core/geometry/lock";
 import { computeShapeDraftBounds, isCreatableTool, isSelectingTool } from "../../../core/geometry/shape-creation";
 import { newTextInkAt } from "../../../core/geometry/ink-on";
 import type { ToolType } from "../../../core/tools";
+import { getGradientEditTarget } from "../gradient-edit";
 import { isDerivedFrom, isDerivedNode } from "../../../core/interactions/component-inventory";
 import { owningInstanceId, resolvedRoute } from "../../../core/interactions/component-swap";
 import {
@@ -407,6 +408,12 @@ export function createElementClick(deps: ElementClickDeps) {
       if (isDerivedNode(target)) return;
 
       if (isSelectingTool(activeTool) && nextSelection.has(target.id)) {
+        // Gradient editing owns the press. The lever's whole promise is that a
+        // drag in this mode aims the paint; if the layer moved instead, every
+        // near-miss on a grip would nudge the artwork. Leaving the mode is
+        // selecting something else (or nothing), which is also what brings the
+        // transform box back.
+        if (getGradientEditTarget()?.elId === target.id) return;
         startDragGesture();
         isDraggingElements.current = true;
         dragStartMouse.current = { x: e.clientX, y: e.clientY };

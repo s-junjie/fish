@@ -24,7 +24,7 @@ import { relayoutDocumentTree } from "../compile";
 import { findMasterComponent } from "./component-inventory";
 import { overridableFor } from "./override-audit";
 import { layoutOf, withLayout } from "../dsl/layout-flat";
-import { instanceScaleOf, scaleLayout, scaleSubtreeAbout } from "../geometry/scale-geometry";
+import { instanceScaleOf, scaleLayout, scaleSizingBounds, scaleSubtreeAbout } from "../geometry/scale-geometry";
 import { syncDualStorage } from "./style-sync";
 import { resolveChildSize } from "../layout/context";
 import type { StyleTables } from "./style-tables";
@@ -472,7 +472,9 @@ export function resolveInstanceContent(
     //
     // A SCALED instance re-runs the recipe at its own proportions: the padding,
     // gaps and tracks scale with the factor, so the box the pass arrives at is
-    // master × factor rather than a 1x layout crammed into a smaller box.
+    // master × factor rather than a 1x layout crammed into a smaller box. The
+    // bounds that clamp a derived size are lengths of that box too.
+    const sizing = instance.sizing ?? (instance.sizeOverride ? undefined : master.sizing);
     const synthetic: FrameElement = {
       ...(scaled ? withLayout(master, scaleLayout(layoutOf(master)!, scale.x, scale.y, Math.min(scale.x, scale.y))) : master),
       id: instance.id,
@@ -481,7 +483,7 @@ export function resolveInstanceContent(
       y: instance.y,
       width: box.width,
       height: box.height,
-      sizing: instance.sizing ?? (instance.sizeOverride ? undefined : master.sizing),
+      sizing: scaled ? scaleSizingBounds(sizing, scale.x, scale.y) : sizing,
       children
     };
     const laid = relayoutDocumentTree([synthetic])[0] as FrameElement;

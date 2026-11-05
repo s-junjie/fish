@@ -5,6 +5,7 @@ import { ChildSizeResolver, hugsAxis, resolvePadding } from "./box";
 import { fitComponentSet } from "./component-set";
 import { resolveChildSize } from "./context";
 import { syncTextSizing } from "./text-sizing";
+import { syncInstanceSizing } from "./instance-sizing";
 import { applyFlexLayout } from "./flex-layout";
 import { applyGridLayout, gridCellWidth, gridColumnCount } from "./grid-layout";
 
@@ -93,7 +94,7 @@ export function relayoutDocumentTree(
   const childSize = resolveChildSize(resolveChild);
   const measured = measureTreeBottomUp(elements, childSize);
   const positioned = positionTreeTopDown(measured, childSize);
-  const done = syncTextSizing(positioned);
+  const done = syncInstanceSizing(syncTextSizing(positioned), childSize);
   laidOut.add(done);
   return done;
 }

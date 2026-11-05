@@ -523,12 +523,13 @@ export const en = {
     width: "Scale to this width",
     height: "Scale to this height",
     factor: "Scale factor",
-    presets: "Presets",
     anchor: "Anchor point",
     nothingSelected: "Select something to scale",
+    derivedChild: "A layer inside an instance is scaled through the instance — select it instead",
     locked: "A locked layer cannot be scaled",
     engineSized: "This layer's size comes from its content or its parent — scale that instead",
-    outOfRange: "That scale would make the layer unusable"
+    outOfRange: "That scale would make the layer unusable",
+    presets: "Presets"
   },
   properties: {
     tabProperties: "Properties",
@@ -565,6 +566,7 @@ export const en = {
     exportSvg: "Export SVG",
     exportWebp: "Export WebP",
     exporting: "Exporting...",
+    exportFiles: "{n, plural, one {# file} other {# files}}",
     aspectLocked: "Constrain proportions (locked)",
     aspectUnlocked: "Constrain proportions (unlocked)",
     aspectMixed: "Constrain proportions (mixed across selection)",
@@ -722,7 +724,27 @@ export const en = {
     angle: "Angle",
     stop: "Stop",
     addStopHint: "Click to add a color stop, drag a stop to move it",
+    stopBar: "Gradient stops",
     removeStop: "Remove color stop",
+    flip: "Flip gradient",
+    rotate90: "Rotate gradient 90°",
+    lever: {
+      start: "Drag to move the gradient's start",
+      end: "Drag to move the gradient's end",
+      center: "Drag to move the gradient's centre",
+      axis: "Drag to rotate and resize this axis",
+      axisWidth: "Drag to resize the other axis",
+      sweep: "Drag to set where the turn starts",
+      line: "Drag to move the whole gradient · click to add a stop",
+      addStop: "Click to add a color stop"
+    },
+    hud: {
+      angle: "∠ {value}°",
+      center: "cx {x}% · cy {y}%",
+      point: "{x}% · {y}%",
+      axisX: "∠ {angle}° · rx {value}%",
+      axisY: "ry {value}%"
+    },
     eyedropper: "Pick a color from the screen",
     edit: "Edit color",
     managedByStyle: "Managed by fill style",

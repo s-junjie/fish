@@ -167,6 +167,49 @@ export function useInlineEditing(deps: InlineEditingDeps) {
   const isTextEditCancelledRef = useRef(false);
 
   /**
+   * The draft, and the draft's OWN undo history.
+   *
+   * ⌘Z inside the caret cannot be the document's undo: the whole edit is one
+   * gesture (`startDragGesture` … `endDragGesture`), so the store has nothing to
+   * step back to in the middle of it. It cannot be the browser's either — that
+   * stack replays DOM edits against a tree Preact re-renders from the model, and
+   * `preventDefault`ed gestures (a return, a paste) never enter it at all, which
+   * is why they were the two that could not be undone. So the editor keeps its
+   * own history of drafts, and every step is applied through the model.
+   */
+  const draftRef = useRef<string>("");
+  const draftUndoRef = useRef<{ value: string; at: number; typed: boolean }[]>([]);
+  const draftRedoRef = useRef<string[]>([]);
+
+  /**
+   * One undo step per burst of typing, one per discrete edit.
+   *
+   * A return, a paste or a deletion ends the burst and gets its own entry, which
+   * is what makes them undoable at all; a run of single characters stays one
+   * entry, because stepping back one character at a time is not how a text field
+   * is expected to behave.
+   */
+  const recordDraftStep = (prev: string, next: string) => {
+    if (next === prev) return;
+    const now = Date.now();
+    const stack = draftUndoRef.current;
+    const top = stack[stack.length - 1];
+    // A character typed INTO the line, not a line break: a return is a discrete
+    // edit even though it is one character long, and merging it into the burst
+    // in front of it made ⌘Z jump over it.
+    const typed =
+      next.length === prev.length + 1 &&
+      next.split("\n").length === prev.split("\n").length;
+    if (typed && top?.typed && now - top.at < 800) {
+      top.at = now;
+    } else {
+      stack.push({ value: prev, at: now, typed });
+      if (stack.length > 200) stack.shift();
+    }
+    draftRedoRef.current.length = 0;
+  };
+
+  /**
    * Hand back the selection the editor made for itself — on Escape, and only
    * there.
    *
@@ -214,6 +257,9 @@ export function useInlineEditing(deps: InlineEditingDeps) {
     setEditingCanvasTextId(el.id);
     setSelectedIds(new Set([el.id]));
     setCanvasTextDraft(el.content || el.name || "");
+    draftRef.current = el.content || el.name || "";
+    draftUndoRef.current = [];
+    draftRedoRef.current = [];
     setActiveTextSelection(null);
     startDragGesture();
     requestAnimationFrame(() => {
@@ -275,14 +321,16 @@ export function useInlineEditing(deps: InlineEditingDeps) {
     [editingCanvasTextId]
   );
 
-  // Re-measures on every keystroke so the box tracks the draft and the painted
-  // text never outgrows it. No history entry: the whole edit is one gesture.
-  //
-  // `edit` is the splice the editor performed, when it could describe one. It is
-  // what the run styles are reconciled against, and the differerence between a
-  // replacement inheriting the run it replaced and it inheriting whatever sat to
-  // its left.
-  const changeCanvasTextDraft = (value: string, edit?: TextEditRange) => {
+  /**
+   * Write a draft INTO the document, re-measuring so the box tracks it.
+   *
+   * No history entry: the whole edit is one gesture, and the draft's own steps
+   * are what ⌘Z walks (`recordDraftStep`). `edit` is the splice the editor
+   * performed, when it could describe one — what the run styles are reconciled
+   * against, and the difference between a replacement inheriting the run it
+   * replaced and it inheriting whatever sat to its left.
+   */
+  const writeCanvasTextDraft = (value: string, edit?: TextEditRange) => {
     setCanvasTextDraft(value);
     if (!editingCanvasTextId) return;
     const virtual = virtualTextTarget(editingCanvasTextId);
@@ -319,6 +367,45 @@ export function useInlineEditing(deps: InlineEditingDeps) {
       return updated;
     });
     setDoc(updateActivePageElements(docRef.current, boxCouldMove ? relayoutDocumentTree(nextElements) : nextElements));
+  };
+
+  const changeCanvasTextDraft = (value: string, edit?: TextEditRange) => {
+    if (editingCanvasTextId) recordDraftStep(draftRef.current, value);
+    draftRef.current = value;
+    writeCanvasTextDraft(value, edit);
+  };
+
+  /**
+   * ⌘Z in the caret: step the draft back, through the model.
+   *
+   * With nothing recorded, this backs out of the whole edit (`cancelCanvasText`
+   * rolls the gesture back and closes the editor) — the one step left, and the
+   * same thing Escape does. Reporting `true` either way is what tells the key
+   * handler the browser's own undo must not run: that stack replays DOM edits
+   * against a tree Preact re-renders from the model, and it is empty for exactly
+   * the gestures that were `preventDefault`ed.
+   */
+  const undoCanvasText = (): boolean => {
+    if (!editingCanvasTextId) return false;
+    const step = draftUndoRef.current.pop();
+    if (!step) {
+      cancelCanvasText();
+      return true;
+    }
+    draftRedoRef.current.push(draftRef.current);
+    draftRef.current = step.value;
+    writeCanvasTextDraft(step.value);
+    return true;
+  };
+
+  const redoCanvasText = (): boolean => {
+    if (!editingCanvasTextId) return false;
+    const value = draftRedoRef.current.pop();
+    if (value === undefined) return true;
+    draftUndoRef.current.push({ value: draftRef.current, at: Date.now(), typed: false });
+    draftRef.current = value;
+    writeCanvasTextDraft(value);
+    return true;
   };
 
   const commitCanvasText = () => {
@@ -419,6 +506,8 @@ export function useInlineEditing(deps: InlineEditingDeps) {
     changeCanvasTextDraft,
     commitCanvasText,
     cancelCanvasText,
+    undoCanvasText,
+    redoCanvasText,
     ...vectorPath
   };
 }

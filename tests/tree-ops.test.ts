@@ -152,6 +152,67 @@ describe("Tree Operations", () => {
     expect(outerAfter.children.map((c) => c.id)).toEqual(["r_nested"]);
   });
 
+  it("dissolves a nested frame without moving its contents", () => {
+    // The released child lands in the list the frame sat in, so the only offset
+    // it may gain is the frame's OWN x/y. Adding the ancestor chain's origin as
+    // well moves it one parent-origin away from where it painted.
+    const inner: FrameElement = {
+      id: "f_in",
+      type: "frame",
+      x: 30,
+      y: 40,
+      width: 80,
+      height: 80,
+      children: [{ id: "r_deep", type: "rect", x: 5, y: 6, width: 20, height: 20 }]
+    };
+    const outer: FrameElement = {
+      id: "f_out",
+      type: "frame",
+      x: 100,
+      y: 200,
+      width: 300,
+      height: 300,
+      children: [inner]
+    };
+    const { elements } = dissolveFrame([outer], "f_in");
+    const released = findElementById(elements, "r_deep")!;
+    expect(released.x).toBe(35); // 30 + 5 -> canvas 100 + 35
+    expect(released.y).toBe(46); // 40 + 6 -> canvas 200 + 46
+
+    // An offset is a property of one edge, not of the depth.
+    const deepest: FrameElement = {
+      id: "f_a",
+      type: "frame",
+      x: 10,
+      y: 20,
+      width: 200,
+      height: 200,
+      children: [
+        {
+          id: "f_b",
+          type: "frame",
+          x: 30,
+          y: 40,
+          width: 100,
+          height: 100,
+          children: [
+            {
+              id: "f_c",
+              type: "frame",
+              x: 50,
+              y: 60,
+              width: 40,
+              height: 40,
+              children: [{ id: "r_leaf", type: "rect", x: 7, y: 8, width: 10, height: 10 }]
+            }
+          ]
+        }
+      ]
+    };
+    expect(findElementById(dissolveFrame([deepest], "f_c").elements, "r_leaf")!.x).toBe(57);
+    expect(findElementById(dissolveFrame([deepest], "f_c").elements, "r_leaf")!.y).toBe(68);
+  });
+
   it("picks the enclosing frame as parent when drawing a frame AROUND it", () => {
     // oldFrame is top-level; a newly drawn frame fully encloses it.
     const oldFrame: FrameElement = {

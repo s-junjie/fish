@@ -490,7 +490,6 @@ export function App() {
     setHintMessage: hint.showHint,
     startCanvasTextEdit: inline.startCanvasTextEdit,
     editingPathId: inline.editingPathId,
-    scaleAnchor: tool.scaleTool.anchor,
     onAnchorMarquee: inline.handleAnchorMarquee,
     onCommentAtElement: comments.handleCommentAtElement,
     onCommentAtCanvas: comments.handleCommentAtCanvas

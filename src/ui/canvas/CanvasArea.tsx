@@ -112,6 +112,7 @@ interface CanvasAreaProps {
   canvasTextInputRef: { current: HTMLTextAreaElement | null };
   onCanvasMouseDown: (e: any) => void;
   onCanvasMouseMove: (e: any) => void;
+  onCanvasMouseLeave: () => void;
   onWheel: (e: any) => void;
   onCanvasClick: (e: any) => void;
   onElementMouseDown: (e: any, el: DesignElement) => void;
@@ -121,7 +122,27 @@ interface CanvasAreaProps {
   onEndpointPointerDown: (e: any, el: DesignElement, which: "start" | "end") => void;
   onRadiusPointerDown: (e: any, el: DesignElement) => void;
   onStartOffsetPointerDown?: (e: any, el: DesignElement) => void;
-  onGradientHandlePointerDown?: (e: any, el: DesignElement, paintIndex: number, which: GradientHandle) => void;
+  onGradientHandlePointerDown?: (
+    e: any,
+    el: DesignElement,
+    paintIndex: number,
+    which: GradientHandle,
+    stack: "fills" | "strokes"
+  ) => void;
+  onGradientStopPointerDown?: (
+    e: any,
+    el: DesignElement,
+    paintIndex: number,
+    stopIndex: number,
+    stack: "fills" | "strokes"
+  ) => void;
+  onGradientStopInsert?: (e: any, el: DesignElement, paintIndex: number, stack: "fills" | "strokes") => void;
+  onGradientStopDelete?: (
+    el: DesignElement,
+    paintIndex: number,
+    stopIndex: number,
+    stack: "fills" | "strokes"
+  ) => boolean;
   /**
    * Crop mode's gestures. Optional as a set: a host that mounts the canvas
    * without an editor (the canvas-only view, presentation) has no crop mode and
@@ -141,6 +162,8 @@ interface CanvasAreaProps {
   onTextSelect?: (range: { start: number; end: number } | null) => void;
   onCommitCanvasText: () => void;
   onCancelCanvasText: () => void;
+  onUndoCanvasText?: () => void;
+  onRedoCanvasText?: () => void;
   onInsertImage?: (file: File | Blob, worldX: number, worldY: number) => void;
   /**
    * `swap` is the Alt/Option modifier at the moment of the drop.
@@ -222,6 +245,7 @@ export function CanvasArea({
   canvasTextInputRef,
   onCanvasMouseDown,
   onCanvasMouseMove,
+  onCanvasMouseLeave,
   onWheel,
   onCanvasClick,
   onElementMouseDown,
@@ -232,6 +256,9 @@ export function CanvasArea({
   onRadiusPointerDown,
   onStartOffsetPointerDown,
   onGradientHandlePointerDown,
+  onGradientStopPointerDown,
+  onGradientStopInsert,
+  onGradientStopDelete,
   onCropMovePointerDown,
   onCropHandlePointerDown,
   onCropRotatePointerDown,
@@ -240,6 +267,8 @@ export function CanvasArea({
   onTextSelect,
   onCommitCanvasText,
   onCancelCanvasText,
+  onUndoCanvasText,
+  onRedoCanvasText,
   onInsertImage,
   onAssetDrop,
   onImportFiles,
@@ -511,6 +540,7 @@ export function CanvasArea({
               handleCanvasPointerMove(e);
             }
       }
+      onMouseLeave={isCanvasOnlyView ? undefined : onCanvasMouseLeave}
       onWheel={isCanvasOnlyView ? undefined : onWheel}
       onClick={
         // Canvas-only view is a VIEW of the document — an embed, a screenshot —
@@ -628,6 +658,8 @@ export function CanvasArea({
               onTextSelect={isCanvasOnlyView ? undefined : onTextSelect}
               onCommitCanvasText={onCommitCanvasText}
               onCancelCanvasText={onCancelCanvasText}
+              onUndoCanvasText={onUndoCanvasText}
+              onRedoCanvasText={onRedoCanvasText}
               onOnPathTextBounds={isCanvasOnlyView ? undefined : onOnPathTextBounds}
               editingPathId={editingPathElement ? editingPathElement.id : null}
             />
@@ -735,6 +767,9 @@ export function CanvasArea({
                     onRadiusPointerDown={onRadiusPointerDown}
                     onStartOffsetPointerDown={onStartOffsetPointerDown}
                     onGradientHandlePointerDown={onGradientHandlePointerDown}
+                    onGradientStopPointerDown={onGradientStopPointerDown}
+                    onGradientStopInsert={onGradientStopInsert}
+                    onGradientStopDelete={onGradientStopDelete}
                   />
                 </g>
               )}
@@ -774,7 +809,11 @@ export function CanvasArea({
               <SpacingOverlay doc={doc} zoom={zoom} />
 
               {/* Hover preview: outline what a plain single click would select. Hidden
-                  for already-selected elements (the selection box already shows them). */}
+                  for already-selected elements (the selection box already shows them).
+                  Marked like every other overlay — an unmarked chrome group is the one
+                  thing an export cannot strip, and this outline used to ride into the
+                  file whenever the pointer had crossed the canvas on the way to the
+                  Export button. */}
               {hoverSelectId && isSelectingTool(activeTool as ToolType) && (() => {
                 const hel = findElementById(allElements, hoverSelectId);
                 if (!hel || hel.visible === false || selectedIds.has(hel.id)) return null;
@@ -788,7 +827,10 @@ export function CanvasArea({
                 const box = elementAABB(hel);
                 const sw = 1.5 / zoom;
                 return (
-                  <g transform={matrixToSvg(multiply(worldM, elementTransformMatrix(hel, box.x + box.width / 2, box.y + box.height / 2)))}>
+                  <g
+                    data-overlay="true"
+                    transform={matrixToSvg(multiply(worldM, elementTransformMatrix(hel, box.x + box.width / 2, box.y + box.height / 2)))}
+                  >
                     <rect
                       x={box.x}
                       y={box.y}

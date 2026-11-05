@@ -266,6 +266,7 @@ export function EditorShell(p: EditorShellProps) {
     hoverSelectId,
     handleCanvasMouseDown,
     handleCanvasMouseMove,
+    handleCanvasMouseLeave,
     handleCanvasClick,
     handleElementMouseDown,
     handleResizePointerDown,
@@ -274,7 +275,10 @@ export function EditorShell(p: EditorShellProps) {
     handleLineEndpointPointerDown,
     handleRadiusPointerDown,
     handleStartOffsetPointerDown,
-    handleGradientHandlePointerDown
+    handleGradientHandlePointerDown,
+    handleGradientStopPointerDown,
+    handleGradientStopInsert,
+    handleGradientStopDelete
   } = p.gestures;
   const {
     smartSelection,
@@ -567,6 +571,7 @@ export function EditorShell(p: EditorShellProps) {
           canvasTextInputRef={inline.canvasTextInputRef}
           onCanvasMouseDown={handleCanvasMouseDown}
           onCanvasMouseMove={handleCanvasMouseMove}
+          onCanvasMouseLeave={handleCanvasMouseLeave}
           onWheel={handleWheel}
           onCanvasClick={handleCanvasClick}
           onElementMouseDown={handleElementMouseDown}
@@ -579,9 +584,14 @@ export function EditorShell(p: EditorShellProps) {
           onTextSelect={inline.reportCanvasTextSelection}
           onCommitCanvasText={inline.commitCanvasText}
           onCancelCanvasText={inline.cancelCanvasText}
+          onUndoCanvasText={inline.undoCanvasText}
+          onRedoCanvasText={inline.redoCanvasText}
           onOnPathTextBounds={handleOnPathTextBounds}
           onStartOffsetPointerDown={handleStartOffsetPointerDown}
           onGradientHandlePointerDown={handleGradientHandlePointerDown}
+          onGradientStopPointerDown={handleGradientStopPointerDown}
+          onGradientStopInsert={handleGradientStopInsert}
+          onGradientStopDelete={handleGradientStopDelete}
           onCropMovePointerDown={gestures.handleCropMovePointerDown}
           onCropHandlePointerDown={gestures.handleCropHandlePointerDown}
           onCropRotatePointerDown={gestures.handleCropRotatePointerDown}

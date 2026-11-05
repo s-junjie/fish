@@ -381,7 +381,7 @@ export function insertClonesIntoContainer(
   sources: DesignElement[],
   targetContainerId: string,
   options?: InsertIntoContainerOptions
-): { elements: DesignElement[]; newIds: string[] } {
+): { elements: DesignElement[]; newIds: string[]; rootIdBySource: Map<string, string> } {
   const target = findElementById(elements, targetContainerId);
   if (!target || !isContainer(target)) {
     return insertClones(elements, sources, { x: 20, y: 20 });
@@ -389,6 +389,7 @@ export function insertClonesIntoContainer(
 
   const clones: DesignElement[] = [];
   const newIds: string[] = [];
+  const rootIdBySource = new Map<string, string>();
 
   for (const src of sources) {
     if (src.type === "component") {
@@ -408,11 +409,13 @@ export function insertClonesIntoContainer(
       };
       clones.push(inst);
       newIds.push(inst.id);
+      rootIdBySource.set(src.id, inst.id);
       continue;
     }
     const { clone, idMap } = cloneWithNewIds(src);
     clones.push(clone);
     newIds.push(...idMap.values());
+    rootIdBySource.set(src.id, clone.id);
   }
 
   if (!layoutOf(target) && clones.length > 0) {
@@ -484,7 +487,7 @@ export function insertClonesIntoContainer(
     return el;
   });
 
-  return { elements: nextElements, newIds };
+  return { elements: nextElements, newIds, rootIdBySource };
 }
 
 /**

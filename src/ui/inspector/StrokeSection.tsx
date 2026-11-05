@@ -26,6 +26,7 @@ import { NumberTokenPicker } from "./NumberTokenPicker";
 import { usePaintStackDrag } from "../hooks/usePaintStackDrag";
 import { useStyleBindAction } from "../hooks/useStyleBindAction";
 import { isGradientPaint } from "../../core/geometry/gradient-utils";
+import { getGradientEditTarget, setGradientEditTarget } from "../hooks/gradient-edit";
 import { Section } from "./SectionHeader";
 import { Button } from "../Button";
 import { ColorRow } from "./ColorRow";
@@ -143,6 +144,35 @@ export function StrokeSection({
       onMutate((el) => ({ ...el, strokes: next } as any), true);
     }
   });
+
+  /**
+   * The stroke row's on-canvas lever — the same contract as the fill row's
+   * (`FillSection`), aimed at `el.strokes` instead of `el.fills`.
+   *
+   * The panel could always paint a stroke with a gradient; the lever only ever
+   * looked at fills, so that gradient could be aimed only by typing numbers. It
+   * stays armed after the picker closes, for the same reason the fill lever
+   * does: the picker is the colour picker, not the gradient editor.
+   */
+  useEffect(() => {
+    const stroke = open ? strokes[open.index] : undefined;
+    if (primarySelected && open && stroke?.paint && isGradientPaint(stroke.paint)) {
+      setGradientEditTarget({
+        elId: primarySelected.id,
+        paintIndex: open.index,
+        stack: "strokes"
+      });
+      return;
+    }
+    if (open) {
+      setGradientEditTarget(null);
+      return;
+    }
+    const current = getGradientEditTarget();
+    if (!current || !primarySelected || current.elId !== primarySelected.id) {
+      setGradientEditTarget(null);
+    }
+  }, [open?.index, primarySelected?.id, strokes]);
 
   if (!primarySelected || primarySelected.type === "video" || primarySelected.type === "html") return null;
 

@@ -42,6 +42,12 @@ import {
   type KindMemory
 } from "./color-panel/kind-memory";
 import { withStops, detachedStop } from "./color-panel/stop-edit";
+import {
+  setGradientEditorOpen,
+  setGradientStopIndex,
+  useGradientStopDeleteRequest,
+  useGradientStopIndex
+} from "./hooks/gradient-edit";
 import { GradientStopBar } from "./color-panel/GradientStopBar";
 import { ColorTokenPicker } from "./inspector/ColorTokenPicker";
 import { colorTokenColor } from "../core/interactions/token-ops";
@@ -165,8 +171,33 @@ export function ColorPanel({
   const gradient = isGradientPaint(paint) ? paint : null;
   const isGradient = gradient !== null;
   const stops = gradient ? getGradientStops(gradient) : [];
-  const [stopIndexRaw, setStopIndex] = useState(0);
+  // The index lives in a store, not here, because the canvas can now select a
+  // stop too — one fact, two surfaces (see `hooks/gradient-edit`).
+  const stopIndexRaw = useGradientStopIndex();
   const stopIndex = Math.min(stopIndexRaw, Math.max(0, stops.length - 1));
+  const setStopIndex = setGradientStopIndex;
+
+  // While this panel edits a gradient it owns Delete: the shortcut hands the key
+  // over instead of deleting the layer (see `shortcuts/edit.ts`). Registered
+  // only for a gradient body, so a solid row's Backspace is the editor's again.
+  const isGradientOpen = gradient !== null;
+  useEffect(() => {
+    if (!isGradientOpen) return;
+    setGradientEditorOpen(true);
+    return () => setGradientEditorOpen(false);
+  }, [isGradientOpen]);
+
+  const deleteTick = useGradientStopDeleteRequest();
+  useEffect(() => {
+    if (!deleteTick || !gradient) return;
+    const current = getGradientStops(gradient);
+    // Two stops is the floor a gradient can be painted with; asking to delete
+    // one of them is answered by doing nothing, not by closing the editor.
+    if (current.length <= 2) return;
+    const index = Math.min(stopIndex, current.length - 1);
+    onChange(withStops(gradient, current.filter((_, i) => i !== index)), true);
+    setStopIndex(Math.max(0, index - 1));
+  }, [deleteTick]);
 
   const activeColor = kind === "image"
     ? "#FFFFFF"
@@ -221,6 +252,13 @@ export function ColorPanel({
     // to name the WHOLE overlay rather than only its handles — the body of the
     // bitmap is itself a grab surface, so a press on it is the move gesture.
     "[data-gradient-handle]",
+    // A stop marker on the canvas axis is the same bargain: it selects and drags
+    // a stop in THIS paint, so the press must not dismiss the panel that names
+    // the stop it is editing.
+    "[data-gradient-stop]",
+    // …and so is the axis itself: dragging it translates the gradient, and a
+    // CLICK on it adds a stop to THIS paint (the same bargain as the ramp).
+    "[data-gradient-axis]",
     "[data-image-crop-overlay]",
     // A pattern layer's two colours are `ColorField`s, and a ColorField opens a
     // picker of its own — so this panel can be the HOST of another one. The child
@@ -515,6 +553,32 @@ export function ColorPanel({
         />
       ) : (
         <>
+          {/* The ramp sits FIRST, directly under the gradient's type: it is the
+              map of the paint, and the colour field below only ever edits ONE
+              stop that lives on it. As a footer it was three control groups away
+              from the swatch it describes — and the first thing to scroll out of
+              a capped panel, which left the map off-screen while the user was
+              steering by it. */}
+          {gradient && (
+            <GradientStopBar
+              paint={gradient}
+              stops={stops}
+              stopIndex={stopIndex}
+              onStopsChange={applyStops}
+              onSelectStop={setStopIndex}
+              onPaintChange={(next) => onChange(next, false)}
+              stopToken={activeStopToken}
+              onOpenTokenPicker={
+                doc
+                  ? (anchor) => setStopTokenAnchor((cur) => (cur ? null : anchor))
+                  : undefined
+              }
+              onDetachToken={activeStopToken ? detachStopToken : undefined}
+              onGestureStart={onGestureStart}
+              onGestureEnd={onGestureEnd}
+            />
+          )}
+
           {/* Saturation / value field */}
           <div
             ref={svRef}
@@ -589,26 +653,6 @@ export function ColorPanel({
             onPickFromScreen={hasEyeDropper ? pickFromScreen : undefined}
             hexInputAttrs={{ "data-hex-input": "1" }}
           />
-
-          {gradient && (
-            <GradientStopBar
-              paint={gradient}
-              stops={stops}
-              stopIndex={stopIndex}
-              onStopsChange={applyStops}
-              onSelectStop={setStopIndex}
-              onAngleChange={(next) => onChange(next, false)}
-              stopToken={activeStopToken}
-              onOpenTokenPicker={
-                doc
-                  ? (anchor) => setStopTokenAnchor((cur) => (cur ? null : anchor))
-                  : undefined
-              }
-              onDetachToken={activeStopToken ? detachStopToken : undefined}
-              onGestureStart={onGestureStart}
-              onGestureEnd={onGestureEnd}
-            />
-          )}
 
           {gradient && doc && stopTokenAnchor && (
             <ColorTokenPicker

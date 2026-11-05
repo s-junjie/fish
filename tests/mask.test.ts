@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { getActivePage } from "../src/core/dsl/types";
 import { h } from "preact";
-import { maskAlphaFilterDef, maskBackdropClip, maskClipDef, maskIsClip, maskLayerDef, MaskDefOptions } from "../src/ui/canvas/mask-defs";
+import { maskAlphaFilterDef, maskBackdropClip, maskClipDef, maskCoveragePaint, maskIsClip, maskLayerDef, MaskDefOptions } from "../src/ui/canvas/mask-defs";
 import { renderNodeList } from "../src/ui/canvas/SvgElementRenderer";
 import type { NodeRenderContext } from "../src/ui/canvas/NodeRenderContext";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
@@ -37,6 +37,9 @@ const rect = (extra: Partial<DesignElement> = {}): DesignElement =>
 
 const render = (el: DesignElement, over: Partial<MaskDefOptions> = {}): any =>
   maskLayerDef(el, { box: null, fills: el.fills ?? [], ...over });
+
+const ramp = (from: string, to: string, extra: Partial<Paint> = {}): Paint =>
+  ({ type: "linear-gradient", from, to, angle: 90, ...extra }) as Paint;
 
 /** Every element VNode in a tree, in document order. */
 const elementsIn = (vnode: any, out: any[] = []): any[] => {
@@ -76,10 +79,11 @@ describe("a mask paints the element's own fill stack", () => {
     expect(painted(mask)[0].props.fill).toBe("url(#pat_m_1)");
   });
 
-  it("references a gradient layer's own gradient def", () => {
-    const mask = render(rect({ fills: [{ type: "linear-gradient", stops: [] } as any] }));
+  it("references its coverage gradient, not the fill one", () => {
+    const mask = render(rect({ fills: [ramp("#FFFFFFC4", "#FFFFFFB8")] }));
 
-    expect(painted(mask)[0].props.fill).toBe("url(#grad_fill_m_0)");
+    expect(painted(mask)[0].props.fill).toBe("url(#grad_mask_m_0)");
+    expect(painted(mask)[0].props.fillOpacity).toBe(1);
   });
 
   it("carries a fill layer's own opacity into the mask", () => {
@@ -620,5 +624,63 @@ describe("maskMode is a stored, validated property", () => {
     expect(filter.props.height).toBeLessThan(2000);
     expect(mask.props.width).toBe(filter.props.width);
     expect(mask.props.height).toBe(filter.props.height);
+  });
+});
+
+/**
+ * Alpha mode is bridged into SVG's luminance `<mask>` by writing white into RGB
+ * and leaving alpha alone — exact, but the bridge lands in a mask surface's 8-bit
+ * ALPHA, which Chromium does not dither. Measured on a 400px ramp from #E8E7E3C4
+ * to #E8E7E3B8: 4 value changes as a mask against 302 as a fill, each band 31px
+ * wide at 1x and 63px at 2x — the stripes a shallow fade used to show. A gradient
+ * can carry the same coverage in its stop COLOURS instead, and a grey ramp IS
+ * dithered. Colour is unread in alpha mode, so nothing but coverage survives.
+ */
+describe("an alpha gradient carries its coverage in its stop colours", () => {
+  it("folds each stop's alpha into an opaque grey", () => {
+    const { paint } = maskCoveragePaint(rect(), [ramp("#FFFFFF00", "#FFFFFFFF")])!;
+
+    expect((paint as any).stops.map((s: any) => s.color)).toEqual(["#000000", "#FFFFFF"]);
+  });
+
+  it("scales the grey by the layer's own opacity, which the fold consumes", () => {
+    const el = rect({ fills: [ramp("#FFFFFF", "#FFFFFF", { opacity: 0.5 })] });
+    const { paint } = maskCoveragePaint(el, el.fills)!;
+
+    expect((paint as any).stops.map((s: any) => s.color)).toEqual(["#808080", "#808080"]);
+    expect(painted(render(el))[0].props.fillOpacity).toBe(1);
+  });
+
+  it("needs no alpha adapter once the coverage is luminance", () => {
+    const el = rect({ fills: [ramp("#FFFFFFC4", "#FFFFFFB8")] });
+
+    expect(group(render(el)).props.filter).toBeUndefined();
+    expect(maskAlphaFilterDef(el, null, el.fills)).toBeNull();
+  });
+
+  it("leaves a luminance mask on the fill's own gradient, where brightness IS the mask", () => {
+    const el = rect({ maskMode: "luminance", fills: [ramp("#FFFFFF", "#000000")] });
+
+    expect(maskCoveragePaint(el, el.fills)).toBeNull();
+    expect(painted(render(el))[0].props.fill).toBe("url(#grad_fill_m_0)");
+  });
+
+  it("refuses a two-layer stack, whose composite is not a ramp any stop list can state", () => {
+    const el = rect({
+      fills: [ramp("#FFFFFFC4", "#FFFFFFB8"), { type: "solid", color: "#FFFFFF80" } as Paint]
+    });
+
+    expect(maskCoveragePaint(el, el.fills)).toBeNull();
+    expect(group(render(el)).props.filter).toBe("url(#maskalpha_m)");
+  });
+
+  it("refuses a blurred mask, which the filter would have to run the fold through anyway", () => {
+    const el = rect({
+      fills: [ramp("#FFFFFFC4", "#FFFFFFB8")],
+      effects: [{ type: "layer-blur", blur: 40, enabled: true }]
+    });
+
+    expect(maskCoveragePaint(el, el.fills)).toBeNull();
+    expect(group(render(el)).props.filter).toBe("url(#maskalpha_m)");
   });
 });

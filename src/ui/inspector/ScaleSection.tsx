@@ -1,6 +1,5 @@
 import { useRef, useState } from "preact/hooks";
-import { getActivePage } from "../../core/dsl/types";
-import { DesignDocument, DesignElement } from "../../core/dsl/types";
+import { DesignDocument, DesignElement, getActivePage, updateActivePageElements } from "../../core/dsl/types";
 import { ScrubInput } from "../ScrubInput";
 import { useDismiss } from "../hooks/useDismiss";
 import { t } from "../../i18n";
@@ -14,6 +13,7 @@ import {
 } from "../../core/interactions/scale-ops";
 import { Scaling, ChevronDown, Check, X } from "lucide-react";
 import { floorScaleFactor } from "../../core/geometry/scale-geometry";
+import { relayoutDocumentTree } from "../../core/compile";
 import { Section } from "./SectionHeader";
 import { FieldDropdown } from "./FieldDropdown";
 import { Button } from "../Button";
@@ -91,8 +91,17 @@ export function ScaleSection({
 
   const commitResult = (result: ScaleResult, discrete = true) => {
     if (result.changed) {
-      if (discrete) onCommitSnapshot(result.doc);
-      else setDoc(() => result.doc);
+      // A scale writes a box the engine may only derive: a `fit-content` text's
+      // width, a hugging frame's height, a `fill` child's box. Without the pass the
+      // stored tree holds a number the next relayout replaces, so the type is scaled
+      // but not re-wrapped and the panel's own W/H are read off a box nobody paints.
+      // The canvas gesture settles its frames the same way.
+      const settled = updateActivePageElements(
+        result.doc,
+        relayoutDocumentTree(getActivePage(result.doc).children)
+      );
+      if (discrete) onCommitSnapshot(settled);
+      else setDoc(() => settled);
       return;
     }
     // A refusal is computed on purpose and then has nowhere to go, which is how a
@@ -128,6 +137,19 @@ export function ScaleSection({
       <Section id="scale" title={t("scale.title")} trailing={closeButton} data-scale-section="true">
         <div className="text-ui text-ink-muted" data-scale-empty="true">
           {t("scale.nothingSelected")}
+        </div>
+      </Section>
+    );
+  }
+
+  // A node reached INSIDE an instance is a resolved clone: it has no box in the
+  // document, so `selectionWorldBounds` cannot see it and every field below would
+  // report the `?? 1` fallback and commit nothing. Point at the instance instead.
+  if (!selectedElements.some((el) => !el.__instanceId)) {
+    return (
+      <Section id="scale" title={t("scale.title")} trailing={closeButton} data-scale-section="true">
+        <div className="text-ui text-ink-muted" data-scale-derived="true">
+          {t("scale.derivedChild")}
         </div>
       </Section>
     );

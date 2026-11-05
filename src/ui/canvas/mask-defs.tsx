@@ -6,7 +6,7 @@ import {
   PathElement,
   RectElement
 } from "../../core/dsl/types";
-import { getShapeLocalPath, isGradientPaint } from "../../core/geometry/gradient-utils";
+import { getGradientStops, getShapeLocalPath, isGradientPaint } from "../../core/geometry/gradient-utils";
 import { rectToPathData } from "../../core/compile";
 import { paintLayerIndex, topPaint } from "../../core/dsl/paint-stack";
 import { elementPivot } from "../../core/geometry/transforms";
@@ -21,6 +21,7 @@ import {
 import { resolvedPaintStack, type InstanceBox } from "../../core/interactions/instance-inherit";
 import { CANVAS_MASK_KEEP } from "./canvas-colors";
 import { resolveStack } from "../../core/font-stack";
+import { parseColorAlpha } from "../../core/geometry/color-utils";
 
 /** White in, alpha through: the alpha row `0 0 0 1 0` is the identity on A. */
 const ALPHA_TO_LUMINANCE = "0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1 0";
@@ -40,6 +41,79 @@ const LUMINANCE_INVERT = "-1 0 0 0 1  0 -1 0 0 1  0 0 -1 0 1  0 0 0 1 0";
 /** Whether this mask reads its paint as a negative. Luminance mode only. */
 function isInverted(el: DesignElement): boolean {
   return el.maskInvert === true && (el.maskMode ?? "alpha") === "luminance";
+}
+
+/** A gradient restated as coverage, plus the stack position its def id is keyed by. */
+export interface MaskCoveragePaint {
+  /** The gradient, with opaque greys where its alphas were. */
+  paint: Paint;
+  index: number;
+}
+
+/** Alpha as a fraction, read off the colour's own bytes where it has them. */
+function alphaFraction(color: string): number {
+  const v = color.trim();
+  if (/^#[0-9a-fA-F]{8}$/.test(v)) return parseInt(v.slice(7, 9), 16) / 255;
+  if (/^#[0-9a-fA-F]{4}$/.test(v)) return parseInt(v[4] + v[4], 16) / 255;
+  return parseColorAlpha(color).alphaPct / 100;
+}
+
+function coverageGrey(color: string, scale: number): string {
+  const level = Math.round(Math.min(1, Math.max(0, alphaFraction(color) * scale)) * 255);
+  const hex = level.toString(16).padStart(2, "0").toUpperCase();
+  return `#${hex}${hex}${hex}`;
+}
+
+/**
+ * A gradient's alpha, restated as an OPAQUE GREY ramp — the same coverage, in the
+ * channel `<mask>` actually reads.
+ *
+ * Alpha mode is bridged by `maskAlphaFilterDef`, which writes white into RGB and
+ * leaves alpha alone. That bridge is exact, but it lands in a mask surface's 8-bit
+ * ALPHA, which Chromium does not dither: a shallow ramp comes out as flat bands
+ * tens of pixels wide with hard edges, while the identical ramp painted as a fill
+ * is dithered down to 1px. Measured on a 400px ramp from #E8E7E3C4 to #E8E7E3B8 —
+ * 10 value changes, in 31px flats, against 302 changes for the same ramp as a
+ * fill; zooming widens the bands (63px at 2x) rather than resolving them.
+ * `npm run probe:mask-banding`.
+ *
+ * A gradient needs no bridge: its alpha can be folded into the stop COLOURS before
+ * it is painted, so the mask surface carries the ramp in RGB, which IS dithered.
+ * Colour is unread in alpha mode, so nothing but the coverage survives the fold.
+ *
+ * Only a single-paint stack folds. Two translucent layers composite as
+ * `1 - (1-a)(1-b)`, which is not a ramp any stop list can state.
+ */
+export function maskCoveragePaint(
+  el: DesignElement,
+  fills: PaintStack | undefined,
+  box: InstanceBox | null = null
+): MaskCoveragePaint | null {
+  // Luminance already reads brightness, and a text masks by its own colour.
+  if (el.type === "text" || (el.maskMode ?? "alpha") === "luminance") return null;
+  // A blur is a filter this fold would have to run through anyway.
+  if (maskLayerBlur(el, box) > 0) return null;
+  const active = (fills ?? []).filter((f) => f && f.enabled !== false);
+  if (active.length !== 1) return null;
+  const fill = active[0];
+  if (!isGradientPaint(fill)) return null;
+  // Blend-encoded stops carry a flood colour whose alpha is not the coverage.
+  if (fill.blendMode === "plus-lighter" || fill.blendMode === "color-burn") return null;
+
+  const scale = typeof fill.opacity === "number" ? fill.opacity : 1;
+  const stops = getGradientStops(fill).map((s) => ({
+    color: coverageGrey(s.color, scale),
+    offset: s.offset
+  }));
+  return {
+    index: paintLayerIndex(fills, fill, 0),
+    paint: {
+      ...fill,
+      from: coverageGrey((fill as { from?: string }).from ?? "#FFFFFF", scale),
+      to: coverageGrey((fill as { to?: string }).to ?? "#FFFFFF", scale),
+      stops
+    } as Paint
+  };
 }
 
 export interface MaskDefOptions {
@@ -286,7 +360,10 @@ export function maskLayerDef(el: DesignElement, opts: MaskDefOptions): preact.VN
   // The stencil turns on the same pivot the artwork does, or a rotated mask
   // stops covering the layer it was masking.
   const pivot = elementPivot(el);
-  const filtered = inverted || el.maskMode !== "luminance" || blur > 0;
+  const coverage = maskCoveragePaint(el, opts.fills, opts.box);
+  // A folded gradient already carries its coverage in RGB, so the alpha adapter
+  // would overwrite it with white — see `maskCoveragePaint`.
+  const filtered = !coverage && (inverted || el.maskMode !== "luminance" || blur > 0);
 
   return (
     <mask
@@ -307,7 +384,7 @@ export function maskLayerDef(el: DesignElement, opts: MaskDefOptions): preact.VN
           meant on a mask. */}
       <g opacity={opacity < 1 ? opacity : undefined} filter={filtered ? `url(#maskalpha_${el.id})` : undefined}>
         <g transform={`translate(${el.x}, ${el.y}) rotate(${el.rotation || 0} ${pivot.x - el.x} ${pivot.y - el.y})`}>
-          {maskContent(el, opts)}
+          {maskContent(el, opts, coverage)}
         </g>
       </g>
     </mask>
@@ -320,7 +397,11 @@ export function maskLayerDef(el: DesignElement, opts: MaskDefOptions): preact.VN
  * Shared by both defs: a `<mask>` and the CSS mask a backdrop div wears have to
  * be the same shape, and two builders would be two answers to that question.
  */
-function maskContent(el: DesignElement, opts: MaskDefOptions): preact.VNode {
+function maskContent(
+  el: DesignElement,
+  opts: MaskDefOptions,
+  coverage: MaskCoveragePaint | null = null
+): preact.VNode {
   const { box, fills } = opts;
   const active = fills.filter((f) => f && f.enabled !== false);
 
@@ -388,10 +469,13 @@ function maskContent(el: DesignElement, opts: MaskDefOptions): preact.VNode {
     <>
       {active.map((f, idx) => {
         let fillVal = "none";
+        const folded = coverage && coverage.index === layerIndex(f, idx);
         if (f.type === "solid") {
           fillVal = f.color;
         } else if (isGradientPaint(f)) {
-          fillVal = `url(#grad_fill_${el.id}_${layerIndex(f, idx)})`;
+          fillVal = folded
+            ? `url(#grad_mask_${el.id}_${coverage.index})`
+            : `url(#grad_fill_${el.id}_${layerIndex(f, idx)})`;
         } else if (f.type === "image") {
           fillVal = `url(#pat_${el.id}_${layerIndex(f, idx)})`;
         } else if (f.type === "pattern") {
@@ -402,7 +486,7 @@ function maskContent(el: DesignElement, opts: MaskDefOptions): preact.VNode {
             key={idx}
             d={shapeLocalD}
             fill={fillVal}
-            fillOpacity={typeof f.opacity === "number" ? f.opacity : 1}
+            fillOpacity={folded ? 1 : typeof f.opacity === "number" ? f.opacity : 1}
             fillRule={el.type === "path" ? (el as PathElement).fillRule : undefined}
           />
         );
@@ -414,13 +498,21 @@ function maskContent(el: DesignElement, opts: MaskDefOptions): preact.VNode {
 /**
  * The alpha-to-luminance adapter for one `alpha`-mode mask, or null in
  * `luminance` mode (where the paint's own brightness is the mask and there is
- * nothing to normalize).
+ * nothing to normalize) — and null for a gradient, which `maskCoveragePaint`
+ * folds into its own colours instead of paying for a filter that bands.
  *
  * `userSpaceOnUse` matches the `<mask>` region exactly: a bbox-relative filter
  * region collapses to nothing for a zero-area shape, and the result would be a
  * mask that hides everything.
  */
-export function maskAlphaFilterDef(el: DesignElement, box: InstanceBox | null = null): preact.VNode | null {
+export function maskAlphaFilterDef(
+  el: DesignElement,
+  box: InstanceBox | null = null,
+  fills?: PaintStack
+): preact.VNode | null {
+  // A folded gradient carries its coverage in RGB already; the adapter would
+  // flatten it to white.
+  if (fills && maskCoveragePaint(el, fills, box)) return null;
   const blur = maskLayerBlur(el, box);
   // Luminance needs no adapter: brightness IS the mask — unless it is read as a
   // negative, or blurred, both of which are work this filter has to do.

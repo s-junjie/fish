@@ -847,7 +847,6 @@ function InspectorPanelBase({
                   docRef={docRef}
                   canvasContainerRef={canvasContainerRef}
                   selectedElements={selectedElements}
-                  primarySelected={primarySelected}
                 />
               )}
             </>

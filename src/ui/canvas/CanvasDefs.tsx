@@ -23,7 +23,7 @@ import { paintLayerIndex } from "../../core/dsl/paint-stack";
 import { PatternPaintDef } from "./PatternPaintDef";
 import { appendColorFilterNodes } from "./color-filter-nodes";
 import { buildReferenceRegistry, ReferenceRegistry } from "./reference-registry";
-import { maskAlphaFilterDef, maskClipDef, maskLayerDef } from "./mask-defs";
+import { maskAlphaFilterDef, maskClipDef, maskCoveragePaint, maskLayerDef } from "./mask-defs";
 import { edgeClipDefs } from "./EdgeLayer";
 import type { TearEffect } from "../../core/dsl/types";
 import { Fragment } from "preact";
@@ -455,6 +455,12 @@ export function renderElementDefs(props: ElementDefsProps) {
       );
     })
     .filter(Boolean);
+  // A mask whose coverage is a gradient carries it in the STOP COLOURS rather
+  // than in alpha — see `maskCoveragePaint`, which is where the alpha is folded
+  // into an opaque grey. It needs its own def: the fill one is painted with the
+  // author's colours, and is still referenced by the stencil node.
+  const maskCoverage = el.isMask ? maskCoveragePaint(el, fills, box) : null;
+
   const imageTiles = fills
     .map((f, fIdx) => {
       if (!f || f.type !== "image" || f.enabled === false) return null;
@@ -630,7 +636,16 @@ export function renderElementDefs(props: ElementDefsProps) {
             if (maskClip) return <Fragment key={`mask_${el.id}`}>{maskClip}</Fragment>;
             return (
               <Fragment key={`mask_${el.id}`}>
-                {maskAlphaFilterDef(el, box)}
+                {maskCoverage ? (
+                  <GradientDef
+                    id={`grad_mask_${el.id}_${maskCoverage.index}`}
+                    paint={maskCoverage.paint}
+                    width={w}
+                    height={h}
+                    viewScale={viewScale}
+                  />
+                ) : null}
+                {maskAlphaFilterDef(el, box, fills)}
                 {maskLayerDef(el, { box, fills })}
               </Fragment>
             );

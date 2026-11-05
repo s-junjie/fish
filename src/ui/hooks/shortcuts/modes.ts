@@ -1,5 +1,6 @@
 import { ancestorChain } from "../../../core/interactions/component-swap";
 import { isContainer } from "../../../core/geometry/tree-ops";
+import { isVectorEditable } from "../../../core/geometry/path-convert";
 import { getImageCropTarget, setImageCropTarget } from "../image-crop-edit";
 import { isPickerOpen } from "../picker-focus";
 import { isBrowserReservedKey, presentKey } from "../../present/presentKeys";
@@ -130,8 +131,11 @@ export const ESCAPE: KeyRule = {
  * below. Hence the registry question rather than an event ordering trick.
  *
  * Declines when it matched none of the three, so a bare Enter still reaches
- * `DRILL_IN`: with no `onStartPathEdit` wired up, Enter on a text layer has to
- * open the text editor rather than fall through to nothing.
+ * `DRILL_IN`: a text layer has no path to edit, and Enter on it has to open the
+ * text editor rather than fall through to nothing. The third branch asks
+ * `isVectorEditable` for exactly that reason — claiming the key for any single
+ * selection swallowed Enter on text and on frames, which the vector editor then
+ * refused, so both presses did nothing at all.
  */
 export const ENTER: KeyRule = {
   when: (e) => e.key === "Enter" && !isInputTarget(e) && !isPickerOpen(),
@@ -146,7 +150,12 @@ export const ENTER: KeyRule = {
       ctx.onExitPathEdit();
       return true;
     }
-    if (ctx.primarySelected && ctx.selectedIds.size === 1 && ctx.onStartPathEdit) {
+    if (
+      ctx.primarySelected &&
+      ctx.selectedIds.size === 1 &&
+      ctx.onStartPathEdit &&
+      isVectorEditable(ctx.primarySelected)
+    ) {
       e.preventDefault();
       ctx.onStartPathEdit(ctx.primarySelected);
       return true;
@@ -160,10 +169,13 @@ export const ENTER: KeyRule = {
  * opens the text editor.
  *
  * Both branches open a canvas edit, and a locked layer is reachable only through
- * the Layers Panel — it answers neither.
+ * the Layers Panel — it answers neither. The picker gate is the same one Escape
+ * and `ENTER` carry: while a floating panel is open, Enter confirms it, and a rule
+ * behind `ENTER` is the one that would otherwise drill in on the way to that
+ * confirmation.
  */
 export const DRILL_IN: KeyRule = {
-  when: (e) => e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey,
+  when: (e) => e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && !isPickerOpen(),
   run: (e, ctx) => {
     const el = ctx.primarySelected;
     if (!el || el.locked || ctx.selectedIds.size !== 1) return false;

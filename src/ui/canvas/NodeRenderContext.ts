@@ -64,6 +64,14 @@ export interface NodeRenderContext {
   onStartCanvasTextEdit: (el: TextElement) => void;
   onCommitCanvasText: () => void;
   onCancelCanvasText: () => void;
+  /**
+   * The caret's own undo/redo. A text edit is ONE document gesture, so the
+   * store cannot step back inside it — the draft keeps its own history, and the
+   * browser's must not run (it replays DOM edits against a tree the renderer
+   * rebuilds from the model). See `useInlineEditing`.
+   */
+  onUndoCanvasText?: () => void;
+  onRedoCanvasText?: () => void;
   /** Renderer measured the painted glyph-run box of an on-path text; write it
    * back into the element so selection/marquee/cull/alignment read real geometry. */
   onOnPathTextBounds?: (id: string, box: { x: number; y: number; width: number; height: number }) => void;

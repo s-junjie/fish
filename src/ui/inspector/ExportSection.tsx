@@ -3,6 +3,7 @@ import { flushSync } from "preact/compat";
 import { DesignDocument, DesignElement, getActivePage } from "../../core/dsl/types";
 import { exportCanvasAsBlob, exportCanvasAsSvgBlob, ExportBounds } from "../../core/export";
 import { exportBounds } from "./export-bounds";
+import { exportNames, exportUnits } from "./export-units";
 import { elementAABB } from "../../core/geometry/element-bounds";
 import { flattenElements } from "../../core/geometry/tree-ops";
 import { worldOriginOf } from "../../core/interactions/component-swap";
@@ -22,15 +23,13 @@ interface ExportSectionProps {
   docRef: { current: DesignDocument };
   canvasContainerRef: { current: HTMLDivElement | null };
   selectedElements: DesignElement[];
-  primarySelected: DesignElement | null;
 }
 
 export function ExportSection({
   doc,
   docRef,
   canvasContainerRef,
-  selectedElements,
-  primarySelected
+  selectedElements
 }: ExportSectionProps) {
   const [scale, setScale] = useState(1);
   const [format, setFormat] = useState<ExportFormat>("png");
@@ -42,21 +41,33 @@ export function ExportSection({
    * The crop, computed from the document as it was when it last held still.
    *
    * `exportBounds` measures: it resolves instances and re-runs their layout to
-   * find the box a node actually paints into. This line used to run on every
-   * render of this panel, and the inspector re-renders once per drag frame — so
-   * dragging a layer paid a document-wide measurement per frame, and the FIRST
-   * one (cold text metrics) blocked the frame for ~60 ms. That was the pause
-   * before an element started following the pointer.
+   * find the box a node actually paints into. That measurement used to run on
+   * every render of this panel, and the inspector re-renders once per drag frame
+   * — so dragging a layer paid a document-wide measurement per frame, and the
+   * FIRST one (cold text metrics) blocked the frame for ~60 ms. That was the
+   * pause before an element started following the pointer.
    *
    * A crop size is read, never acted on mid-gesture: nobody clicks Export with a
    * button held down. Trailing the camera by one settle is invisible here, and it
    * is the same rule the stage alignment and the defs already follow.
    */
   const settledDoc = useSettledValue(doc, 120);
-  const settledSelection = useSettledValue(selectedElements, 120);
-  const bounds: ExportBounds = useMemo(
-    () => exportBounds(settledDoc, settledSelection),
-    [settledDoc, settledSelection]
+  /**
+   * What this press writes out: one file per selected layer.
+   *
+   * The panel used to crop the whole selection into a single image, which for two
+   * frames meant a file the size of the empty gap between them. `bounds` is only
+   * the size of ONE unit, so a multi-selection has no single number to show and
+   * the header says how many files there are instead.
+   *
+   * Read LIVE while the crop below is read settled: the unit list is a tree walk
+   * over the selection, not a measurement, and a stale one would name the wrong
+   * SET of files — a different failure from a crop that trails a drag by a beat.
+   */
+  const units = useMemo(() => exportUnits(doc, selectedElements), [doc, selectedElements]);
+  const bounds: ExportBounds | null = useMemo(
+    () => (units.length > 1 ? null : exportBounds(settledDoc, units)),
+    [settledDoc, units]
   );
 
   /**
@@ -67,8 +78,12 @@ export function ExportSection({
    * full-page export of a page taller than the window. That asymmetry is the
    * point: the mirror costs a full tree build, and this is what keeps that cost
    * off the path where it would buy nothing.
+   *
+   * Asked once for the whole batch, against the box that contains every unit: an
+   * element that overlaps one unit's crop overlaps the union too, so one answer
+   * covers them all.
    */
-  const liveCanvasIsShort = (): boolean => {
+  const liveCanvasIsShort = (crop: ExportBounds): boolean => {
     const live = canvasContainerRef.current?.querySelector("svg");
     if (!live) return true;
     for (const el of flattenElements(getActivePage(doc).children)) {
@@ -76,11 +91,42 @@ export function ExportSection({
       const origin = worldOriginOf(doc, el);
       const x = box.x + origin.x;
       const y = box.y + origin.y;
-      if (x > bounds.x + bounds.width || x + box.width < bounds.x) continue;
-      if (y > bounds.y + bounds.height || y + box.height < bounds.y) continue;
+      if (x > crop.x + crop.width || x + box.width < crop.x) continue;
+      if (y > crop.y + crop.height || y + box.height < crop.y) continue;
       if (!live.querySelector(`[data-element-id="${CSS.escape(el.id)}"]`)) return true;
     }
     return false;
+  };
+
+  /** Every id a unit paints through — the export keeps these and drops the rest. */
+  const subtreeIds = (el: DesignElement): Set<string> => {
+    const ids = new Set<string>();
+    const walk = (node: DesignElement) => {
+      ids.add(node.id);
+      if ("children" in node && Array.isArray((node as any).children)) {
+        for (const child of (node as any).children) walk(child);
+      }
+    };
+    walk(el);
+    return ids;
+  };
+
+  const download = (blob: Blob, name: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  /** The box that contains every unit — what the culling probe is asked about. */
+  const unionCrop = (boxes: readonly ExportBounds[]): ExportBounds => {
+    const minX = Math.min(...boxes.map((b) => b.x));
+    const minY = Math.min(...boxes.map((b) => b.y));
+    const maxX = Math.max(...boxes.map((b) => b.x + b.width));
+    const maxY = Math.max(...boxes.map((b) => b.y + b.height));
+    return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
   };
 
   const handleExport = async () => {
@@ -89,54 +135,40 @@ export function ExportSection({
     setIsExporting(true);
     let needsMirror = false;
     try {
-      const allowedIds = new Set<string>();
-      const collectDescendantIds = (el: DesignElement) => {
-        allowedIds.add(el.id);
-        if ("children" in el && Array.isArray((el as any).children)) {
-          for (const child of (el as any).children) {
-            collectDescendantIds(child);
-          }
-        }
-      };
-      selectedElements.forEach(collectDescendantIds);
+      // No selection is the whole canvas: one picture, named after the page.
+      const batch: (DesignElement | null)[] = units.length > 0 ? [...units] : [null];
+      const names =
+        units.length > 0
+          ? exportNames(units)
+          : [`${doc.name || "canvas"}_${getActivePage(doc).name || "page"}`];
+      const crops: ExportBounds[] =
+        units.length > 0 ? units.map((unit) => exportBounds(doc, [unit])) : [exportBounds(doc, [])];
 
-      const options = {
-        scale,
-        bounds,
-        allowedElementIds: selectedElements.length > 0 ? allowedIds : undefined
-      };
-
-      needsMirror = liveCanvasIsShort();
+      needsMirror = liveCanvasIsShort(unionCrop(crops));
       let source: HTMLElement | null = canvasContainerRef.current;
       if (needsMirror) {
         flushSync(() => setMirrorMounted(true));
         source = mirrorHostRef.current ?? source;
       }
 
-      const blob =
-        format === "svg"
-          ? await exportCanvasAsSvgBlob(doc, source, options)
-          : await exportCanvasAsBlob(
-              doc,
-              source,
-              options,
-              format === "webp" ? "image/webp" : "image/png",
-              1.0
-            );
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      const baseName = (
-        selectedElements.length === 1
-          ? primarySelected?.name || primarySelected?.type || "element"
-          : selectedElements.length > 1
-          ? doc.name || "export"
-          : `${doc.name || "canvas"}_${getActivePage(doc).name || "page"}`
-      ).replace(/[\\/:*?"<>|]/g, "_");
-      a.href = url;
-      a.download = `${baseName}${scale > 1 ? `@${scale}x` : ""}.${format}`;
-      a.click();
-      URL.revokeObjectURL(url);
+      for (const [i, unit] of batch.entries()) {
+        const options = {
+          scale,
+          bounds: crops[i],
+          allowedElementIds: unit ? subtreeIds(unit) : undefined
+        };
+        const blob =
+          format === "svg"
+            ? await exportCanvasAsSvgBlob(doc, source, options)
+            : await exportCanvasAsBlob(
+                doc,
+                source,
+                options,
+                format === "webp" ? "image/webp" : "image/png",
+                1.0
+              );
+        download(blob, `${names[i]}${scale > 1 ? `@${scale}x` : ""}.${format}`);
+      }
     } catch (err) {
       console.error(`Export ${format.toUpperCase()} failed`, err);
     } finally {
@@ -151,7 +183,11 @@ export function ExportSection({
     <Section
       id="export"
       title={`${t("properties.export")} ${isFullCanvas ? `(${doc.name || "Canvas"})` : ""}`}
-      trailing={<span className="text-code text-ink-muted">{bounds.width} × {bounds.height}</span>}
+      trailing={
+        <span className="text-code text-ink-muted">
+          {bounds ? `${bounds.width} × ${bounds.height}` : t("properties.exportFiles", { n: units.length })}
+        </span>
+      }
     >
       <div className={ROW_CLASS}>
         <Select value={format} onChange={(v) => setFormat(v as ExportFormat)}>

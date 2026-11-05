@@ -236,7 +236,7 @@ describe("GradientStopBar stop token tag rendering", () => {
         stopIndex: 0,
         onStopsChange: () => {},
         onSelectStop: () => {},
-        onAngleChange: () => {},
+        onPaintChange: () => {},
         stopToken: INK_TOKEN,
         onOpenTokenPicker: () => {},
         onDetachToken: () => {}

@@ -26,6 +26,7 @@
     "probe:modify-loop": "node scripts/probe-modify-loop.mjs",
     "crop:verify": "node scripts/verify-image-crop.mjs",
     "probe:filter-region": "node scripts/probe-filter-region.mjs",
+    "probe:mask-banding": "node scripts/probe-mask-banding.mjs",
     "shot:ps": "powershell -File scripts/shot.ps1",
     "autosave:verify": "node scripts/verify-autosave.mjs",
     "repair:file": "node scripts/repair-fish-file.mjs",

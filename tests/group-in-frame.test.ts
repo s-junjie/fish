@@ -4,7 +4,8 @@ import {
   reparentSelectionIntoFrame,
   findParentById,
   findElementById,
-  computeParentOrigin
+  computeParentOrigin,
+  dissolveFrame
 } from "../src/core/geometry/tree-ops";
 
 // World position of an element = its parent's world origin + its own local x/y.
@@ -100,5 +101,31 @@ describe("reparentSelectionIntoFrame (Cmd+G)", () => {
 
     const ids = next.map((e) => e.id);
     expect(ids).toEqual(["x", "G", "y"]);
+  });
+});
+
+describe("ungroup is the inverse of group", () => {
+  it("hands a nested frame's contents back where they painted", () => {
+    const f = makeFrame("F", 100, 100, [rect("a", 10, 10), rect("b", 60, 60)]);
+    const beforeA = worldPos([f], "a");
+    const beforeB = worldPos([f], "b");
+    const frame: FrameElement = {
+      id: "G",
+      type: "frame",
+      name: "Frame",
+      x: 10,
+      y: 10,
+      width: 90,
+      height: 90,
+      children: [findElementById([f], "a")!, findElementById([f], "b")!]
+    } as FrameElement;
+
+    const grouped = reparentSelectionIntoFrame([f], frame.children!, frame);
+    const ungrouped = dissolveFrame(grouped, "G").elements;
+
+    // The children are back in F, one level up — and still painting where they were.
+    expect(findParentById(ungrouped, "a")?.id).toBe("F");
+    expect(worldPos(ungrouped, "a")).toEqual(beforeA);
+    expect(worldPos(ungrouped, "b")).toEqual(beforeB);
   });
 });

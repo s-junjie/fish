@@ -344,21 +344,30 @@ export function useEditorCommands({
 
       let nextElements: DesignElement[];
       let newIds: string[];
+      // The copies are selected as whole units, and their descendants are not:
+      // a selected descendant gets its own dashed outline, so a duplicated frame
+      // would paint one box per layer inside it. `newIds` still carries every
+      // descendant, because the relayout below asks about all of them.
+      let selected: string[];
 
       if (placement.kind === "into") {
         let currentTree = active;
         const allNewIds: string[] = [];
+        const allRootIds: string[] = [];
         for (const containerId of placement.containerIds) {
           const result = insertClonesIntoContainer(currentTree, sources, containerId, { viewport: viewportRect() });
           currentTree = result.elements;
           allNewIds.push(...result.newIds);
+          allRootIds.push(...result.rootIdBySource.values());
         }
         nextElements = currentTree;
         newIds = allNewIds;
+        selected = allRootIds;
       } else if (placement.kind === "onto-canvas") {
         const result = insertClonesAtRoot(active, sources, offsetCenteringSourcesIn(sources, viewportRect()));
         nextElements = result.elements;
         newIds = result.newIds;
+        selected = [...result.rootIdBySource.values()];
       } else {
         const firstSrc = sources[0];
         const existing = findElementById(active, firstSrc.id);
@@ -366,10 +375,11 @@ export function useEditorCommands({
         const result = insertClones(active, sources, offset);
         nextElements = result.elements;
         newIds = result.newIds;
+        selected = [...result.rootIdBySource.values()];
       }
 
       commitSnapshot(updateActivePageElements(docRef.current, relayoutParents(nextElements, newIds)));
-      setSelectedIds(new Set(newIds));
+      setSelectedIds(new Set(selected));
       duplicateRef.current = null;
     };
 
@@ -380,6 +390,13 @@ export function useEditorCommands({
     // preventDefault there would suppress this event entirely (the old bug
     // that made image pasting unreachable).
     const handlePaste = async (e: ClipboardEvent) => {
+      // A field already consumed it. The caret's own `onPaste` runs before this,
+      // and it re-renders the run the caret lives in — which DETACHES `e.target`,
+      // so `isContentEditable` reads false by the time the event reaches here and
+      // the guard below waves through a paste that was never ours. The result was
+      // the text landing in the caret AND, a moment later, as a second text layer
+      // on the canvas.
+      if (e.defaultPrevented) return;
       const target = e.target as HTMLElement;
       if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable) {
         return;
@@ -696,15 +713,18 @@ export function useEditorCommands({
         offset = moved.x !== 0 || moved.y !== 0 ? moved : prev.delta;
       }
 
-      const { elements, newIds } = insertClones(activeEls(), sources, offset);
+      const { elements, newIds, rootIdBySource } = insertClones(activeEls(), sources, offset);
       const laidOut = relayoutParents(elements, newIds);
       commitSnapshot(updateActivePageElements(docRef.current, laidOut));
-      setSelectedIds(new Set(newIds));
+      // Only the clone roots are selected — see the paste above for why the
+      // descendants must stay out of it.
+      const cloneIds = [...rootIdBySource.values()];
+      setSelectedIds(new Set(cloneIds));
 
       duplicateRef.current =
-        newIds.length === 1
+        cloneIds.length === 1
           ? (() => {
-              const created = findElementById(laidOut, newIds[0]);
+              const created = findElementById(laidOut, cloneIds[0]);
               if (!created) return null;
               const box = elementAABB(created);
               return {

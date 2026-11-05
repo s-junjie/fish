@@ -13,9 +13,9 @@ import {
   flattenElements
 } from "../../../core/geometry/tree-ops";
 import {
-  DEFAULT_SCALE_ANCHOR,
+  ANCHOR_FROM_HANDLE,
   ScaleAnchor,
-  scaleElementsToSize,
+  scaleElementsByFactor,
   selectionWorldBounds
 } from "../../../core/interactions/scale-ops";
 import { createRafCoalescer } from "../../raf";
@@ -38,18 +38,6 @@ import { createRafCoalescer } from "../../raf";
  * handle arithmetic, which is about a rectangle, and the snapping, which already takes
  * a plain box rather than an element.
  */
-
-/** Where a plain resize grows from: the edge opposite the one being dragged. */
-const ANCHOR_FROM_HANDLE: Record<ResizeHandleType, ScaleAnchor> = {
-  br: { x: 0, y: 0 },
-  tr: { x: 0, y: 1 },
-  bl: { x: 1, y: 0 },
-  tl: { x: 1, y: 1 },
-  mr: { x: 0, y: 0.5 },
-  ml: { x: 1, y: 0.5 },
-  bm: { x: 0.5, y: 0 },
-  tm: { x: 0.5, y: 1 }
-};
 
 const CORNERS: ResizeHandleType[] = ["tl", "tr", "br", "bl"];
 
@@ -99,7 +87,6 @@ export interface MultiResizeGestureContext {
   startDragGesture: () => void;
   endDragGesture: () => void;
   scaleMode?: boolean;
-  scaleAnchor?: ScaleAnchor;
   setActiveGuides: (guides: GuideLine[]) => void;
   currentContainerRect: () => DOMRect | null;
 }
@@ -113,7 +100,6 @@ export function createMultiResizeGesture(ctx: MultiResizeGestureContext) {
     startDragGesture,
     endDragGesture,
     scaleMode,
-    scaleAnchor,
     setActiveGuides,
     currentContainerRect
   } = ctx;
@@ -137,6 +123,10 @@ export function createMultiResizeGesture(ctx: MultiResizeGestureContext) {
     const startClientX = e.clientX;
     const startClientY = e.clientY;
     const aspect = start.width / Math.max(1, start.height);
+    // The drag-start tree. A scale is a ratio and every number it writes is rounded
+    // to two decimals, so re-applying it to the tree the last frame produced rounds
+    // once per pointer event and a slow drag loses the progress entirely.
+    const startElements = getActivePage(docRef.current).children;
     // The union is an axis-aligned box, so unlike a single rotated layer there is no
     // local frame to rotate the drag into. A rotated child is scaled by the ratio its
     // AABB takes, which is the same box the dashed outline promised the user.
@@ -150,19 +140,14 @@ export function createMultiResizeGesture(ctx: MultiResizeGestureContext) {
       const dx = (p.x - startClientX) / zoom;
       const dy = (p.y - startClientY) / zoom;
 
-      // Under the Scale tool the anchor is a property of the operation the panel is
-      // showing, so it wins here exactly as it does for one layer. Everywhere else the
-      // handle decides, because a plain resize is a statement about the edge being
+      // The handle decides the anchor: a resize is a statement about the edge being
       // dragged and the opposite edge is what stays put — unless Alt/Option asks for
       // the centre instead, which releases that edge and lets both travel. Hence the
-      // doubling: one pointer delta now buys two edges' worth of size.
+      // doubling: one pointer delta now buys two edges' worth of size. The panel's
+      // anchor picker governs panel edits, which have no handle to disagree with.
       const fromCenter = p.altKey && !scaleMode;
       const grow = fromCenter ? 2 : 1;
-      const anchor = scaleMode
-        ? scaleAnchor ?? DEFAULT_SCALE_ANCHOR
-        : fromCenter
-          ? CENTER_ANCHOR
-          : ANCHOR_FROM_HANDLE[handle];
+      const anchor = fromCenter ? CENTER_ANCHOR : ANCHOR_FROM_HANDLE[handle];
 
       let width = start.width;
       let height = start.height;
@@ -172,7 +157,7 @@ export function createMultiResizeGesture(ctx: MultiResizeGestureContext) {
       if (movesHeight(handle)) {
         height = Math.max(10, Math.round(start.height + grow * (SOUTH.includes(handle) ? dy : -dy)));
       }
-      if (CORNERS.includes(handle) && p.shiftKey) {
+      if (CORNERS.includes(handle) && (p.shiftKey || scaleMode)) {
         height = Math.max(10, Math.round(width / aspect));
       }
 
@@ -210,8 +195,12 @@ export function createMultiResizeGesture(ctx: MultiResizeGestureContext) {
       if (movesHeight(handle)) height = Math.max(10, snap.height);
 
       setDoc((prev) => {
-        const scaled = scaleElementsToSize(getActivePage(prev).children, selectedIds, { width, height }, anchor);
-        if (scaled === getActivePage(prev).children) return prev;
+        const kx = start.width > 0 ? width / start.width : 1;
+        const ky = start.height > 0 ? height / start.height : 1;
+        // Written even at 1x: the frame before this one was already scaled from the
+        // same snapshot, so skipping the commit here would leave the last frame's
+        // size standing when the pointer comes back to where it started.
+        const scaled = scaleElementsByFactor(startElements, selectedIds, kx, ky, anchor);
         // No `sizeOverride` on the instances here, for the same reason the
         // single-layer scale path writes none: the factor IS the size, and the
         // flag would cut the instance off from its master's next resize. It only

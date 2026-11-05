@@ -379,7 +379,7 @@ function emitTextRun(run: TextRun): SVGTextElement {
   // Where the lines go is `text-layout`'s answer, shared with the canvas: the
   // exported file and the canvas paint the same run, and the only way to keep
   // them agreeing at every word is to ask the same function.
-  const { lines, startX, startY, baselineOffset, textAnchor, placement } = layoutTextRun(run);
+  const { lines, lineRanges, startX, startY, baselineOffset, textAnchor, placement } = layoutTextRun(run);
 
   const placeLine = (node: SVGElement, idx: number) => {
     const p = placement(idx);
@@ -434,13 +434,18 @@ function emitTextRun(run: TextRun): SVGTextElement {
       return { span: s, start, end };
     });
 
-    let currentLineStart = 0;
     lines.forEach((lineText, idx) => {
       const lineTspan = document.createElementNS(SVG_NS, "tspan");
       placeLine(lineTspan, idx);
 
-      const currentLineEnd = currentLineStart + lineText.length;
-      // Slice intervals that intersect [currentLineStart, currentLineEnd]
+      // The line's own slice of the SOURCE, not a running total of line
+      // lengths: wrapping drops paragraph newlines and the whitespace a break
+      // lands on, so lengths drift and every run past the first break slides
+      // left — an italic "thing" exported as upright "th" + italic "ing".
+      const { start: currentLineStart, end: currentLineEnd } = lineRanges[idx] ?? {
+        start: 0,
+        end: lineText.length
+      };
       const overlapping = spanIntervals
         .filter((si) => si.end > currentLineStart && si.start < currentLineEnd)
         .map((si) => {
@@ -474,7 +479,6 @@ function emitTextRun(run: TextRun): SVGTextElement {
       }
 
       textNode.appendChild(lineTspan);
-      currentLineStart = currentLineEnd;
     });
   } else {
     lines.forEach((lineText, idx) => {

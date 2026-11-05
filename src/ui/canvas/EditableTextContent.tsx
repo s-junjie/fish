@@ -129,6 +129,44 @@ export function EditableTextContent({
   });
 
   /**
+   * The live props, for the handlers bound by hand.
+   *
+   * `beforeinput` is registered once, so it cannot close over a draft or a
+   * context from the render it was registered in — the draft changes on every
+   * keystroke and the context on every render. Both are read from here instead.
+   */
+  const ctxRef = useRef(ctx);
+  ctxRef.current = ctx;
+  const elRef = useRef(el);
+  elRef.current = el;
+
+  const saveSel = (sel: { start: number; end: number }) => {
+    savedSelectionRef.current = sel;
+    ctx.onTextSelect?.(sel);
+  };
+
+  /**
+   * Replace a range in the MODEL, and put the caret after what was inserted.
+   *
+   * The only way a run-bearing text may be edited through the keyboard. The
+   * browser's own replacement removes the run elements it covered and leaves a
+   * text node behind that Preact never created; the next render then patches
+   * detached nodes and the visible text quietly doubles — one keystroke over a
+   * selection, `"XX"` in the box.
+   */
+  const applyModelEdit = (range: { start: number; end: number }, inserted: string) => {
+    const current = ctxRef.current.canvasTextDraft ?? elRef.current.content ?? "";
+    const from = Math.min(Math.max(0, range.start), current.length);
+    const to = Math.min(Math.max(from, range.end), current.length);
+    const caret = from + inserted.length;
+    saveSel({ start: caret, end: caret });
+    ctxRef.current.setCanvasTextDraft(current.slice(0, from) + inserted + current.slice(to), {
+      start: from,
+      end: to
+    });
+  };
+
+  /**
    * `beforeinput` is attached by hand rather than through an `onBeforeInput` prop:
    * the registered type is exactly `beforeinput`, and a framework's generic
    * `onX` → `addEventListener(x)` mapping is not guaranteed to spell it that way.
@@ -143,17 +181,23 @@ export function EditableTextContent({
       // target ranges describe the composing region, not a splice of the text the
       // reconciler is holding.
       if (isComposingRef.current || e.isComposing) return;
-      if (!SPLICE_INPUT_TYPES.test(e.inputType || "")) return;
-      pendingEditRef.current = getInputTargetOffsets(node, e.getTargetRanges?.() ?? null);
+      const type = e.inputType || "";
+      if (!SPLICE_INPUT_TYPES.test(type)) return;
+      const range = getInputTargetOffsets(node, e.getTargetRanges?.() ?? null);
+      pendingEditRef.current = range;
+
+      const runs = elRef.current.spans;
+      if (!runs || runs.length === 0 || !range) return;
+      const inserted = type.startsWith("insert") ? (e.data ?? "") : "";
+      // A paste or a drop arrives with no `data`: those have their own handlers,
+      // and claiming one here would clear the selection and insert nothing.
+      if (type.startsWith("insert") && !inserted) return;
+      e.preventDefault();
+      applyModelEdit(range, inserted);
     };
     node.addEventListener("beforeinput", onBeforeInput as EventListener);
     return () => node.removeEventListener("beforeinput", onBeforeInput as EventListener);
   }, []);
-
-  const saveSel = (sel: { start: number; end: number }) => {
-    savedSelectionRef.current = sel;
-    ctx.onTextSelect?.(sel);
-  };
 
   // A range is an editing concept: only the open editor has one. Reported from
   // the settled paint it is a range nobody asked for — the browser's own word
@@ -196,11 +240,8 @@ export function EditableTextContent({
   const insertText = (inserted: string) => {
     const node = rootRef.current;
     const sel = node ? getTextSelectionOffsets(node) : null;
-    const cur = ctx.canvasTextDraft ?? el.content ?? "";
-    const s = sel?.start ?? cur.length;
-    const e = sel?.end ?? cur.length;
-    saveSel({ start: s + inserted.length, end: s + inserted.length });
-    ctx.setCanvasTextDraft(cur.slice(0, s) + inserted + cur.slice(e), { start: s, end: e });
+    const length = (ctx.canvasTextDraft ?? el.content ?? "").length;
+    applyModelEdit({ start: sel?.start ?? length, end: sel?.end ?? length }, inserted);
   };
 
   const stopIfEditing = (e: MouseEvent) => isEditingText && e.stopPropagation();
@@ -243,6 +284,23 @@ export function EditableTextContent({
       onKeyUp={(e) => handleSelection(e.currentTarget)}
       onKeyDown={(e) => {
         if (isComposingRef.current || (e as any).isComposing) return;
+        if ((e.metaKey || e.ctrlKey) && (e.key === "z" || e.key === "Z")) {
+          // The caret's history, never the browser's or the document's. A text
+          // edit is one document gesture, so the store has nothing to step back
+          // to; the browser's stack replays DOM edits against a tree the model
+          // rebuilds — and it is EMPTY for the gestures this handler
+          // `preventDefault`s (a return, a paste), which is why those were the
+          // two that could not be undone at all.
+          e.preventDefault();
+          if (e.shiftKey) ctx.onRedoCanvasText?.();
+          else ctx.onUndoCanvasText?.();
+          return;
+        }
+        if ((e.metaKey || e.ctrlKey) && (e.key === "y" || e.key === "Y")) {
+          e.preventDefault();
+          ctx.onRedoCanvasText?.();
+          return;
+        }
         if (e.key === "Enter" || e.code === "Enter") {
           e.preventDefault();
           if (e.metaKey || e.ctrlKey) ctx.onCommitCanvasText();

@@ -4,6 +4,7 @@ import type { ArrowDirection } from "../../../core/interactions/alignment";
 import { nudgeElements, reorderInAutoLayout, reorderZIndex } from "../../../core/interactions/alignment";
 import { runEditorCommand } from "../../commands/editor-commands";
 import { getImageCropTarget } from "../image-crop-edit";
+import { consumeGradientStopDelete } from "../gradient-edit";
 import { editableSelection, refuseDerivedEdit } from "../selection-guards";
 import { altCode, isInputTarget, isMod, isPlain, isArrowKey, letterOf, swallow } from "./guards";
 import type { KeyRule } from "./types";
@@ -174,6 +175,11 @@ export const DELETE: KeyRule = {
   when: (e, ctx) => (e.key === "Backspace" || e.key === "Delete") && ctx.selectedIds.size > 0,
   run: (e) => {
     e.preventDefault();
+    // A stop is a sub-object of the layer, and the panel editing one is a
+    // portal the shortcut cannot see into. While a gradient editor is open the
+    // key belongs to that stop: removing the layer it was aiming at is the one
+    // outcome the author cannot undo their way out of.
+    if (consumeGradientStopDelete()) return true;
     runEditorCommand("delete");
     return true;
   }

@@ -1,9 +1,11 @@
 import {
   AutoLayout,
+  ComponentOverride,
   ContainerElement,
   CornerRadius,
   DesignElement,
   Effect,
+  ElementSizing,
   InstanceElement,
   LetterSpacing,
   LineHeight,
@@ -219,13 +221,24 @@ export function scaleEffect(effect: Effect, sx: number, sy: number, k: number): 
   }
 }
 
-function scaleTextStyle(style: TextStyle, sx: number, sy: number, k: number): TextStyle {
-  return {
-    ...style,
-    fontSize: round2(style.fontSize * k),
-    ...(style.lineHeight !== undefined ? { lineHeight: scaleLineHeight(style.lineHeight, sy) } : {}),
-    ...(style.letterSpacing !== undefined ? { letterSpacing: scaleLetterSpacing(style.letterSpacing, sx) } : {})
-  };
+/**
+ * Every measurement a text carries follows one factor.
+ *
+ * A type size has no axes: there is no such thing as 32px type that is 24px tall,
+ * so the leading and the tracking travel with the size even when the box was
+ * stretched on one axis only. Scaling them by their own axis instead left 32px type
+ * sitting on a 19px line the moment a drag touched the width and not the height.
+ */
+function scaleStyleMeasurements<T extends Partial<TextStyle>>(style: T, k: number): T {
+  const next = { ...style };
+  if (typeof next.fontSize === "number") next.fontSize = round2(next.fontSize * k);
+  if (next.lineHeight !== undefined) next.lineHeight = scaleLineHeight(next.lineHeight, k);
+  if (next.letterSpacing !== undefined) next.letterSpacing = scaleLetterSpacing(next.letterSpacing, k);
+  return next;
+}
+
+function scaleTextStyle(style: TextStyle, k: number): TextStyle {
+  return scaleStyleMeasurements(style, k);
 }
 
 /**
@@ -234,46 +247,76 @@ function scaleTextStyle(style: TextStyle, sx: number, sy: number, k: number): Te
  * its pre-scale type size inside a box that shrank — the run is what paints, so
  * the text visibly outgrows the element it belongs to.
  */
-function scaleTextSpan(span: TextSpan, sx: number, sy: number, k: number): TextSpan {
-  const style = span.style;
-  if (!style) return span;
-  return {
-    ...span,
-    style: {
-      ...style,
-      ...(style.fontSize !== undefined ? { fontSize: round2(style.fontSize * k) } : {}),
-      ...(style.letterSpacing !== undefined
-        ? { letterSpacing: scaleLetterSpacing(style.letterSpacing, sx) }
-        : {})
-    }
-  };
+function scaleTextSpan(span: TextSpan, k: number): TextSpan {
+  if (!span.style) return span;
+  return { ...span, style: scaleStyleMeasurements(span.style, k) };
 }
 
 /**
  * Only an ABSOLUTE tracking scales; a relative one is a ratio and does not.
- * A bare number and `"<n>px"` are lengths and move with `sx`; `"<n>em"` is
- * relative to `fontSize`, which scales by `k` on its own, so it needs no help to
- * track the text it belongs to — multiplying it would compound the growth.
+ * A bare number and `"<n>px"` are lengths and move with the type; `"<n>em"` is
+ * relative to `fontSize`, which scales on its own, so it needs no help to track
+ * the text it belongs to — multiplying it would compound the growth.
  */
-export function scaleLetterSpacing(letterSpacing: LetterSpacing, sx: number): LetterSpacing {
-  if (typeof letterSpacing === "number") return round2(letterSpacing * sx);
+export function scaleLetterSpacing(letterSpacing: LetterSpacing, k: number): LetterSpacing {
+  if (typeof letterSpacing === "number") return round2(letterSpacing * k);
   if (letterSpacing.endsWith("em")) return letterSpacing;
-  return `${round2(Number.parseFloat(letterSpacing) * sx)}px` as LetterSpacing;
+  return `${round2(Number.parseFloat(letterSpacing) * k)}px` as LetterSpacing;
 }
 
 /**
  * Only an ABSOLUTE line height scales; a multiplier is a ratio and does not.
  * Multiplying `1.5` by a factor would turn a leading into three times a leading,
- * the same mistake `TrackSize`'s `fr` entry is kept out of. `fontSize` scales by
- * `k` on its own, so a multiplier needs no help to track the text it belongs to.
+ * the same mistake `TrackSize`'s `fr` entry is kept out of. `fontSize` scales on
+ * its own, so a multiplier needs no help to track the text it belongs to.
  */
-function scaleLineHeight(lineHeight: LineHeight, sy: number): LineHeight {
+function scaleLineHeight(lineHeight: LineHeight, k: number): LineHeight {
   return typeof lineHeight === "number"
     ? lineHeight
-    : (`${round2(Number.parseFloat(lineHeight) * sy)}px` as LineHeight);
+    : (`${round2(Number.parseFloat(lineHeight) * k)}px` as LineHeight);
 }
 
 function scalePadding(value: NonNullable<AutoLayout["padding"]>, sx: number, sy: number, k: number): NonNullable<AutoLayout["padding"]> {
+  if (typeof value === "number") return round2(value * k);
+  const [t, r, b, l] = value;
+  return [round2(t * sy), round2(r * sx), round2(b * sy), round2(l * sx)];
+}
+
+/**
+ * The bounds a derived size is clamped by are lengths of the same box: a master
+ * that may not exceed 1200 wide must allow 2400 after a 2x scale, and leaving them
+ * at 1x pins the scaled layer to the size it used to be allowed. Returned as the
+ * same object when it carries no bounds, so structural sharing survives.
+ */
+export function scaleSizingBounds(
+  sizing: ElementSizing | undefined,
+  sx: number,
+  sy: number
+): ElementSizing | undefined {
+  if (!sizing) return sizing;
+  if (
+    sizing.minWidth === undefined &&
+    sizing.maxWidth === undefined &&
+    sizing.minHeight === undefined &&
+    sizing.maxHeight === undefined
+  ) {
+    return sizing;
+  }
+  return {
+    ...sizing,
+    ...(sizing.minWidth !== undefined ? { minWidth: round2(sizing.minWidth * sx) } : {}),
+    ...(sizing.maxWidth !== undefined ? { maxWidth: round2(sizing.maxWidth * sx) } : {}),
+    ...(sizing.minHeight !== undefined ? { minHeight: round2(sizing.minHeight * sy) } : {}),
+    ...(sizing.maxHeight !== undefined ? { maxHeight: round2(sizing.maxHeight * sy) } : {})
+  };
+}
+
+/**
+ * `margin` is the same measurement as `padding` with a different owner: one edge
+ * belongs to one axis, so a non-uniform scale moves it the way the axis moved. A
+ * scalar is all four edges and follows the box's own factor.
+ */
+function scaleMargin(value: number | [number, number, number, number], sx: number, sy: number, k: number): number | [number, number, number, number] {
   if (typeof value === "number") return round2(value * k);
   const [t, r, b, l] = value;
   return [round2(t * sy), round2(r * sx), round2(b * sy), round2(l * sx)];
@@ -311,9 +354,22 @@ export function scaleLayout(layout: AutoLayout, sx: number, sy: number, k: numbe
 }
 
 /**
+ * Which axes this scale may write. A `fill` axis is the parent's to give, so the
+ * caller passes `1` for it and says so here; the flag is what keeps the properties
+ * with no axis of their own from reading that `1` as "nothing moved".
+ */
+export interface ScaledAxes {
+  x: boolean;
+  y: boolean;
+}
+
+const BOTH_AXES: ScaledAxes = { x: true, y: true };
+
+/**
  * Proportionally scale one node's drawn geometry *and* the properties measured in
  * pixels of that geometry: corner radii, stroke widths, effect blur / spread /
- * offset, text size and leading, auto-layout gap and padding.
+ * offset, text size and leading, auto-layout gap and padding, the size bounds and
+ * the child's own margin.
  *
  * Children are not touched — the node is a leaf as far as this call is
  * concerned, and `scaleSubtreeAbout` is what walks the tree. Keeping the two
@@ -326,8 +382,8 @@ export function scaleLayout(layout: AutoLayout, sx: number, sy: number, k: numbe
  *
  * `uniform` is the factor for the properties with no axis of their own — radius,
  * stroke, blur, type size, a scalar gap. It is `min(sx, sy)` unless the caller knows
- * the box was floored or the aspect flipped, which is the one case where the smaller
- * of two axis factors is no longer the box's own scale; see `uniformFactorOf`.
+ * the box was floored, the aspect flipped, or one axis was the layout's; see
+ * `effectiveFactorsOf`.
  */
 export function scaleElement<T extends DesignElement>(
   el: T,
@@ -378,7 +434,7 @@ export function scaleElement<T extends DesignElement>(
     scaled.effect = effects.some((e, i) => !sameValue(e, box.effects![i]));
   }
   if (box.style) {
-    const style = scaleTextStyle(box.style, sx, sy, k);
+    const style = scaleTextStyle(box.style, k);
     next = { ...next, style };
     scaled.text =
       style.fontSize !== box.style.fontSize ||
@@ -387,10 +443,15 @@ export function scaleElement<T extends DesignElement>(
   }
   const spans = (box as { spans?: TextSpan[] }).spans;
   if (spans && spans.length > 0) {
-    const nextSpans = spans.map((span) => scaleTextSpan(span, sx, sy, k));
+    const nextSpans = spans.map((span) => scaleTextSpan(span, k));
     next = { ...next, spans: nextSpans } as T;
     scaled.text = scaled.text || nextSpans.some((span, i) => !sameValue(span, spans[i]));
   }
+  if (box.margin !== undefined) {
+    next = { ...next, margin: scaleMargin(box.margin, sx, sy, k) };
+  }
+  const bounds = scaleSizingBounds((box as { sizing?: ElementSizing }).sizing, sx, sy);
+  if (bounds !== (box as { sizing?: ElementSizing }).sizing) next = { ...next, sizing: bounds };
   // Narrowed to the two container types that can carry one: a component set has
   // none (its box comes from `fitComponentSet`), so the branch is dead for it and
   // the union is what says so rather than a cast.
@@ -400,7 +461,7 @@ export function scaleElement<T extends DesignElement>(
     next = withLayout(next, layout);
     scaled.spacing = !sameValue(layout, boxLayout);
   }
-  if (next.type === "instance") next = accumulateInstanceScale(next, sx, sy);
+  if (next.type === "instance") next = accumulateInstanceScale(next, sx, sy, k);
   return releaseScaledBindings(next, scaled) as T;
 }
 
@@ -414,13 +475,47 @@ export function scaleElement<T extends DesignElement>(
  * The box is left TRACKING the master — no `sizeOverride` — because
  * master × factor is exactly what a later master resize has to re-derive; the
  * flag would freeze the instance at the size its master happened to have.
+ *
+ * The overrides travel with it. They are stored in the instance's own space — the
+ * inspector shows a resolved node and stores what the user typed over it — so an
+ * override taken at 1x is a 1x number. Applied to a 2x clone unchanged it put the
+ * old type size back on one headline while the rest of the instance doubled.
  */
-function accumulateInstanceScale(inst: InstanceElement, sx: number, sy: number): InstanceElement {
+function accumulateInstanceScale(inst: InstanceElement, sx: number, sy: number, k: number): InstanceElement {
   const before = instanceScaleOf(inst);
   return {
     ...inst,
-    instanceScale: { x: round6(before.x * sx), y: round6(before.y * sy) }
+    instanceScale: { x: round6(before.x * sx), y: round6(before.y * sy) },
+    ...(inst.overrides && inst.overrides.length > 0
+      ? { overrides: inst.overrides.map((ov) => scaleOverride(ov, sx, sy, k)) }
+      : {})
   };
+}
+
+/** The override values that are measurements of the instance's box. */
+function scaleOverride(ov: ComponentOverride, sx: number, sy: number, k: number): ComponentOverride {
+  switch (ov.property) {
+    case "style":
+      return isRecord(ov.value) ? { ...ov, value: scaleStyleMeasurements(ov.value as Partial<TextStyle>, k) } : ov;
+    case "spans":
+      return Array.isArray(ov.value) ? { ...ov, value: (ov.value as TextSpan[]).map((s) => scaleTextSpan(s, k)) } : ov;
+    case "borderRadius":
+      return { ...ov, value: scaleCornerRadius(ov.value as CornerRadius, k) };
+    case "strokes": {
+      const stack = Array.isArray(ov.value) ? (ov.value as Stroke[]) : ov.value ? [ov.value as Stroke] : undefined;
+      return stack ? { ...ov, value: stack.map((s) => scaleStrokeWidth(s, k)) } : ov;
+    }
+    case "effects":
+      return Array.isArray(ov.value)
+        ? { ...ov, value: (ov.value as Effect[]).map((e) => scaleEffect(e, sx, sy, k)) }
+        : ov;
+    default:
+      return ov;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** Structural equality for the small value trees a scale rewrites. */
@@ -534,7 +629,8 @@ export function scaleSubtreeByFactor(
   el: DesignElement,
   sx: number,
   sy: number,
-  anchor: { x: number; y: number }
+  anchor: { x: number; y: number },
+  axes: ScaledAxes = BOTH_AXES
 ): DesignElement {
   if (sx === 1 && sy === 1) return el;
   const { width, height } = flooredScale(el, sx, sy);
@@ -548,7 +644,7 @@ export function scaleSubtreeByFactor(
     width,
     height
   };
-  return withScaledChildren(resized, ...effectiveFactorsOf(el, width, height));
+  return withScaledChildren(resized, ...effectiveFactorsOf(el, width, height, axes));
 }
 
 /**
@@ -568,17 +664,24 @@ export function scaleSubtreeByFactor(
  * what a corner is measured against. It is also the value a reader would recover:
  * the renderer already shrinks an over-large radius proportionally when it draws
  * (`rectToVectorPath`), so the ratio is what the eye sees either way.
+ *
+ * An axis the layout owns is the exception. It arrives as a `1` that is not a
+ * measurement of anything — the height of a hugging text is about to be re-derived
+ * from the type — so the properties with no axis follow the axis that did move
+ * rather than reading `min(2, 1)` as "nothing scaled". A one-axis drag has the same
+ * shape for the same reason: type has no axis, so it takes the scale it was given.
  */
 function effectiveFactorsOf(
   el: DesignElement,
   width: number,
-  height: number
+  height: number,
+  axes: ScaledAxes = BOTH_AXES
 ): [number, number, number] {
-  return [
-    el.width > 0 ? width / el.width : 1,
-    el.height > 0 ? height / el.height : 1,
-    uniformFactorOf(el, width, height)
-  ];
+  const sx = el.width > 0 ? width / el.width : 1;
+  const sy = el.height > 0 ? height / el.height : 1;
+  const moved = [axes.x ? sx : 1, axes.y ? sy : 1].filter((f) => Math.abs(f - 1) > 1e-9);
+  const uniform = moved.length === 1 ? moved[0] : uniformFactorOf(el, width, height);
+  return [sx, sy, uniform];
 }
 
 function withScaledChildren(resized: DesignElement, sx: number, sy: number, uniform: number): DesignElement {

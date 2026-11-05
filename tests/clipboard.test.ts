@@ -210,6 +210,18 @@ describe("Copy / paste / duplicate plumbing", () => {
     expect(instance.componentId).toBe("c1");
   });
 
+  it("reports the clone roots for a paste into a container, not their descendants", () => {
+    const target = frame("f1", []);
+    const source = frame("src", [rect("kid", 10, 10)]);
+    const { elements, newIds, rootIdBySource } = insertClonesIntoContainer([target, source], [source], "f1");
+
+    const cloneRoot = (findElementById(elements, "f1") as FrameElement).children[0] as FrameElement;
+    expect(rootIdBySource.get("src")).toBe(cloneRoot.id);
+    // newIds still carries the subtree — the relayout asks about all of it.
+    expect(newIds).toHaveLength(2);
+    expect(newIds).toContain(cloneRoot.children[0].id);
+  });
+
   it("pastes into a selected container, keeping the source's relative position", () => {
     const targetFrame: FrameElement = {
       id: "f1",

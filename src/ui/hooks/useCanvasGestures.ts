@@ -19,7 +19,6 @@ import {
   isSelectingTool,
   ShapeDraftGeometry
 } from "../../core/geometry/shape-creation";
-import { ScaleAnchor, DEFAULT_SCALE_ANCHOR } from "../../core/interactions/scale-ops";
 import { createElementClick } from "./canvas-gestures/element-click";
 import { createGeometryGestures } from "./canvas-gestures/geometry-gestures";
 import { createGradientGesture } from "./canvas-gestures/gradient-gesture";
@@ -54,7 +53,6 @@ interface UseCanvasGesturesOptions {
   setHintMessage: (msg: string) => void;
   startCanvasTextEdit: (el: TextElement) => void;
   editingPathId?: string | null;
-  scaleAnchor?: ScaleAnchor;
   onAnchorMarquee?: (
     box: { minX: number; minY: number; maxX: number; maxY: number },
     modifiers: { shiftKey: boolean; altKey: boolean },
@@ -125,7 +123,6 @@ export function useCanvasGestures({
   setHintMessage,
   startCanvasTextEdit,
   editingPathId,
-  scaleAnchor = DEFAULT_SCALE_ANCHOR,
   onAnchorMarquee,
   onCommentAtElement,
   onCommentAtCanvas
@@ -625,6 +622,19 @@ export function useCanvasGestures({
     }
   };
 
+  /**
+   * The pointer left the canvas. Only a canvas event clears the hover preview —
+   * a move onto the inspector fires none — so the last hovered layer's outline
+   * stayed painted over everything that happened next, exports included.
+   */
+  const handleCanvasMouseLeave = () => {
+    if (hoverSelectIdRef.current) {
+      hoverSelectIdRef.current = null;
+      setHoverSelectId(null);
+    }
+    setMeasurement(null);
+  };
+
   const { handleCanvasMouseMove } = createCanvasHover({
     docRef,
     zoom,
@@ -749,13 +759,17 @@ export function useCanvasGestures({
     startDragGesture,
     endDragGesture,
     scaleMode: isScalingTool(activeTool),
-    scaleAnchor,
     setHintMessage,
     currentContainerRect,
     setActiveGuides: (guides) => setActiveGuides(guides)
   });
 
-  const { handleGradientHandlePointerDown } = createGradientGesture({
+  const {
+    handleGradientHandlePointerDown,
+    handleGradientStopPointerDown,
+    handleGradientStopInsert,
+    handleGradientStopDelete
+  } = createGradientGesture({
     docRef,
     setDoc,
     pan,
@@ -803,7 +817,6 @@ export function useCanvasGestures({
     startDragGesture,
     endDragGesture,
     scaleMode: isScalingTool(activeTool),
-    scaleAnchor,
     currentContainerRect,
     setActiveGuides: (guides) => setActiveGuides(guides)
   });
@@ -842,6 +855,7 @@ export function useCanvasGestures({
     hoverSelectId,
     handleCanvasMouseDown,
     handleCanvasMouseMove,
+    handleCanvasMouseLeave,
     handleCanvasClick,
     handleElementMouseDown,
     handleResizePointerDown,
@@ -851,6 +865,9 @@ export function useCanvasGestures({
     handleRadiusPointerDown,
     handleStartOffsetPointerDown,
     handleGradientHandlePointerDown,
+    handleGradientStopPointerDown,
+    handleGradientStopInsert,
+    handleGradientStopDelete,
     handleCropMovePointerDown,
     handleCropHandlePointerDown,
     handleCropRotatePointerDown

@@ -104,7 +104,12 @@ export function resolveResizeBox(input: ResolveResizeBoxInput): ResizeBox & { as
   }
 
   const aspect = start.width / Math.max(1, start.height);
-  const aspectActive = (aspectLocked || shiftKey) && !lockW && !lockH && CORNERS.includes(handle);
+  // A corner under `scaleMode` is a SCALE, which is proportional by definition: the
+  // type, the radii and the padding have no axis of their own, so a corner that let
+  // the two axes drift apart would leave them following whichever one came out
+  // smaller. A one-axis stretch stays on the edge handles, where it is the request.
+  const aspectActive =
+    (aspectLocked || shiftKey || scaleMode) && !lockW && !lockH && CORNERS.includes(handle);
   if (aspectActive) {
     height = Math.max(MIN_SIZE, Math.round(width / aspect));
   }

@@ -1,6 +1,7 @@
 import { ContainerElement, DesignDocument, DesignElement, updateActivePageElements } from "../dsl/types";
 import { getActivePage } from "../dsl/types";
 import { containerSizesAxis, resolveAxis } from "../geometry/resolve-axis";
+import type { ResizeHandleType } from "../geometry/snap-guides";
 import { scaleSubtreeByFactor } from "../geometry/scale-geometry";
 import {
   computeParentOrigin,
@@ -51,6 +52,24 @@ export const SCALE_ANCHORS: readonly ScaleAnchor[] = [
 
 /** Figma's default: a scale grows out of the middle unless asked otherwise. */
 export const DEFAULT_SCALE_ANCHOR: ScaleAnchor = { x: 0.5, y: 0.5 };
+
+/**
+ * Where a HANDLE drag grows from: the point opposite the handle, which is the one
+ * the pointer is not holding. A drag is a statement about an edge, so the opposite
+ * edge is what must not move — a centre anchor there makes the grabbed edge travel
+ * at half the pointer's speed and slides the layer out from under it. The panel's
+ * anchor picker governs panel edits, which have no handle to disagree with.
+ */
+export const ANCHOR_FROM_HANDLE: Record<ResizeHandleType, ScaleAnchor> = {
+  br: { x: 0, y: 0 },
+  tr: { x: 0, y: 1 },
+  bl: { x: 1, y: 0 },
+  tl: { x: 1, y: 1 },
+  mr: { x: 0, y: 0.5 },
+  ml: { x: 1, y: 0.5 },
+  bm: { x: 0.5, y: 0 },
+  tm: { x: 0.5, y: 1 }
+};
 
 export type ScaleRefusal = "empty" | "locked" | "engine-sized" | "no-op";
 
@@ -129,21 +148,23 @@ const round2 = (n: number): number => Math.round(n * 100) / 100;
 /**
  * Which axes this layer's own scale may write.
  *
- * An axis the layout engine owns is not this layer's to resize. `fit-content` takes
- * its size from its content and `fill` takes it from its parent, so a box written
- * there is a value the engine is about to replace: the scale appeared to work — the
- * drag moved, the type grew — and then the relayout put the box back to the measured
- * content width or the parent's width, so the one thing the user was pointing at did
- * nothing. The resize path has refused these axes since the beginning; a scale that
- * wrote them anyway was the inconsistent half of the same feature.
+ * One axis the layout engine truly owns is `fill` (and a grid cell's stretch): the
+ * box comes from the parent, and nothing this layer does can change what the parent
+ * hands it. That axis is refused.
  *
- * An INSTANCE is the exception, and for a reason of its own: it has no children
- * this layer can reach, so its box is the only place the operation can be
- * written and the factor is what carries the contents. Refusing its axes made the
- * tool answer `engine-sized` for every instance of a hugging master — a chip, an
- * icon button, most of a design system — and that is not a limitation of the
- * model, it is a scale nobody could perform. Only the layout still outranks it:
- * a `fill` axis and a grid cell's stretch are the parent's to give.
+ * A `fit-content` / `max-content` axis is NOT out of reach, and treating it as if it
+ * were is what made the tool unusable where it matters most. The engine does not
+ * invent that size, it MEASURES the content — and a scale is exactly the operation
+ * that scales the content: type size, padding, gaps, radii, the children's own
+ * boxes. A 16px label doubled measures itself at 32px, so the box the relayout
+ * writes back is the doubled one. Refusing the axis produced the opposite: an Auto
+ * Width text had no handle at all and the panel answered `engine-sized`, and a
+ * half-hugging component scaled in one direction only, which left a circle squashed
+ * into an ellipse and its type at 1x.
+ *
+ * An INSTANCE keeps its old reason for being free: it has no children this layer can
+ * reach, so its box is the only place the operation can be written and the factor is
+ * what carries the contents.
  *
  * Per element, because siblings can disagree: a group of a `fill` row and a fixed
  * label still has an axis to scale along.
@@ -154,11 +175,7 @@ export function scalableAxes(
 ): { x: boolean; y: boolean } {
   const free = (axis: "width" | "height") =>
     resolveAxis(el, parent, axis) !== "fill" && !containerSizesAxis(el, parent, axis);
-  if (el.type === "instance") return { x: free("width"), y: free("height") };
-  return {
-    x: resolveAxis(el, parent, "width") === "fixed",
-    y: resolveAxis(el, parent, "height") === "fixed"
-  };
+  return { x: free("width"), y: free("height") };
 }
 
 /**
@@ -224,7 +241,7 @@ function applyScaleFactors(
     // factor is what the axis is multiplied by, so leaving it alone is `1`, and the
     // properties on that axis come along untouched for free.
     const axes = scalableAxes(el, findParentById(elements, el.id));
-    const sized = scaleSubtreeByFactor(el, axes.x ? fx : 1, axes.y ? fy : 1, anchor);
+    const sized = scaleSubtreeByFactor(el, axes.x ? fx : 1, axes.y ? fy : 1, anchor, axes);
     // The layer's PLACE in the group is the selection's frame, which its own box
     // knows nothing about. `x` is parent-local and the anchor is in world space, so
     // the vector is measured in world and handed back in local — one parent hop is

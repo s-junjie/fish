@@ -19,7 +19,8 @@ import { isLineElement, elementAABB } from "../../../core/geometry/element-bound
 import { transformBoundsToAABB } from "../../../core/geometry/bounds";
 import { containerSizesAxis, modifierResizesOwnBox, resolveAxis, withAxisMode } from "../../../core/geometry/resolve-axis";
 import { isAspectLocked as elementIsAspectLocked } from "../../../core/geometry/aspect-lock";
-import { scaleElementsToSize, scalableAxes, ScaleAnchor, DEFAULT_SCALE_ANCHOR } from "../../../core/interactions/scale-ops";
+import { scalableAxes, ANCHOR_FROM_HANDLE } from "../../../core/interactions/scale-ops";
+import { scaleSubtreeByFactor } from "../../../core/geometry/scale-geometry";
 import { resizeContainerWithConstraints } from "../../../core/geometry/constraints";
 import { setLineEndpoint } from "../../../core/interactions/line-ops";
 import { worldMatrixOf, worldOriginOf } from "../../../core/interactions/component-swap";
@@ -50,7 +51,6 @@ export interface GeometryGestureContext {
   startDragGesture: () => void;
   endDragGesture: () => void;
   scaleMode?: boolean;
-  scaleAnchor?: ScaleAnchor;
   /**
    * Whether a resize may be pulled onto a guide. On by default; the crop frame
    * turns it off, because the box there is a window over a bitmap and the
@@ -97,7 +97,6 @@ export function createGeometryGestures(ctx: GeometryGestureContext) {
     startDragGesture,
     endDragGesture,
     scaleMode = false,
-    scaleAnchor = DEFAULT_SCALE_ANCHOR,
     snapEnabled = true,
     setHintMessage,
     currentContainerRect,
@@ -368,6 +367,11 @@ export function createGeometryGestures(ctx: GeometryGestureContext) {
     // Every constraint pass below measures from this snapshot, never from the box
     // the previous animation frame left behind.
     const fromSize = { width: startW, height: startH };
+    // The scale branch writes the whole subtree, so it cannot be re-run against the
+    // tree its own last frame produced: a factor applied to an already-scaled box is
+    // a factor applied twice, and every per-frame `round2` on a 1px stroke or a
+    // 0.5px tracking rounds the progress away. The drag-start tree is the baseline.
+    const startElements = getActivePage(docRef.current).children;
     const startPath = el.type === "path" ? parsePathData((el as PathElement).d) : null;
     const startClientX = e.clientX;
     const startClientY = e.clientY;
@@ -537,23 +541,36 @@ export function createGeometryGestures(ctx: GeometryGestureContext) {
 
       if (scaleMode) {
         /**
-         * The Scale tool, from the drag-start box rather than the last frame.
+         * The Scale tool, from the drag-start tree rather than the last frame.
          *
-         * A scale is a RATIO, so every frame is recomputed from the same snapshot
-         * the way a constraint pass is (LESSONS §45): accumulating frame-to-frame
-         * would round once per event, so a slow drag would end at a different size
-         * than a fast one over the same travel. Delegating to the one scale
-         * implementation is also what keeps the toolbar tool, the inspector's
-         * W / H and the factor field from disagreeing about what a scale touches.
+         * A scale is a RATIO, and everything it writes is rounded to the document's
+         * two decimals. Re-deriving it from the tree the previous frame produced
+         * rounds once per pointer event, so a slow drag — 1.002x per frame — reads
+         * `round2(1 * 1.002) = 1` on a 1px stroke for every frame of the gesture and
+         * the hairline stays at 1x while the box grows 3x. Measuring from the same
+         * snapshot every frame is also what the resize path above does (LESSONS §45).
+         *
+         * The anchor is the corner opposite the handle, not the panel's picker: a
+         * handle drag is a statement about an edge, and a centre anchor would move
+         * the grabbed edge at half the pointer's speed. The factor comes from the
+         * drag-start BOX rather than from an absolute target, so a rotated layer is
+         * scaled by the ratio the user asked for instead of by the ratio between its
+         * own width and an axis-aligned box that is not its width.
          */
         setDoc((prev) => {
-          const scaled = scaleElementsToSize(
-            getActivePage(prev).children,
-            new Set([el.id]),
-            { width: newW, height: newH },
-            scaleAnchor
+          const kx = startW > 0 ? newW / startW : 1;
+          const ky = startH > 0 ? newH / startH : 1;
+          const scaled = mapElements(startElements, (item) =>
+            item.id === el.id && scaleAxes
+              ? scaleSubtreeByFactor(
+                  item,
+                  scaleAxes.x ? kx : 1,
+                  scaleAxes.y ? ky : 1,
+                  ANCHOR_FROM_HANDLE[handle],
+                  scaleAxes
+                )
+              : item
           );
-          if (scaled === getActivePage(prev).children) return prev;
           // No pin on this path, deliberately. A scale already writes the size
           // down — as the factor on the instance and as the box it produces — and
           // `sizeOverride` would say the user hand-sized this instance, after

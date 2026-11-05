@@ -7,8 +7,12 @@ import { getRotateCursor, getScaleCursor } from "../../core/geometry/transforms"
 import { isLineElement, elementAABB } from "../../core/geometry/element-bounds";
 import { matrixRotationDeg, matrixToSvg } from "../../core/geometry/matrix";
 import { getGradientStops, isGradientPaint, linearLeverEndpoints } from "../../core/geometry/gradient-utils";
-import { useGradientEditTarget } from "../hooks/gradient-edit";
+import { setGradientStopIndex, useGradientDrag, useGradientEditTarget, useGradientStopIndex } from "../hooks/gradient-edit";
 import { useImageCropTarget } from "../hooks/image-crop-edit";
+import { buildGradientGizmo } from "./GradientGizmo";
+import { GradientHud } from "./GradientHud";
+import { gradientReadout } from "./gradient-readout";
+import { t } from "../../i18n";
 import { cropPlacementOf } from "./ImageCropOverlay";
 import type { GradientHandle } from "../hooks/canvas-gestures/gradient-gesture";
 import type { MarqueeRect } from "../hooks/useCanvasGestures";
@@ -84,7 +88,27 @@ interface SelectionOverlayProps {
   onEndpointPointerDown: (e: any, el: DesignElement, which: "start" | "end") => void;
   onRadiusPointerDown: (e: any, el: DesignElement) => void;
   onStartOffsetPointerDown?: (e: any, el: DesignElement) => void;
-  onGradientHandlePointerDown?: (e: any, el: DesignElement, paintIndex: number, which: GradientHandle) => void;
+  onGradientHandlePointerDown?: (
+    e: any,
+    el: DesignElement,
+    paintIndex: number,
+    which: GradientHandle,
+    stack: "fills" | "strokes"
+  ) => void;
+  onGradientStopPointerDown?: (
+    e: any,
+    el: DesignElement,
+    paintIndex: number,
+    stopIndex: number,
+    stack: "fills" | "strokes"
+  ) => void;
+  onGradientStopInsert?: (e: any, el: DesignElement, paintIndex: number, stack: "fills" | "strokes") => void;
+  onGradientStopDelete?: (
+    el: DesignElement,
+    paintIndex: number,
+    stopIndex: number,
+    stack: "fills" | "strokes"
+  ) => boolean;
 }
 
 export function SelectionOverlay({
@@ -114,7 +138,10 @@ export function SelectionOverlay({
   onEndpointPointerDown,
   onRadiusPointerDown,
   onStartOffsetPointerDown,
-  onGradientHandlePointerDown
+  onGradientHandlePointerDown,
+  onGradientStopPointerDown,
+  onGradientStopInsert,
+  onGradientStopDelete
 }: SelectionOverlayProps) {
   // A hidden layer is not in the union, so it must not be in the id set that steers
   // it either — otherwise the group would scale by a selection nothing on screen is
@@ -144,6 +171,8 @@ export function SelectionOverlay({
   // plain selection blue rather than borrowing an accent that would claim otherwise.
   const handleStroke = 1.5 / zoom;
   const gradientEdit = useGradientEditTarget();
+  const gradientDrag = useGradientDrag();
+  const gradientStopIndex = useGradientStopIndex();
   const cropEdit = useImageCropTarget();
   return (
     <>
@@ -177,16 +206,53 @@ export function SelectionOverlay({
         const lockedEl =
           el.locked === true || transformLocked === true;
 
-        // Gradient edit mode: the fill row's color panel is open for THIS layer.
-        // Figma parity — the transform box steps aside and the gradient lever is
-        // the whole selection chrome, aimed at exactly the row being edited.
+        // Gradient edit: this layer's fill row is the one the lever aims at. The
+        // target outlives the picker popover (see `gradient-edit`), so the lever
+        // is part of the SELECTION's chrome, and the transform box stays under
+        // it rather than stepping aside.
         const gradientTarget =
           gradientEdit && gradientEdit.elId === el.id && !lockedEl && !isEditingText
             ? gradientEdit
             : null;
-        const gizmoPaint = gradientTarget ? el.fills?.[gradientTarget.paintIndex] : undefined;
+        const gizmoPaint = gradientTarget
+          ? gradientTarget.stack === "strokes"
+            ? el.strokes?.[gradientTarget.paintIndex]?.paint
+            : el.fills?.[gradientTarget.paintIndex]
+          : undefined;
         const gizmoGrad =
           gizmoPaint && gizmoPaint.enabled !== false && isGradientPaint(gizmoPaint) ? gizmoPaint : null;
+
+        // Built BEFORE the box on purpose: gradient editing owns the whole
+        // selection chrome — the transform box steps aside (see the gates
+        // below) so a drag can only be aimed at the gradient, never at the
+        // layer. That one rule is also what makes the mode visible: a layer
+        // wearing a lever has no resize handles, and a layer with resize
+        // handles is not in gradient editing.
+        const gradientGizmo =
+          gizmoGrad &&
+          el.type !== "text" &&
+          onGradientHandlePointerDown &&
+          onGradientStopPointerDown &&
+          onGradientStopInsert &&
+          onGradientStopDelete
+            ? buildGradientGizmo({
+                el,
+                paint: gizmoGrad,
+                paintIndex: gradientTarget?.paintIndex ?? 0,
+                stack: gradientTarget?.stack ?? "fills",
+                selectedStop: gradientStopIndex,
+                x: worldX,
+                y: worldY,
+                zoom,
+                strokeW,
+                accentColor,
+                onSelectStop: setGradientStopIndex,
+                onPointerDown: onGradientHandlePointerDown,
+                onStopPointerDown: onGradientStopPointerDown,
+                onStopInsert: onGradientStopInsert,
+                onStopDelete: onGradientStopDelete
+              })
+            : null;
 
         // Crop mode is the same bargain as gradient edit — the transform box
         // stands down and this layer's own chrome takes over — but for a
@@ -480,161 +546,28 @@ export function SelectionOverlay({
               </g>
             )}
 
-            {/* Gradient lever — Figma parity: active only while the fill row's
-                color panel is open, which is also when the transform box stands
-                down. Rendered after the resize corners so it wins the hit test
-                wherever the two could overlap. */}
-            {gradientTarget && gizmoGrad && el.type !== "text" && onGradientHandlePointerDown && (() => {
-              const grad = gizmoGrad;
-              const found = { paint: grad, index: gradientTarget.paintIndex };
-              const stops = getGradientStops(grad);
-              const hitR = 9 / zoom;
-              const knob = 5 / zoom;
-              const drag = (which: GradientHandle) => (e: any) =>
-                onGradientHandlePointerDown(e, el, found.index, which);
+            {gradientGizmo}
 
-              if (grad.type === "linear-gradient") {
-                // Explicit endpoints win over the symmetric angle shorthand —
-                // the two handles sit on the axis the renderer actually paints.
-                const lever = linearLeverEndpoints(grad.angle ?? 90, el.width, el.height);
-                const sf = grad.start ?? { x: lever.start.x / el.width, y: lever.start.y / el.height };
-                const ef = grad.end ?? { x: lever.end.x / el.width, y: lever.end.y / el.height };
-                const sx = worldX + sf.x * el.width;
-                const sy = worldY + sf.y * el.height;
-                const ex = worldX + ef.x * el.width;
-                const ey = worldY + ef.y * el.height;
-                return (
-                  <g data-gradient-gizmo="linear">
-                    <line x1={sx} y1={sy} x2={ex} y2={ey} stroke={accentColor} strokeWidth={strokeW} pointerEvents="none" />
-                    <g data-gradient-handle="start" style={{ cursor: "crosshair" }} onPointerDown={drag("start")}>
-                      <circle cx={sx} cy={sy} r={hitR} fill="transparent" />
-                      <circle cx={sx} cy={sy} r={knob} fill={stops[0]?.color ?? CANVAS_ON_SELECT} stroke={CANVAS_ON_SELECT} strokeWidth={strokeW} />
-                    </g>
-                    <g data-gradient-handle="end" style={{ cursor: "crosshair" }} onPointerDown={drag("end")}>
-                      <circle cx={ex} cy={ey} r={hitR} fill="transparent" />
-                      <rect x={ex - knob} y={ey - knob} width={knob * 2} height={knob * 2} fill={stops[stops.length - 1]?.color ?? CANVAS_ON_SELECT} stroke={CANVAS_ON_SELECT} strokeWidth={strokeW} />
-                    </g>
-                  </g>
-                );
-              }
-
-              if (grad.type === "angular-gradient") {
-                const ag = grad as Extract<Paint, { type: "angular-gradient" }>;
-                const ccx = worldX + (ag.center?.x ?? 0.5) * el.width;
-                const ccy = worldY + (ag.center?.y ?? 0.5) * el.height;
-                // The sweep is a circle in px (the sectors fan out from
-                // `dirFromTop`), so the guide is an inscribed one: it shows the
-                // centre and the turn without leaving the box. Its radius is
-                // chrome — the paint has no extent to drag.
-                const rr = Math.min(el.width, el.height) / 2;
-                const rad = ((ag.angle ?? 0) * Math.PI) / 180;
-                const hx = ccx + rr * Math.sin(rad);
-                const hy = ccy - rr * Math.cos(rad);
-                return (
-                  <g data-gradient-gizmo="angular">
-                    <circle cx={ccx} cy={ccy} r={rr} fill="none" stroke={CANVAS_GUIDE} strokeWidth={strokeW} strokeDasharray={`${4 / zoom} ${3 / zoom}`} pointerEvents="none" />
-                    {/* A tick at 0°: an aimed sweep is unreadable without it. */}
-                    <line x1={ccx} y1={ccy - rr} x2={ccx} y2={ccy - rr * 1.18} stroke={CANVAS_GUIDE} strokeWidth={strokeW} pointerEvents="none" />
-                    <line x1={ccx} y1={ccy} x2={hx} y2={hy} stroke={accentColor} strokeWidth={strokeW} pointerEvents="none" />
-                    <g data-gradient-handle="center" style={{ cursor: "crosshair" }} onPointerDown={drag("center")}>
-                      <circle cx={ccx} cy={ccy} r={hitR} fill="transparent" />
-                      <circle cx={ccx} cy={ccy} r={knob} fill={stops[0]?.color ?? CANVAS_ON_SELECT} stroke={CANVAS_ON_SELECT} strokeWidth={strokeW} />
-                    </g>
-                    <g data-gradient-handle="sweep" style={{ cursor: "crosshair" }} onPointerDown={drag("sweep")}>
-                      <circle cx={hx} cy={hy} r={hitR} fill="transparent" />
-                      <circle cx={hx} cy={hy} r={knob} fill={stops[stops.length - 1]?.color ?? CANVAS_ON_SELECT} stroke={CANVAS_ON_SELECT} strokeWidth={strokeW} />
-                    </g>
-                  </g>
-                );
-              }
-
-              if (grad.type === "diamond-gradient") {
-                const dg = grad as Extract<Paint, { type: "diamond-gradient" }>;
-                const ccx = worldX + (dg.center?.x ?? 0.5) * el.width;
-                const ccy = worldY + (dg.center?.y ?? 0.5) * el.height;
-                // Semi-axes in px, rotating about the centre in px — the same
-                // space `rotate(φ, c)` turns the four quadrant rects in. The
-                // vertex formulas are that rotation applied to (a, 0) and (0, b).
-                const ax = (dg.rx ?? dg.radius ?? 0.75) * el.width;
-                const by = (dg.ry ?? dg.radius ?? 0.75) * el.height;
-                const rad = ((dg.angle ?? 0) * Math.PI) / 180;
-                const cos = Math.cos(rad);
-                const sin = Math.sin(rad);
-                const v1 = { x: ccx + ax * cos, y: ccy + ax * sin };
-                const v2 = { x: ccx - by * sin, y: ccy + by * cos };
-                const v3 = { x: ccx - ax * cos, y: ccy - ax * sin };
-                const v4 = { x: ccx + by * sin, y: ccy - by * cos };
-                return (
-                  <g data-gradient-gizmo="diamond">
-                    <path
-                      d={`M${v1.x} ${v1.y}L${v2.x} ${v2.y}L${v3.x} ${v3.y}L${v4.x} ${v4.y}Z`}
-                      fill="none"
-                      stroke={CANVAS_GUIDE}
-                      strokeWidth={strokeW}
-                      strokeDasharray={`${4 / zoom} ${3 / zoom}`}
-                      pointerEvents="none"
-                    />
-                    <line x1={ccx} y1={ccy} x2={v1.x} y2={v1.y} stroke={accentColor} strokeWidth={strokeW} pointerEvents="none" />
-                    <g data-gradient-handle="center" style={{ cursor: "crosshair" }} onPointerDown={drag("center")}>
-                      <circle cx={ccx} cy={ccy} r={hitR} fill="transparent" />
-                      <circle cx={ccx} cy={ccy} r={knob} fill={stops[0]?.color ?? CANVAS_ON_SELECT} stroke={CANVAS_ON_SELECT} strokeWidth={strokeW} />
-                    </g>
-                    <g data-gradient-handle="rimX" style={{ cursor: "crosshair" }} onPointerDown={drag("rimX")}>
-                      <circle cx={v1.x} cy={v1.y} r={hitR} fill="transparent" />
-                      <rect x={v1.x - knob} y={v1.y - knob} width={knob * 2} height={knob * 2} fill={stops[stops.length - 1]?.color ?? CANVAS_ON_SELECT} stroke={CANVAS_ON_SELECT} strokeWidth={strokeW} />
-                    </g>
-                    <g data-gradient-handle="rimY" style={{ cursor: "crosshair" }} onPointerDown={drag("rimY")}>
-                      <circle cx={v2.x} cy={v2.y} r={hitR} fill="transparent" />
-                      <rect x={v2.x - knob} y={v2.y - knob} width={knob * 2} height={knob * 2} fill={stops[stops.length - 1]?.color ?? CANVAS_ON_SELECT} stroke={CANVAS_ON_SELECT} strokeWidth={strokeW} />
-                    </g>
-                  </g>
-                );
-              }
-
-              const radial = grad as Extract<Paint, { type: "radial-gradient" }>;
-              const cxf = radial.center?.x ?? 0.5;
-              const cyf = radial.center?.y ?? 0.5;
-              const rxf = radial.rx ?? radial.radius ?? 0.75;
-              const ryf = radial.ry ?? radial.radius ?? 0.75;
-              const ang = ((radial.angle ?? 0) * Math.PI) / 180;
-              const ccx = worldX + cxf * el.width;
-              const ccy = worldY + cyf * el.height;
-              // Ellipse geometry lives in the box's FRACTION space (rotated
-              // there, then stretched to px), so the guide is sampled from the
-              // parametric curve rather than drawn as a px-space ellipse — a
-              // non-square box would bend the axis.
-              const semi = (t: number) => ({
-                x: rxf * Math.cos(t) * Math.cos(ang) - ryf * Math.sin(t) * Math.sin(ang),
-                y: rxf * Math.cos(t) * Math.sin(ang) + ryf * Math.sin(t) * Math.cos(ang)
-              });
-              let rimPath = "";
-              for (let i = 0; i <= 64; i++) {
-                const o = semi((i / 64) * Math.PI * 2);
-                rimPath += `${i === 0 ? "M" : "L"}${(worldX + (cxf + o.x) * el.width).toFixed(2)} ${(worldY + (cyf + o.y) * el.height).toFixed(2)}`;
-              }
-              const e1x = worldX + (cxf + rxf * Math.cos(ang)) * el.width;
-              const e1y = worldY + (cyf + rxf * Math.sin(ang)) * el.height;
-              const e2x = worldX + (cxf - ryf * Math.sin(ang)) * el.width;
-              const e2y = worldY + (cyf + ryf * Math.cos(ang)) * el.height;
-              return (
-                <g data-gradient-gizmo="radial">
-                  <path d={rimPath} fill="none" stroke={CANVAS_GUIDE} strokeWidth={strokeW} strokeDasharray={`${4 / zoom} ${3 / zoom}`} pointerEvents="none" />
-                  <line x1={ccx} y1={ccy} x2={e1x} y2={e1y} stroke={accentColor} strokeWidth={strokeW} pointerEvents="none" />
-                  <g data-gradient-handle="center" style={{ cursor: "crosshair" }} onPointerDown={drag("center")}>
-                    <circle cx={ccx} cy={ccy} r={hitR} fill="transparent" />
-                    <circle cx={ccx} cy={ccy} r={knob} fill={stops[0]?.color ?? CANVAS_ON_SELECT} stroke={CANVAS_ON_SELECT} strokeWidth={strokeW} />
-                  </g>
-                  <g data-gradient-handle="rimX" style={{ cursor: "crosshair" }} onPointerDown={drag("rimX")}>
-                    <circle cx={e1x} cy={e1y} r={hitR} fill="transparent" />
-                    <rect x={e1x - knob} y={e1y - knob} width={knob * 2} height={knob * 2} fill={stops[stops.length - 1]?.color ?? CANVAS_ON_SELECT} stroke={CANVAS_ON_SELECT} strokeWidth={strokeW} />
-                  </g>
-                  <g data-gradient-handle="rimY" style={{ cursor: "crosshair" }} onPointerDown={drag("rimY")}>
-                    <circle cx={e2x} cy={e2y} r={hitR} fill="transparent" />
-                    <rect x={e2x - knob} y={e2y - knob} width={knob * 2} height={knob * 2} fill={stops[stops.length - 1]?.color ?? CANVAS_ON_SELECT} stroke={CANVAS_ON_SELECT} strokeWidth={strokeW} />
-                  </g>
-                </g>
-              );
-            })()}
+            {/* Drag readout — the grip's value, on the canvas, while the drag is
+                in flight. Rendered after the lever so it sits above the knobs it
+                describes; the store is cleared on pointerup, so a readout cannot
+                outlive the gesture that earned it. */}
+            {gradientDrag &&
+              gizmoGrad &&
+              gradientDrag.elId === el.id &&
+              gradientDrag.paintIndex === gradientTarget?.paintIndex &&
+              (() => {
+                const text = gradientReadout(gizmoGrad, gradientDrag.handle);
+                return text ? (
+                  <GradientHud
+                    x={gradientDrag.x}
+                    y={gradientDrag.y}
+                    text={text}
+                    zoom={zoom}
+                    box={{ width: el.width, height: el.height }}
+                  />
+                ) : null;
+              })()}
           </g>
         );
       })()}

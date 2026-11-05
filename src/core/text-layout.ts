@@ -1,4 +1,4 @@
-import { applyTextTransform, baselineOffsetOf, measureText, TextMeasureSpec } from "./geometry/text-measure";
+import { applyTextTransform, baselineOffsetOf, measureText, TextMeasureSpec, trailingTrackingShift } from "./geometry/text-measure";
 
 // Re-exported for the callers that knew it here first; the definition moved down
 // to `text-measure` because the measurement needs it too and that module must not
@@ -74,6 +74,14 @@ export interface LinePlacement {
 
 export interface TextLayout {
   lines: string[];
+  /**
+   * Where each line came from in the source string, in characters.
+   *
+   * Parallel to `lines`, and the only sound way to map a run onto the line it
+   * paints: a run's offsets are offsets into the CONTENT, while the lines have
+   * had their newlines and break whitespace removed.
+   */
+  lineRanges: LineRange[];
   /** `x`/`y` for the `<text>` node itself. */
   startX: number;
   /**
@@ -146,6 +154,30 @@ function clipToWidth(text: string, maxWidth: number, spec: TextMeasureSpec, suff
 }
 
 /**
+ * One painted line, and the characters of the SOURCE it was made from.
+ *
+ * The range is what lets a run be sliced onto the line it belongs to. The
+ * strings alone cannot describe that: wrapping drops the paragraph newlines and
+ * trims the whitespace a break lands on, so a running total of line LENGTHS
+ * drifts from the source by every character it never emitted — two newlines put
+ * an italic "thing" two characters to the left, and the export painted "th"
+ * upright and "ing" italic.
+ */
+export interface LaidLine {
+  text: string;
+  /** First character of the source this line covers. */
+  start: number;
+  /** One past the last one. Contiguous with the next line's `start`. */
+  end: number;
+}
+
+/** A half-open character range of the source string. */
+export interface LineRange {
+  start: number;
+  end: number;
+}
+
+/**
  * `maxLines` applied to the wrapped lines.
  *
  * `1` is not simply "keep the first line": the canvas reaches it through
@@ -153,12 +185,13 @@ function clipToWidth(text: string, maxWidth: number, spec: TextMeasureSpec, suff
  * `white-space: pre-line` into spaces. Taking the first line alone would paint a
  * run that ends where the canvas one continues.
  */
-function applyLineClamp(lines: string[], content: string, run: TextLayoutInput, spec: TextMeasureSpec): string[] {
+function applyLineClamp(lines: LaidLine[], content: string, run: TextLayoutInput, spec: TextMeasureSpec): LaidLine[] {
   const maxLines = run.maxLines;
   if (!maxLines || maxLines <= 0) return lines;
 
+  const source = applyTextTransform(content, run.textTransform);
   let kept = maxLines === 1
-    ? [applyTextTransform(content, run.textTransform).replace(/\s+/g, " ").trim()]
+    ? [{ text: source.replace(/\s+/g, " ").trim(), start: 0, end: source.length }]
     : lines.slice(0, maxLines);
   if (run.textOverflow !== "ellipsis" || kept.length === 0) return kept;
 
@@ -169,11 +202,14 @@ function applyLineClamp(lines: string[], content: string, run: TextLayoutInput, 
     Number.isFinite(run.width) &&
     run.width > 0 &&
     (maxLines === 1
-      ? measureText(kept[last], spec, Infinity).width > run.width
+      ? measureText(kept[last].text, spec, Infinity).width > run.width
       : lines.length > maxLines);
   if (cut) {
     kept = kept.slice();
-    kept[last] = clipToWidth(kept[last], Math.max(0, run.width), spec, "\u2026") + "\u2026";
+    kept[last] = {
+      ...kept[last],
+      text: clipToWidth(kept[last].text, Math.max(0, run.width), spec, "\u2026") + "\u2026"
+    };
   }
   return kept;
 }
@@ -246,11 +282,17 @@ function breakTokens(paragraph: string): string[] {
  * exactly where they were: a browser happily starts a line with ",world", and a
  * rule that refused to would move the very break this module exists to match.
  */
-function wrapLines(run: TextLayoutInput, spec: TextMeasureSpec): string[] {
-  const lines: string[] = [];
-  for (const paragraph of applyTextTransform(run.content, run.textTransform).split("\n")) {
+function wrapLines(run: TextLayoutInput, spec: TextMeasureSpec): LaidLine[] {
+  const source = applyTextTransform(run.content, run.textTransform);
+  const lines: LaidLine[] = [];
+  let paragraphStart = 0;
+  for (const paragraph of source.split("\n")) {
+    const start = paragraphStart;
+    // The separator the split consumed. Counted here rather than added per
+    // line, so a range is never off by the characters nobody paints.
+    paragraphStart += paragraph.length + 1;
     if (!paragraph) {
-      lines.push("");
+      lines.push({ text: "", start, end: start });
       continue;
     }
     const maxWidth = run.width;
@@ -259,10 +301,15 @@ function wrapLines(run: TextLayoutInput, spec: TextMeasureSpec): string[] {
       !Number.isFinite(maxWidth) ||
       maxWidth <= 0
     ) {
-      lines.push(paragraph);
+      lines.push({ text: paragraph, start, end: start + paragraph.length });
       continue;
     }
     let currentLine = "";
+    // Where the line being built starts in the source. It advances by what was
+    // CONSUMED, not by what was painted: `token.trimStart()` drops the
+    // whitespace a break landed on, and that whitespace still has to be
+    // accounted for or every later line shifts left by it.
+    let lineStart = start;
     for (const token of breakTokens(paragraph)) {
       const testLine = currentLine + token;
       if (measureText(testLine, spec, Infinity).width > maxWidth && currentLine.length > 0) {
@@ -272,27 +319,38 @@ function wrapLines(run: TextLayoutInput, spec: TextMeasureSpec): string[] {
           currentLine = testLine;
           continue;
         }
-        lines.push(currentLine);
+        lines.push({ text: currentLine, start: lineStart, end: lineStart + currentLine.length });
+        lineStart += currentLine.length + (token.length - token.trimStart().length);
         currentLine = token.trimStart();
       } else {
         currentLine = testLine;
       }
     }
-    if (currentLine) lines.push(currentLine);
+    if (currentLine) {
+      lines.push({ text: currentLine, start: lineStart, end: start + paragraph.length });
+    }
   }
   return applyLineClamp(lines, run.content, run, spec);
 }
 
 export function layoutTextRun(run: TextLayoutInput): TextLayout {
   const spec = specOf(run);
-  const lines = wrapLines(run, spec);
+  const laid = wrapLines(run, spec);
+  const lines = laid.map((line) => line.text);
+  const lineRanges = laid.map(({ start, end }) => ({ start, end }));
 
+  // A block taller than its box spills out of BOTH ends, which is what the
+  // canvas's `justify-content: center` / `flex-end` do (measured: four 40px
+  // lines in a 100px box start 33px above its top). Clamping the start at the
+  // box — what this did — puts the same run a whole overflow lower in the
+  // export than on the canvas, so a pasted paragraph that outgrew its box
+  // exported with the first line sitting under the label above it.
   const totalHeight = lines.length * run.lineHeight;
   let startY = run.y;
   if (run.verticalAlign === "middle") {
-    startY = run.y + Math.max(0, (run.height - totalHeight) / 2);
+    startY = run.y + (run.height - totalHeight) / 2;
   } else if (run.verticalAlign === "bottom") {
-    startY = run.y + Math.max(0, run.height - totalHeight);
+    startY = run.y + run.height - totalHeight;
   }
 
   let textAnchor: TextLayout["textAnchor"] = "start";
@@ -304,6 +362,12 @@ export function layoutTextRun(run: TextLayoutInput): TextLayout {
     textAnchor = "end";
     startX = run.x + run.width;
   }
+  // The anchor is measured against the line's RESERVED width, which carries one
+  // trailing `letter-spacing` with no glyph under it, so centred ink would paint
+  // half a tracking left of centre and right-aligned ink a whole one short of
+  // the edge. The canvas moves its line by the same number (`marginLeft`); see
+  // `trailingTrackingShift`.
+  startX += trailingTrackingShift(run.align, run.letterSpacing);
 
   /**
    * `text-align: justify` in SVG, which has no keyword for it.
@@ -331,6 +395,7 @@ export function layoutTextRun(run: TextLayoutInput): TextLayout {
 
   return {
     lines,
+    lineRanges,
     startX,
     startY,
     baselineOffset: baselineOffsetOf(spec),
