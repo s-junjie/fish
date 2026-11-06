@@ -9,6 +9,7 @@ import {
   InstanceElement,
   Page,
   PaintStack,
+  ScrollOverflow,
   Stroke
 } from "../dsl/types";
 import { flattenElements, isContainer } from "../geometry/tree-ops";

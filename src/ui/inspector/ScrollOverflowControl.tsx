@@ -38,7 +38,7 @@ export function ScrollOverflowControl({ element, onMutate }: ScrollOverflowContr
         ({
           ...curr,
           scrollOverflow: nextOverflow,
-          clipContent: nextOverflow !== "none" ? true : curr.clipContent
+          clipContent: nextOverflow !== "none" ? true : Boolean((curr as any).clipContent)
         }) as DesignElement,
       true
     );

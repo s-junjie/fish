@@ -88,7 +88,8 @@ describe("frame scroll capabilities", () => {
         clipContent: true,
         scrollOverflow: "vertical",
         scrollX: 0,
-        scrollY: 150
+        scrollY: 150,
+        children: []
       };
 
       const doc = { pages: [{ id: "p1", children: [frame] }] };

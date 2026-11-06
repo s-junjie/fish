@@ -255,7 +255,7 @@ describe("an override whose node the master no longer has", () => {
       y: 100,
       width: 200,
       height: 80,
-      children: [{ id: "caption", type: "text", name: "caption", x: 0, y: 0, width: 80, height: 20, content: "Other" }]
+      children: [{ id: "caption", type: "text", name: "caption", x: 0, y: 0, width: 80, height: 20, content: "Other", style: {} as any }]
     };
     const withOther: DesignDocument = {
       ...start,

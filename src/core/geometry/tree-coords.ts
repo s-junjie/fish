@@ -1,4 +1,4 @@
-import { ContainerElement, DesignElement } from "../dsl/types";
+import { ContainerElement, DesignElement, InstanceElement } from "../dsl/types";
 import { elementPivot, elementTransformMatrix } from "./transforms";
 import { identityMatrix, multiply, translation, type Matrix2D } from "./matrix";
 import { collectDescendantIds, isContainer } from "./tree-query";
@@ -134,12 +134,12 @@ export function computeParentOrigin(
     list: DesignElement[],
     originX: number,
     originY: number
-  ): { originX: number; originY: number; inst: DesignElement } | null {
-    let best: { originX: number; originY: number; inst: DesignElement } | null = null;
+  ): { originX: number; originY: number; inst: InstanceElement } | null {
+    let best: { originX: number; originY: number; inst: InstanceElement } | null = null;
     for (const el of list) {
       if (el.type === "instance" && targetId.startsWith(`${el.id}_`)) {
         if (!best || el.id.length > best.inst.id.length) {
-          best = { originX, originY, inst: el };
+          best = { originX, originY, inst: el as InstanceElement };
         }
       }
       if (isContainer(el)) {

@@ -1057,6 +1057,9 @@ export interface ComponentSetElement extends BaseElement, SlideHost {
   variantGroupProperties?: Record<string, string[]>;
   /** Nothing clips a set — Figma leaves a variant visible outside a collapsed one. */
   clipContent?: undefined;
+  scrollOverflow?: ScrollOverflow;
+  scrollX?: number;
+  scrollY?: number;
 }
 
 /**
