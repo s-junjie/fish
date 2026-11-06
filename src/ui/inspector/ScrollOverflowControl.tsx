@@ -57,7 +57,7 @@ export function ScrollOverflowControl({ element, onMutate }: ScrollOverflowContr
         <div className="flex items-center gap-2">
           <span className={`${SUB_LABEL_CLASS} shrink-0`}>{t("stack.overflow")}</span>
           <Select
-            className="w-28"
+            className="flex-1 min-w-0"
             value={overflow}
             onChange={handleOverflowChange}
           >

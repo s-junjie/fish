@@ -36,6 +36,7 @@ function styleAttrs(style: VisualStyle): Record<string, unknown> {
     ...(style.blendMode ? { blendMode: style.blendMode } : {}),
     ...(style.rotation !== undefined ? { rotation: style.rotation } : {}),
     ...(style.visible === false ? { visible: false } : {}),
+    ...(style.scrollOverflow ? { scrollOverflow: style.scrollOverflow } : {}),
     ...(style.tokenBindings ? { tokenBindings: style.tokenBindings } : {})
   };
 }

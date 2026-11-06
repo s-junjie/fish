@@ -747,7 +747,14 @@ function collectChildren(
       if (!mapped) continue;
 
       const outOfFlow = ccs.position === "absolute" || ccs.position === "fixed" || ccs.position === "sticky";
-      let built: DesignElement = outOfFlow ? ({ ...mapped, position: "absolute" } as DesignElement) : mapped;
+      let built: DesignElement = outOfFlow
+        ? ({
+            ...mapped,
+            position: "absolute",
+            ...(ccs.position === "fixed" ? { scrollBehavior: "fixed" } : {}),
+            ...(ccs.position === "sticky" ? { scrollBehavior: "sticky" } : {})
+          } as DesignElement)
+        : mapped;
 
       if (!layout) {
         out.push(built);

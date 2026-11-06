@@ -7,6 +7,7 @@ import type {
   InnerShadowEffect,
   Paint,
   PaintStack,
+  ScrollOverflow,
   Stroke,
   TextStyle
 } from "../dsl/types";
@@ -67,6 +68,7 @@ export interface VisualStyle {
   opacity?: number;
   blendMode?: BlendMode;
   clipContent?: boolean;
+  scrollOverflow?: ScrollOverflow;
   rotation?: number;
   visible?: boolean;
   border: BorderWidths;
@@ -454,18 +456,28 @@ function fillsFrom(
   };
 }
 
-function clipFrom(cs: CSSStyleDeclaration, sink: UnmappedSink): boolean | undefined {
+function clipFrom(
+  cs: CSSStyleDeclaration,
+  sink: UnmappedSink
+): { clip: boolean; scrollOverflow?: ScrollOverflow } | undefined {
   const x = cs.overflowX;
   const y = cs.overflowY;
   const clips = (v: string) => v === "hidden" || v === "clip" || v === "auto" || v === "scroll";
   if (!clips(x) && !clips(y)) return undefined;
-  if (x !== y) sink("overflow", `${x} ${y}`);
-  // The DSL clips but never scrolls, so a scrolling container keeps its visible
-  // frame and loses the content past the edge.
-  if (x === "auto" || x === "scroll" || y === "auto" || y === "scroll") {
-    sink("overflow", `${x} ${y}`);
+
+  const scrollsX = x === "auto" || x === "scroll";
+  const scrollsY = y === "auto" || y === "scroll";
+
+  let scrollOverflow: ScrollOverflow | undefined;
+  if (scrollsX && scrollsY) {
+    scrollOverflow = "both";
+  } else if (scrollsY) {
+    scrollOverflow = "vertical";
+  } else if (scrollsX) {
+    scrollOverflow = "horizontal";
   }
-  return true;
+
+  return { clip: true, scrollOverflow };
 }
 
 export function visualStyleOf(
@@ -505,7 +517,6 @@ export function visualStyleOf(
     rotation = (rotation ?? 0) + spin;
   }
 
-  if (cs.position === "fixed" || cs.position === "sticky") sink("position", cs.position);
   // `z-index` is NOT reported here: the walk carries it as the siblings' paint
   // order, and only it knows whether that could be done (see `paintOrderOf`).
   if (cs.clipPath && cs.clipPath !== "none") sink("clip-path", cs.clipPath);
@@ -578,7 +589,10 @@ export function visualStyleOf(
   if (opacity !== undefined && opacity < 1) style.opacity = opacity;
   if (blendMode) style.blendMode = blendMode;
   const clip = clipFrom(cs, sink);
-  if (clip) style.clipContent = true;
+  if (clip) {
+    style.clipContent = true;
+    if (clip.scrollOverflow) style.scrollOverflow = clip.scrollOverflow;
+  }
   if (rotation !== undefined && Math.abs(rotation) > 1e-6) style.rotation = round2(rotation);
   if (cs.visibility === "hidden" || cs.visibility === "collapse") style.visible = false;
   return style;

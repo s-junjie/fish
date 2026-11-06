@@ -10,7 +10,15 @@ import { parseObjectPosition } from "../src/core/import/css-values";
  * `sideValue` falls back to them when `getPropertyValue` has nothing.
  */
 function style(fields: Record<string, string>): CSSStyleDeclaration {
-  return { getPropertyValue: () => "", ...fields } as unknown as CSSStyleDeclaration;
+  return {
+    getPropertyValue: () => "",
+    boxShadow: "none",
+    filter: "none",
+    transform: "none",
+    backgroundColor: "transparent",
+    backgroundImage: "none",
+    ...fields
+  } as unknown as CSSStyleDeclaration;
 }
 
 const side = (width: number, style_: string, color: string, which: string) => ({
@@ -256,6 +264,38 @@ describe("visualStyleOf rotation", () => {
     });
     expect(vs.rotation).toBe(-90);
     expect(unmapped).not.toContain("transform");
+  });
+});
+
+describe("visualStyleOf overflow", () => {
+  it("maps overflow: hidden to clipContent without scrollOverflow", () => {
+    const vs = visualStyleOf(style({ overflowX: "hidden", overflowY: "hidden" }), { width: 100, height: 100 }, () => {});
+    expect(vs.clipContent).toBe(true);
+    expect(vs.scrollOverflow).toBeUndefined();
+  });
+
+  it("maps overflow-y: auto / scroll to vertical scrollOverflow", () => {
+    const vs = visualStyleOf(style({ overflowX: "hidden", overflowY: "auto" }), { width: 100, height: 100 }, () => {});
+    expect(vs.clipContent).toBe(true);
+    expect(vs.scrollOverflow).toBe("vertical");
+  });
+
+  it("maps overflow-x: scroll to horizontal scrollOverflow", () => {
+    const vs = visualStyleOf(style({ overflowX: "scroll", overflowY: "hidden" }), { width: 100, height: 100 }, () => {});
+    expect(vs.clipContent).toBe(true);
+    expect(vs.scrollOverflow).toBe("horizontal");
+  });
+
+  it("maps both scroll axes to both scrollOverflow", () => {
+    const vs = visualStyleOf(style({ overflowX: "auto", overflowY: "scroll" }), { width: 100, height: 100 }, () => {});
+    expect(vs.clipContent).toBe(true);
+    expect(vs.scrollOverflow).toBe("both");
+  });
+
+  it("leaves unclipped containers with clipContent undefined", () => {
+    const vs = visualStyleOf(style({ overflowX: "visible", overflowY: "visible" }), { width: 100, height: 100 }, () => {});
+    expect(vs.clipContent).toBeUndefined();
+    expect(vs.scrollOverflow).toBeUndefined();
   });
 });
 
