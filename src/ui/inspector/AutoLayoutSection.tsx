@@ -11,7 +11,7 @@ import { Section } from "./SectionHeader";
 import { AutoLayoutControls, LayoutMode } from "./AutoLayoutControls";
 import { PadMode, PadTuple, PadModeSegmented, PaddingFields } from "./pad-fields";
 import { SizeFields } from "./SizeFields";
-import { CheckRow } from "../CheckRow";
+import { ScrollOverflowControl } from "./ScrollOverflowControl";
 import { fitFrameInDocument, frameFitRefusal, FRAME_FIT_REFUSALS } from "../../core/interactions/frame-fit";
 import { SUB_LABEL_CLASS } from "../label-tier";
 import { ROW_SPREAD_CLASS } from "../row-style";
@@ -128,14 +128,10 @@ export function AutoLayoutSection({
     primarySelected.type === "frame" ||
     primarySelected.type === "component" ||
     primarySelected.type === "instance";
-  const clipRow = clipsChildren && (
-    <CheckRow
-      testId="clip-content"
-      checked={!!(primarySelected as { clipContent?: boolean }).clipContent}
-      onChange={(checked) =>
-        onMutate((el) => ({ ...el, clipContent: checked } as DesignElement), true)
-      }
-      label={t("stack.clipContent")}
+  const clipControl = clipsChildren && (
+    <ScrollOverflowControl
+      element={primarySelected}
+      onMutate={onMutate}
     />
   );
 
@@ -161,7 +157,7 @@ export function AutoLayoutSection({
             locked
           />
         )}
-        {clipRow}
+        {clipControl}
       </Section>
     );
   }
@@ -546,7 +542,7 @@ export function AutoLayoutSection({
           </div>
         </div>
       )}
-      {clipRow}
+      {clipControl}
     </Section>
   );
 }

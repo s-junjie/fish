@@ -19,6 +19,10 @@ export const CSS_KEY_MAP: Readonly<Record<string, string>> = {
   borderRadius: "border-radius",
   blendMode: "mix-blend-mode",
   clipContent: "overflow",
+  scrollOverflow: "overflow",
+  scrollX: "scroll-x",
+  scrollY: "scroll-y",
+  scrollBehavior: "scroll-behavior",
   visible: "visibility",
   fillRule: "fill-rule",
   rotation: "rotate",
@@ -90,6 +94,8 @@ const CSS_VALUES: Readonly<Record<string, (value: unknown) => unknown>> = {
   maxWidth: px,
   minHeight: px,
   maxHeight: px,
+  scrollX: px,
+  scrollY: px,
   "grid-template-columns": cssTracks,
   "grid-template-rows": cssTracks,
   padding: cssSides,
@@ -138,7 +144,8 @@ export const NO_CSS_EQUIVALENT: Readonly<Record<string, string>> = {
       "boxShadow", "objectFit", "cornerRadius", "strokeWidth",
       "strokeSides", "borderSides", "strokeTopWeight", "strokeRightWeight",
       "strokeBottomWeight", "strokeLeftWeight", "strokeSide", "borderSide",
-      "flexGrow", "assetId", "posterAssetId", "slide", "themeMode", "numberMode", "boxSizing"
+      "flexGrow", "assetId", "posterAssetId", "slide", "themeMode", "numberMode", "boxSizing",
+      "scrollLeft", "scrollTop", "overflowX", "overflowY"
     ],
     "an input spelling: normalize folds it into another field and never writes it back"
   ),
@@ -187,7 +194,7 @@ function flattenStyle(style: Record<string, unknown>): Record<string, unknown> {
 
 /** One element, spelled for the file. Recurses into `children`. */
 function spellElement(el: Record<string, unknown>): Record<string, unknown> {
-  const { rotation, flipX, flipY, rotateX, rotateY, borderRadius, style, sizing, "grid-area": gridArea, ...rest } = el;
+  const { rotation, flipX, flipY, rotateX, rotateY, borderRadius, style, sizing, "grid-area": gridArea, clipContent, scrollOverflow, scrollX, scrollY, ...rest } = el;
   const out: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(rest)) {
@@ -197,6 +204,23 @@ function spellElement(el: Record<string, unknown>): Record<string, unknown> {
     }
     const cssKey = CSS_KEY_MAP[key] ?? key;
     out[cssKey] = CSS_VALUES[key]?.(value) ?? value;
+  }
+
+  if (scrollOverflow === "both") {
+    out.overflow = "scroll";
+  } else if (scrollOverflow === "vertical") {
+    out.overflow = "scroll-y";
+  } else if (scrollOverflow === "horizontal") {
+    out.overflow = "scroll-x";
+  } else if (clipContent !== undefined) {
+    out.overflow = clipContent === true ? "hidden" : "visible";
+  }
+
+  if (typeof scrollX === "number" && scrollX > 0) {
+    out["scroll-x"] = px(scrollX);
+  }
+  if (typeof scrollY === "number" && scrollY > 0) {
+    out["scroll-y"] = px(scrollY);
   }
 
   if (isObject(sizing)) {

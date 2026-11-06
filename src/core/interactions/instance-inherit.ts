@@ -81,6 +81,9 @@ export interface InstanceBox {
   borderRadius?: CornerRadius;
   cornerSmoothing?: number;
   clipContent: boolean;
+  scrollOverflow?: ScrollOverflow;
+  scrollX?: number;
+  scrollY?: number;
   effects: Effect[];
   /**
    * Which shared style each stack is bound to, or `null` when the instance has
@@ -159,6 +162,9 @@ export function resolveInstanceBox(
         ? (inst as { cornerSmoothing?: number }).cornerSmoothing
         : (master as { cornerSmoothing?: number }).cornerSmoothing,
     clipContent: inst.clipContent !== undefined ? inst.clipContent : Boolean(master.clipContent),
+    scrollOverflow: inst.scrollOverflow !== undefined ? inst.scrollOverflow : master.scrollOverflow,
+    scrollX: inst.scrollX !== undefined ? inst.scrollX : master.scrollX,
+    scrollY: inst.scrollY !== undefined ? inst.scrollY : master.scrollY,
     effects:
       inst.effects === undefined && scaledBox
         ? (master.effects || []).map((e) => scaleEffect(e, scale.x, scale.y, k))

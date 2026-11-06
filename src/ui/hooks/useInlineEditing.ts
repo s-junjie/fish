@@ -10,7 +10,7 @@ import { EditorStore } from "../../core/store/editor-store";
 import { mapElements, findElementById } from "../../core/geometry/tree-ops";
 import { useVectorPathEditing } from "./useVectorPathEditing";
 import { relayoutDocumentTree } from "../../core/compile";
-import { commitInstanceOverrides } from "../../core/interactions/instance-resolve";
+import { commitInstanceOverrides, resolveInstanceSelection } from "../../core/interactions/instance-resolve";
 import type { InstanceSelection } from "../../core/interactions/instance-resolve";
 import { normalizeTextSpans } from "../../core/dsl/normalize/text-sizing";
 import { reconcileSpansOnTextChange } from "../../core/interactions/text-spans";
@@ -70,7 +70,6 @@ export interface InlineEditingDeps {
   // commit was asked for.
   setSelectedIds: (ids: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
   selectedIds: Set<string>;
-  virtualSelections: InstanceSelection[];
 }
 
 /**
@@ -106,8 +105,7 @@ export function useInlineEditing(deps: InlineEditingDeps) {
     startDragGesture,
     endDragGesture,
     setSelectedIds,
-    selectedIds,
-    virtualSelections
+    selectedIds
   } = deps;
 
   // Layer rename
@@ -323,10 +321,31 @@ export function useInlineEditing(deps: InlineEditingDeps) {
     }
   };
 
-  const virtualTextTarget = useCallback(
-    (id: string) => virtualSelections.find((s) => s.node.id === id && s.overridable) ?? null,
-    [virtualSelections]
-  );
+  const virtualTargetCache = useRef<{ doc: DesignDocument; id: string; sel: InstanceSelection | null } | null>(null);
+
+  /**
+   * The instance clone an id edits, resolved against the document AS IT IS.
+   *
+   * The render that produced a `virtualSelections` list predates the edit being
+   * written: `docRef.current` moves on every keystroke and every ⌘Z, and a
+   * selection taken from the last render diffs the override against a node the
+   * model has already left behind — a commit landing in the same tick as a ⌘Z
+   * would rebuild the runs from the pre-undo node and clobber the spans the undo
+   * just restored. Resolved from `docRef.current`, so a hit on the one-entry
+   * cache is only possible within the document version the edit targets.
+   */
+  const virtualTextTarget = (id: string): InstanceSelection | null => {
+    const cache = virtualTargetCache.current;
+    if (cache && cache.doc === docRef.current && cache.id === id) return cache.sel;
+    const target = findElementById(getActivePage(docRef.current).children, id)
+      ? null
+      : (() => {
+          const sel = resolveInstanceSelection(docRef.current, id);
+          return sel && sel.overridable ? sel : null;
+        })();
+    virtualTargetCache.current = { doc: docRef.current, id, sel: target };
+    return target;
+  };
 
   /**
    * The canvas reports the editor's own range. Tagged here rather than at the

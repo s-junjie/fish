@@ -1,9 +1,11 @@
-import type { DesignDocument, DesignElement } from "../../core/dsl/types";
+import type { DesignDocument, DesignElement, ElementScrollBehavior } from "../../core/dsl/types";
 import { getActivePage } from "../../core/dsl/types";
 import { layoutOf } from "../../core/dsl/layout-flat";
 import { findParentById } from "../../core/geometry/tree-ops";
 import { ConstraintsWidget } from "../ConstraintsWidget";
 import { Section } from "./SectionHeader";
+import { Select } from "../Select";
+import { SUB_LABEL_CLASS } from "../label-tier";
 import { t } from "../../i18n";
 
 interface ConstraintsSectionProps {
@@ -29,21 +31,51 @@ export function ConstraintsSection({ primarySelected, doc, onMutate }: Constrain
   const leftTheFlow = primarySelected.position === "absolute";
   const canConstrain = !parentPlacesChildren || leftTheFlow;
 
-  if (!canConstrain) return null;
+  const parentHasScroll = Boolean(
+    (parent as any).clipContent &&
+    (parent as any).scrollOverflow &&
+    (parent as any).scrollOverflow !== "none"
+  );
+
+  if (!canConstrain && !parentHasScroll) return null;
+
+  const scrollBehavior = primarySelected.scrollBehavior ?? "scroll";
 
   return (
     <Section id="constraints" title={t("stack.constraints")}>
-      <div data-constraints-widget="true">
-        <ConstraintsWidget
-          constraints={primarySelected.constraints}
-          onChange={(next) => {
-            onMutate((el) => ({
-              ...el,
-              constraints: next
-            }), true);
-          }}
-        />
-      </div>
+      {canConstrain && (
+        <div data-constraints-widget="true">
+          <ConstraintsWidget
+            constraints={primarySelected.constraints}
+            onChange={(next) => {
+              onMutate((el) => ({
+                ...el,
+                constraints: next
+              }), true);
+            }}
+          />
+        </div>
+      )}
+
+      {parentHasScroll && (
+        <div className={`flex items-center justify-between gap-2${canConstrain ? " mt-2" : ""}`}>
+          <span className={SUB_LABEL_CLASS}>{t("stack.scrollBehavior")}</span>
+          <Select
+            className="w-36"
+            value={scrollBehavior}
+            onChange={(val) => {
+              onMutate((el) => ({
+                ...el,
+                scrollBehavior: val === "scroll" ? undefined : (val as ElementScrollBehavior)
+              }), true);
+            }}
+          >
+            <option value="scroll">{t("stack.scrollWithParent")}</option>
+            <option value="fixed">{t("stack.scrollFixed")}</option>
+            <option value="sticky">{t("stack.scrollSticky")}</option>
+          </Select>
+        </div>
+      )}
     </Section>
   );
 }

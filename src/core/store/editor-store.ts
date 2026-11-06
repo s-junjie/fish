@@ -367,6 +367,41 @@ export class EditorStore {
     );
   }
 
+  /**
+   * Re-derives the measured boxes after a font finished downloading — without
+   * recording an edit.
+   *
+   * Opening a document runs one layout pass on the spot, and a `doc.fonts[].src`
+   * face or a page webfont is not downloaded yet: the pass measures the FALLBACK
+   * face and writes those numbers down — a hugging label's width, the stack above
+   * it, the instance wrapping both. When the file lands the glyphs change and the
+   * boxes do not, so the design keeps the proportions of a font nobody is looking
+   * at until some later edit happens to re-run the pass.
+   *
+   * Only while the document is still UNTOUCHED. `canUndo`/`canRedo` cover an edit
+   * that has been undone again, `gestureInitialDoc` a drag in flight; once any of
+   * them holds, the boxes on screen are where the user put their hands and
+   * rewriting them would move layers under the pointer mid-task.
+   *
+   * The view channel, not `notify()`. Auto-save and the version timeline subscribe
+   * to commits, and a font arriving is not one: it must repaint, not mint a
+   * version and not start a write.
+   */
+  rebaselineInitialLayout(): boolean {
+    if (this.writesRefused()) return false;
+    if (this.canUndo() || this.canRedo() || this.gestureInitialDoc) return false;
+    const page = getActivePage(this.doc);
+    const elements = relayoutDocumentTree(page.children || [], instanceSizeResolver(this.doc));
+    // Nothing was measured differently — the font matched the fallback, or the
+    // document has no text that hugs. Keep the document identity so nothing that
+    // renders off it rebuilds.
+    if (deepEqual(page.children, elements)) return false;
+    this.doc = updateActivePageElements(this.doc, elements);
+    this.publishChildSizeResolver();
+    this.notifyView();
+    return true;
+  }
+
   undo(): boolean {
     // Refused rather than skipped-with-a-stale-view: while a version is on
     // screen an undo would move the document the user cannot see.

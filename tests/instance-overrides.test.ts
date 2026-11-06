@@ -10,6 +10,10 @@ import { createInstanceFromComponent } from "../src/core/interactions/component-
 import { findMasterComponent } from "../src/core/interactions/component-inventory";
 import { applyPropertyToSubtree, commitInstanceOverrides, resolveInstanceChildren, resolveInstanceSelection } from "../src/core/interactions/instance-resolve";
 import { insertClones } from "../src/core/interactions/clipboard";
+import { resetInstance } from "../src/core/interactions/component-ops";
+import { swapInstanceComponent } from "../src/core/interactions/component-swap";
+import { normalizeDesignDocument } from "../src/core/dsl/normalize";
+import { validateDocument } from "../src/core/validate";
 
 const canvas = {
   width: 2000,
@@ -202,5 +206,68 @@ describe("an assetId override changes the painted asset", () => {
     expect(applyPropertyToSubtree(elements, "v", "assetId", "new")).toBe(true);
     expect((elements[0] as any).assetId).toBe("new");
     expect(elements[0].fills).toBeUndefined();
+  });
+});
+
+/**
+ * A master can lose a layer, and an instance can outlive it: the override names a
+ * node that is no longer there. Keeping it is a deliberate choice — the layer may
+ * come back, and a silent prune would make the file's own text disappear on the
+ * next save with nothing to point at. What it earns instead is a warning, and a
+ * swap or a reset clears it.
+ */
+describe("an override whose node the master no longer has", () => {
+  const ORPHAN = { targetId: "label", property: "content" as const, value: "Gone" };
+
+  const orphaned = (): DesignDocument => {
+    const doc = fixture();
+    const card = findMasterComponent(doc, "card")!;
+    const withoutLabel: ComponentElement = {
+      ...card,
+      children: (card.children || []).filter((el) => el.id !== "label")
+    };
+    const elements = doc.pages![0].children.map((el) =>
+      el.id === "card" ? (withoutLabel as DesignElement) : el.id === "cardInst" ? { ...el, overrides: [ORPHAN] } : el
+    );
+    return { ...doc, elements, pages: [{ ...doc.pages![0], children: elements }] };
+  };
+
+  it("is kept by normalization, so the warning has something to name", () => {
+    const { document } = normalizeDesignDocument(orphaned());
+    expect(instOf(document as DesignDocument).overrides).toEqual([ORPHAN]);
+  });
+
+  it("is reported as a warning rather than dropped in silence", () => {
+    const issues = validateDocument(orphaned());
+    const found = issues.filter((issue) => issue.elementId === "cardInst");
+    expect(found).toHaveLength(1);
+    expect(found[0].level).toBe("warning");
+    expect(found[0].message).toMatch(/can never apply/);
+  });
+
+  it("is dropped when the instance is switched to another master", () => {
+    const start = orphaned();
+    const other: ComponentElement = {
+      id: "card2",
+      type: "component",
+      name: "CARD2",
+      x: 0,
+      y: 100,
+      width: 200,
+      height: 80,
+      children: [{ id: "caption", type: "text", name: "caption", x: 0, y: 0, width: 80, height: 20, content: "Other" }]
+    };
+    const withOther: DesignDocument = {
+      ...start,
+      elements: [...start.pages![0].children, other],
+      pages: [{ ...start.pages![0], children: [...start.pages![0].children, other] }]
+    };
+    const swapped = swapInstanceComponent(withOther, "cardInst", "card2")!;
+    expect(instOf(swapped).overrides ?? []).toEqual([]);
+  });
+
+  it("is dropped by a reset, which is the same promise as the UI's", () => {
+    const reset = resetInstance(orphaned(), "cardInst")!;
+    expect(instOf(reset).overrides ?? []).toEqual([]);
   });
 });

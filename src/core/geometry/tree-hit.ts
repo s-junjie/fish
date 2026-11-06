@@ -7,6 +7,7 @@ import { collectDescendantIds, findElementById, findParentById, isContainer } fr
 import { insertElementIntoContainer, removeElementFromTree } from "./tree-edit";
 import { reconcileSizingAfterReparent, reparentRefusal, type ReparentRefusal } from "./tree-reparent";
 import { computeParentOrigin } from "./tree-coords";
+import { childScrollOffset } from "./scroll-bounds";
 
 /**
  * Returns the canvas-absolute AABB of an element given its parent's canvas origin.
@@ -82,9 +83,23 @@ export function findFrameAtPoint(
         const pivot = elementPivot(el);
         const worldM = multiply(parentM, elementTransformMatrix(el, pivot.x, pivot.y));
         if (!reaches(worldM, el, x, y)) continue;
-        // Children are emitted inside `translate(x, y)`.
-        const childMatch = search(el.children || [], multiply(worldM, translation(el.x, el.y)));
-        if (childMatch) return childMatch;
+        let canHitChildren = true;
+        if (el.clipContent) {
+          const local = invert(worldM);
+          if (local) {
+            const p = transformPoint(local, { x, y });
+            const b = elementAABB(el);
+            if (p.x < b.x || p.x > b.x + b.width || p.y < b.y || p.y > b.y + b.height) {
+              canHitChildren = false;
+            }
+          }
+        }
+        if (canHitChildren) {
+          const sx = el.scrollX || 0;
+          const sy = el.scrollY || 0;
+          const childMatch = search(el.children || [], multiply(worldM, translation(el.x - sx, el.y - sy)));
+          if (childMatch) return childMatch;
+        }
 
         // The point, carried back through everything this frame inherits AND its
         // own turn, lands in the frame's own box — which is the question the drop
@@ -275,8 +290,29 @@ export function findElementAtPoint(
       const worldM = multiply(parentM, elementTransformMatrix(el, pivot.x, pivot.y));
       if (!reaches(worldM, el, x, y)) continue;
       if (isContainer(el) && el.children && el.children.length > 0) {
-        const childMatch = search(el.children, multiply(worldM, translation(el.x, el.y)));
-        if (childMatch) return childMatch;
+        let canHitChildren = true;
+        if (el.clipContent) {
+          const local = invert(worldM);
+          if (local) {
+            const p = transformPoint(local, { x, y });
+            const b = elementAABB(el);
+            const eps = 0.5;
+            if (p.x < b.x - eps || p.x > b.x + b.width + eps || p.y < b.y - eps || p.y > b.y + b.height + eps) {
+              canHitChildren = false;
+            }
+          }
+        }
+        if (canHitChildren) {
+          const sx = el.scrollX || 0;
+          const sy = el.scrollY || 0;
+          const children = el.children || [];
+          for (let i = children.length - 1; i >= 0; i--) {
+            const child = children[i];
+            const { offsetX, offsetY } = childScrollOffset(child, el, sx, sy);
+            const childMatch = search([child], multiply(worldM, translation(el.x + offsetX, el.y + offsetY)));
+            if (childMatch) return childMatch;
+          }
+        }
       }
       const local = invert(worldM);
       // A degenerate chain cannot be turned back — no local point is "the" point —

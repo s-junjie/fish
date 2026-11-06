@@ -254,6 +254,12 @@ function applyScaleFactors(
   fy: number,
   anchor: ScaleAnchor
 ): DesignElement[] {
+  // A pair of 1s is not a tiny scale, it is no scale — and saying so here keeps
+  // the ARRAY identity, which is what tells `runScale` the answer is a no-op
+  // rather than a rewrite that happened to land on the same numbers. Without it
+  // a W field handed `0` (which `sanitizeFactor` reads as "use 1") came back as
+  // a fresh tree, so `changed` was true and a refusal was turned into an edit.
+  if (fx === 1 && fy === 1) return elements;
   const scale = collectScaleTargets(elements, selectedIds);
   if (scale.size === 0) return elements;
   const bounds = selectionWorldBounds(elements, scale);
@@ -262,6 +268,12 @@ function applyScaleFactors(
     x: bounds.x + anchor.x * bounds.width,
     y: bounds.y + anchor.y * bounds.height
   };
+  // One layer is its own selection: its box IS the frame the anchor is a fraction
+  // of, so the placement answer is local and needs no world round-trip. The
+  // round-trip is what broke a ROTATED layer — it measured the box against the
+  // axis-aligned bounds the rotation projects onto, and put the layer where a
+  // box of that silhouette would go.
+  const sole = scale.size === 1 ? [...scale][0] : null;
   return mapElements(elements, (el) => {
     if (!scale.has(el.id)) return el;
     // A 1 on an engine-owned axis is not a smaller scale, it is the same box: the
@@ -269,6 +281,12 @@ function applyScaleFactors(
     // properties on that axis come along untouched for free.
     const axes = scalableAxes(el, findParentById(elements, el.id));
     const sized = scaleSubtreeByFactor(el, axes.x ? fx : 1, axes.y ? fy : 1, anchor, axes);
+    if (sole === el.id && el.type !== "line") {
+      // A line turns about its ORIGIN, not its centre, so the pin below does not
+      // describe it; it keeps the world-bounds placement.
+      const pinned = originHoldingAnchor(el, sized.width, sized.height, anchor);
+      return { ...sized, x: pinned.x, y: pinned.y };
+    }
     // The layer's PLACE in the group is the selection's frame, which its own box
     // knows nothing about. `x` is parent-local and the anchor is in world space, so
     // the vector is measured in world and handed back in local — one parent hop is
@@ -282,6 +300,46 @@ function applyScaleFactors(
       y: round2(anchorWorld.y + (worldY - anchorWorld.y) * (axes.y ? fy : 1) - origin.y)
     };
   });
+}
+
+/**
+ * Where a scaled box has to sit for the anchor it grew from to stay on the same
+ * point on screen.
+ *
+ * Rotation turns about the box CENTRE (`elementPivot`), so the centre is the one
+ * point a turn cannot move and every other point travels along an arc. Holding a
+ * rotated box's top-left fixed in its parent's coordinates would therefore leave
+ * the turn to swing that corner around the new centre — the box grows to the
+ * right size, so the new centre is `C + L(d) − L(d′)`: `L` is the element's own
+ * mirror-then-turn and `d` / `d′` the anchor's offset from the centre before and
+ * after.
+ *
+ * With nothing to turn or mirror `L` is the identity and this reduces to the
+ * placement `scaleSubtreeByFactor` writes, which is why the caller does not
+ * branch on rotation.
+ */
+function originHoldingAnchor(
+  el: DesignElement,
+  width: number,
+  height: number,
+  anchor: ScaleAnchor
+): { x: number; y: number } {
+  const rad = ((el.rotation || 0) * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const flipX = el.flipX ? -1 : 1;
+  const flipY = el.flipY ? -1 : 1;
+  const turn = (dx: number, dy: number) => {
+    const mx = dx * flipX;
+    const my = dy * flipY;
+    return { x: mx * cos - my * sin, y: mx * sin + my * cos };
+  };
+  const before = turn((anchor.x - 0.5) * el.width, (anchor.y - 0.5) * el.height);
+  const after = turn((anchor.x - 0.5) * width, (anchor.y - 0.5) * height);
+  return {
+    x: round2(el.x + el.width / 2 + before.x - after.x - width / 2),
+    y: round2(el.y + el.height / 2 + before.y - after.y - height / 2)
+  };
 }
 
 /**
@@ -306,10 +364,19 @@ export function scaleElementsToSize(
   box: { width: number; height: number },
   anchor: ScaleAnchor = DEFAULT_SCALE_ANCHOR
 ): DesignElement[] {
-  const bounds = selectionWorldBounds(elements, selectedIds);
+  const targets = collectScaleTargets(elements, selectedIds);
+  if (targets.size === 0) return elements;
+  const bounds = selectionWorldBounds(elements, targets);
   if (!bounds) return elements;
-  const sx = bounds.width > 0 ? box.width / bounds.width : 1;
-  const sy = bounds.height > 0 ? box.height / bounds.height : 1;
+  // One layer's W / H are its OWN box, not the axis-aligned box its rotation
+  // projects onto: a 45° 100×50 rect measures 106×106 to the world, and typing
+  // "200" into W has to produce a 200-wide rect rather than a 200-wide
+  // silhouette of one. The drag path derives its factors from the layer's own
+  // size for the same reason (`geometry-gestures`), and a rotated layer must not
+  // answer the two tools differently.
+  const sole = targets.size === 1 ? flattenElements(elements).find((el) => targets.has(el.id)) : undefined;
+  const sx = sole && sole.width > 0 ? box.width / sole.width : bounds.width > 0 ? box.width / bounds.width : 1;
+  const sy = sole && sole.height > 0 ? box.height / sole.height : bounds.height > 0 ? box.height / bounds.height : 1;
   if (Math.abs(sx - 1) < 1e-6 && Math.abs(sy - 1) < 1e-6) return elements;
   return applyScaleFactors(elements, selectedIds, sanitizeFactor(sx), sanitizeFactor(sy), anchor);
 }

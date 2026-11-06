@@ -13,6 +13,7 @@ import {
 import { getShapeLocalPath } from "../../core/geometry/gradient-utils";
 import { isNeutralColorFilter } from "../../core/dsl/color-filter";
 import { isContainer } from "../../core/geometry/tree-ops";
+import { childScrollOffset } from "../../core/geometry/scroll-bounds";
 import {
   resolveInstanceBox,
   resolveInstanceNumberMode,
@@ -423,14 +424,49 @@ export function SvgNodeRenderer({
             />
           )}
 
-          <g
-            transform={`translate(${el.x}, ${el.y})`}
-            clipPath={(el as ContainerElement).clipContent ? `url(#clip_${el.id})` : undefined}
-            data-clip-chain={(el as ContainerElement).clipContent ? `url(#clip_${el.id})` : undefined}
-            data-clip-span={(el as ContainerElement).clipContent ? String(Math.max(el.width, el.height)) : undefined}
-          >
-            {renderNodeList((el as ContainerElement).children || [], themeCtx, false)}
-          </g>
+          {(() => {
+            const containerEl = el as ContainerElement;
+            const sx = containerEl.scrollX || 0;
+            const sy = containerEl.scrollY || 0;
+            const hasScroll = (sx !== 0 || sy !== 0) && Boolean(containerEl.clipContent);
+            return (
+              <g
+                transform={`translate(${el.x}, ${el.y})`}
+                clipPath={containerEl.clipContent ? `url(#clip_${el.id})` : undefined}
+                data-clip-chain={containerEl.clipContent ? `url(#clip_${el.id})` : undefined}
+                data-clip-span={containerEl.clipContent ? String(Math.max(el.width, el.height)) : undefined}
+              >
+                {(() => {
+                  const children = containerEl.children || [];
+                  if (!hasScroll) {
+                    return renderNodeList(children, themeCtx, false);
+                  }
+                  const hasPinned = children.some((c) => {
+                    const { offsetX, offsetY } = childScrollOffset(c, el as any, sx, sy);
+                    return offsetX !== -sx || offsetY !== -sy;
+                  });
+                  if (!hasPinned) {
+                    return (
+                      <g transform={`translate(${-sx}, ${-sy})`}>
+                        {renderNodeList(children, themeCtx, false)}
+                      </g>
+                    );
+                  }
+                  return children.map((c, i) => {
+                    const { offsetX, offsetY } = childScrollOffset(c, el as any, sx, sy);
+                    if (offsetX === 0 && offsetY === 0) {
+                      return renderNodeList([c], themeCtx, false);
+                    }
+                    return (
+                      <g key={c.id || i} transform={`translate(${offsetX}, ${offsetY})`}>
+                        {renderNodeList([c], themeCtx, false)}
+                      </g>
+                    );
+                  });
+                })()}
+              </g>
+            );
+          })()}
         </>
       )}
 

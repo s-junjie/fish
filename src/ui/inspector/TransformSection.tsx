@@ -212,12 +212,6 @@ export function TransformSection({
             />
         </div>
 
-        {/* Constraints answers "what happens to this layer when its parent
-            resizes", which is a question about where the layer sits — so it
-            belongs under Position rather than at the bottom of the Layout
-            section, next to a stack it may not even be in. */}
-        <ConstraintsSection primarySelected={primarySelected!} doc={docRef.current} onMutate={onMutate} />
-
         <div className={ROW_TIGHT_CLASS}>
           <div className="flex-1">
             <ScrubInput
@@ -363,6 +357,8 @@ export function TransformSection({
           </div>
         </div>
       </Section>
+
+      <ConstraintsSection primarySelected={primarySelected!} doc={docRef.current} onMutate={onMutate} />
     </>
   );
 }

@@ -113,10 +113,11 @@ describe("a colour panel that can pick an image is given the document's assets",
   it("passes assets wherever the image tab is reachable", async () => {
     const ts = await import("typescript");
     const offenders: string[] = [];
-    for (const file of await sourceFiles(SRC)) {
-      if (!file.endsWith(".tsx")) continue;
-      const rel = file.slice(SRC.length + 1);
-      const text = await readFile(file, "utf-8");
+    // `allSources`, not a second walk: it reads the tree once, concurrently, and
+    // every scan in this file shares it. Reading again here — one `await` per
+    // file — was the half of this rig that timed out.
+    for (const { rel, text } of await allSources()) {
+      if (!rel.endsWith(".tsx")) continue;
       if (!text.includes("<ColorPanel")) continue;
       const sf = ts.createSourceFile(rel, text, ts.ScriptTarget.ESNext, true, ts.ScriptKind.TSX);
       const visit = (node: import("typescript").Node): void => {

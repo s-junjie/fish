@@ -1,4 +1,5 @@
-import fs from "node:fs";
+import { readdirSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { Plugin } from "vite";
 import { en } from "../src/i18n/en";
@@ -24,6 +25,18 @@ export interface I18nScan {
   table: I18nTable;
   /** Keys with no call site and no runtime prefix — dead weight in `en.ts`. */
   orphans: string[];
+  /**
+   * `t("x")` where `x` has no entry, as `relative/path.ts: key`. The plugin turns
+   * the first one into a build error for the file it is transforming; this is the
+   * whole tree at once, which is what a rig wants to report.
+   */
+  unknown: string[];
+  /**
+   * How many key literals the walk saw. A lexer that quietly stopped matching
+   * reports an empty `unknown` too, so a caller needs this to tell "clean" from
+   * "never looked".
+   */
+  checked: number;
 }
 
 /**
@@ -51,17 +64,27 @@ export function encodeKeys(keys: Map<string, number>): string {
 }
 
 function sourceFiles(dir: string): string[] {
-  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const file = path.join(dir, entry.name);
     if (entry.isDirectory()) return entry.name === "i18n" ? [] : sourceFiles(file);
     return /\.(ts|tsx)$/.test(entry.name) ? [file] : [];
   });
 }
 
-const scans = new Map<string, I18nScan>();
+const scans = new Map<string, Promise<I18nScan>>();
 
-/** Memoised per root: the build scans once, and the rigs share that scan. */
-export function scanI18n(sourceDir: string): I18nScan {
+/**
+ * Memoised per root, as a PROMISE: the build scans once, the rigs share that
+ * scan, and two callers that arrive before it settles wait on the same walk
+ * rather than starting a second one.
+ *
+ * Async because this machine charges ~50 ms per file OPEN — the tree is ~700
+ * files, so reading them one after another costs ~36 s while reading them
+ * together costs ~2 s. (The lexing itself is 0.13 s for the whole of `src`; the
+ * wait is the filesystem, not the reader.) `load` / `transform` may return a
+ * Promise, which is why the plugin can afford to be honest about it.
+ */
+export function scanI18n(sourceDir: string): Promise<I18nScan> {
   const cached = scans.get(sourceDir);
   if (cached) return cached;
   const scan = readSourceTree(sourceDir);
@@ -75,7 +98,7 @@ export function scanI18n(sourceDir: string): I18nScan {
  * table that `t(x)` indexes), or when a runtime-built path can land on it.
  * Slot order is sorted, so the table does not depend on file order.
  */
-function readSourceTree(sourceDir: string): I18nScan {
+async function readSourceTree(sourceDir: string): Promise<I18nScan> {
   const { keys: allKeys, values: allValues } = flattenDictionary(en as unknown as Record<string, unknown>);
   const valueAt = new Map(allKeys.map((key, index) => [key, allValues[index]]));
   const known = new Set(allKeys);
@@ -88,9 +111,18 @@ function readSourceTree(sourceDir: string): I18nScan {
    */
   const deferred = new Set<string>();
 
-  for (const file of sourceFiles(sourceDir)) {
-    const code = fs.readFileSync(file, "utf-8");
+  // Read together, not one at a time — see `scanI18n`. The lexing is cheap; the
+  // opens are not.
+  const sources = await Promise.all(
+    sourceFiles(sourceDir).map(async (file) => ({ file, code: await readFile(file, "utf-8") }))
+  );
+
+  let checked = 0;
+  const unknown: string[] = [];
+  for (const { file, code } of sources) {
     const analysis = analyzeSource(code, (key) => known.has(key));
+    checked += analysis.calls.reduce((count, call) => count + call.literals.length, 0);
+    for (const key of analysis.unknown) unknown.push(`${path.relative(process.cwd(), file)}: ${key}`);
     const inlinedHere = new Set<number>();
     if (IMPORTS_T.test(code)) {
       for (const call of analysis.calls) {
@@ -116,7 +148,9 @@ function readSourceTree(sourceDir: string): I18nScan {
 
   return {
     table: { keys, values: sorted.map((key) => valueAt.get(key)!), slots },
-    orphans: allKeys.filter((key) => !reachable.has(key)).sort()
+    orphans: allKeys.filter((key) => !reachable.has(key)).sort(),
+    unknown,
+    checked
   };
 }
 
@@ -126,7 +160,7 @@ export function i18nIndexPlugin(): Plugin {
   const valueAt = new Map(allKeys.map((key, index) => [key, allValues[index]]));
   let rewrite = false;
   let sourceDir = "";
-  let shipped: I18nScan | null = null;
+  let shipped: Promise<I18nTable> | null = null;
 
   /**
    * `serve` keeps every key: nothing is rewritten there, so every `t("a.b")`
@@ -137,9 +171,14 @@ export function i18nIndexPlugin(): Plugin {
     return { keys: slots, values: sortedAll.map((key) => valueAt.get(key)!), slots };
   }
 
-  function shippedTable(): I18nTable {
-    shipped ??= scanI18n(sourceDir);
-    return shipped.table;
+  /**
+   * One scan per plugin instance, shared by every file the build rewrites. The
+   * promise is memoised, not the result: the first `transform` starts the walk
+   * and the rest of the files await the same one instead of each paying it.
+   */
+  function shippedTable(): Promise<I18nTable> {
+    shipped ??= scanI18n(sourceDir).then((scan) => scan.table);
+    return shipped;
   }
 
   return {
@@ -152,12 +191,12 @@ export function i18nIndexPlugin(): Plugin {
     resolveId(id: string) {
       return id === VIRTUAL_ID ? RESOLVED_ID : null;
     },
-    load(id: string) {
+    async load(id: string) {
       if (id !== RESOLVED_ID) return null;
-      const table = rewrite ? shippedTable() : fullTable();
+      const table = rewrite ? await shippedTable() : fullTable();
       return `export const KEYS = ${JSON.stringify(encodeKeys(table.keys))};\nexport const VALUES = ${JSON.stringify(table.values)};\n`;
     },
-    transform(code: string, id: string) {
+    async transform(code: string, id: string) {
       if (!rewrite) return null;
       if (!id.startsWith(sourceDir + path.sep) || id.includes(`${path.sep}i18n${path.sep}`)) return null;
       if (!IMPORTS_T.test(code)) return null;
@@ -167,7 +206,7 @@ export function i18nIndexPlugin(): Plugin {
         this.error(`${id}: t("${analysis.unknown[0]}") has no entry in src/i18n/en.ts`);
       }
 
-      const slots = shippedTable().slots;
+      const slots = (await shippedTable()).slots;
       const edits: { start: number; end: number; slot: number }[] = [];
       for (const call of analysis.calls) {
         if (!call.rewriteable) continue;

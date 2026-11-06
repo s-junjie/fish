@@ -13,6 +13,9 @@ import { PresentPageEntry, PresentTransition } from "./usePresentation";
 import { matchSlides } from "../../core/presentation/morph";
 import { morphSlide, slidePaint } from "../../core/presentation/animate";
 import { flattenElements } from "../../core/geometry/tree-ops";
+import { mapElements } from "../../core/geometry/tree-edit";
+import { findElementAtPoint } from "../../core/geometry/tree-hit";
+import { canContainerScroll, clampScrollOffset, findScrollableContainersAtPoint } from "../../core/geometry/scroll-bounds";
 import { MENU_ITEM_CLASS, MENU_ITEM_ON_CLASS, MENU_SEPARATOR_CLASS, MENU_SURFACE_CLASS } from "../menu-style";
 import { LEADER_RULE_CLASS } from "../inspector/SectionHeader";
 import { ScaleModeIcon } from "../scale-icons";
@@ -139,6 +142,7 @@ export function PresentOverlay({
   const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement));
   const [uiVisible, setUiVisible] = useState(true);
   const [scrollY, setScrollY] = useState(0);
+  const [containerScrolls, setContainerScrolls] = useState<Record<string, { x: number; y: number }>>({});
 
   // Read once: the deck is mounted and unmounted per presentation, and a
   // pointer type cannot change inside one.
@@ -148,9 +152,10 @@ export function PresentOverlay({
       : false
   );
 
-  // Reset vertical scroll to top whenever slide changes
+  // Reset scroll state whenever slide changes
   useEffect(() => {
     setScrollY(0);
+    setContainerScrolls({});
   }, [index, frame?.id]);
 
   /**
@@ -296,6 +301,18 @@ export function PresentOverlay({
     return result;
   }, [pageElements, incoming]);
 
+  const scrolledElements = useMemo(() => {
+    const base = incoming ?? frame?.elements ?? [];
+    if (Object.keys(containerScrolls).length === 0) return base;
+    return mapElements(base, (el) => {
+      const s = containerScrolls[el.id];
+      if (s) {
+        return { ...el, scrollX: s.x, scrollY: s.y };
+      }
+      return el;
+    });
+  }, [incoming, frame?.elements, containerScrolls]);
+
   const paint = slidePaint(
     resolved?.transition ?? "none",
     resolved?.direction ?? "right",
@@ -371,7 +388,50 @@ export function PresentOverlay({
       }}
       onWheel={(e: any) => {
         resetAutoHide();
+
+        const target = e.target as HTMLElement | null;
+        if (target && target.closest("foreignObject, video, iframe")) {
+          return;
+        }
+
         e.preventDefault();
+
+        // 1. Scroll container under cursor if scrollable
+        if (fit && frame) {
+          const shiftX = paint.inShift.x;
+          const shiftY = paint.inShift.y;
+          const worldX = (e.clientX - (fit.pan.x + shiftX)) / fit.zoom;
+          const worldY = (e.clientY - (fit.pan.y - scrollY + shiftY)) / fit.zoom;
+
+          const hit = findElementAtPoint(scrolledElements, worldX, worldY, { includeLocked: true });
+          if (hit && hit.type === "html") {
+            return;
+          }
+
+          const candidates = findScrollableContainersAtPoint(scrolledElements, worldX, worldY);
+          if (candidates.length > 0) {
+            for (const cand of candidates) {
+              const curX = containerScrolls[cand.id]?.x ?? cand.scrollX ?? 0;
+              const curY = containerScrolls[cand.id]?.y ?? cand.scrollY ?? 0;
+              const candWithScroll = { ...cand, scrollX: curX, scrollY: curY };
+              if (canContainerScroll(candWithScroll, e.deltaX, e.deltaY)) {
+                const { scrollX: nextX, scrollY: nextY } = clampScrollOffset(
+                  candWithScroll as any,
+                  curX + e.deltaX,
+                  curY + e.deltaY
+                );
+                if (nextX !== curX || nextY !== curY) {
+                  setContainerScrolls((prev) => ({
+                    ...prev,
+                    [cand.id]: { x: nextX, y: nextY }
+                  }));
+                  return;
+                }
+              }
+            }
+            return;
+          }
+        }
 
         // If content height exceeds viewport, scrolling is strictly used for scrolling content, never turning slides
         if (maxScroll > 0) {
@@ -434,7 +494,7 @@ export function PresentOverlay({
             }}
           >
             <DocumentStage
-              elements={incoming ?? frame.elements}
+              elements={scrolledElements}
               allElements={stageAllElements}
               docRef={docRef}
               zoom={fit.zoom}

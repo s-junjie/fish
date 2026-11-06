@@ -3,6 +3,7 @@ import {
   ComponentOverride,
   DesignDocument,
   DesignElement,
+  ElementSizing,
   InstanceElement,
   getActivePage,
   updateActivePageElements
@@ -78,14 +79,18 @@ export function worldOriginOf(doc: DesignDocument, el: DesignElement): { x: numb
   const elements = getActivePage(doc).children;
   if (findElementById(elements, el.id)) return computeParentOrigin(elements, el.id);
   const route = resolvedRoute(doc, el.id);
-  if (!route) return { x: 0, y: 0 };
+  if (!route || route.length === 0) return { x: 0, y: 0 };
   const base = computeParentOrigin(elements, route[0].id);
-  let x = base.x + route[0].x;
-  let y = base.y + route[0].y;
+  const sx0 = (route[0] as any).scrollX || 0;
+  const sy0 = (route[0] as any).scrollY || 0;
+  let x = base.x + route[0].x - sx0;
+  let y = base.y + route[0].y - sy0;
   // The last step is the node itself; its own offset belongs to the caller.
   for (let i = 1; i < route.length - 1; i++) {
-    x += route[i].x;
-    y += route[i].y;
+    const sxi = (route[i] as any).scrollX || 0;
+    const syi = (route[i] as any).scrollY || 0;
+    x += route[i].x - sxi;
+    y += route[i].y - syi;
   }
   return { x, y };
 }
@@ -163,7 +168,9 @@ export function worldShapeMatrixOf(doc: DesignDocument, el: DesignElement): Matr
  */
 function stepMatrix(el: DesignElement): Matrix2D {
   const pivot = elementPivot(el);
-  return multiply(elementTransformMatrix(el, pivot.x, pivot.y), translation(el.x, el.y));
+  const sx = (el as any).scrollX || 0;
+  const sy = (el as any).scrollY || 0;
+  return multiply(elementTransformMatrix(el, pivot.x, pivot.y), translation(el.x - sx, el.y - sy));
 }
 
 /**
@@ -337,6 +344,12 @@ export function swapRefusal(
  * component, so the child ids of one variant never appear in another and an
  * id-based filter drops every override the moment the user switches variant.
  *
+ * A NAME is not unique either — a master can hold two layers called `Label` —
+ * so the counterpart is the same OCCURRENCE of that name: the second `Label` in
+ * the old master maps to the second `Label` in the new one. Matching on the
+ * first name only sent both overrides to the same node, and the second edit
+ * vanished on every variant switch.
+ *
  * Figma's second rule comes along with it: a change survives a swap only when
  * both masters STARTED from the same value for that property. Without that check,
  * swapping to a variant whose layer already differs silently applies a change the
@@ -347,22 +360,94 @@ function remapOverridesByName(
   previous: ComponentElement,
   next: ComponentElement
 ): ComponentOverride[] {
-  const byName = new Map<string, DesignElement>();
-  for (const el of flattenElements(next.children || [])) {
-    if (el.name && !byName.has(el.name)) byName.set(el.name, el);
-  }
+  const byName = namesByOccurrence(next.children || []);
+  const occurrence = occurrencesByName(previous.children || []);
 
   const out: ComponentOverride[] = [];
   for (const ov of overrides) {
     const oldNode = findElementById(previous.children || [], ov.targetId);
     if (!oldNode) continue;
-    const nextNode = oldNode.name ? byName.get(oldNode.name) : undefined;
+    const nextNode = oldNode.name ? counterpart(oldNode, byName, occurrence) : undefined;
     if (!nextNode) continue;
     if (!deepEqual(propertyValue(oldNode, ov.property), propertyValue(nextNode, ov.property))) continue;
     out.push({ ...ov, targetId: nextNode.id });
   }
   return out;
 }
+
+/** Same-named layers of one master, in pre-order, grouped by name. */
+function namesByOccurrence(children: DesignElement[]): Map<string, DesignElement[]> {
+  const byName = new Map<string, DesignElement[]>();
+  for (const el of flattenElements(children)) {
+    if (!el.name) continue;
+    const list = byName.get(el.name);
+    if (list) list.push(el);
+    else byName.set(el.name, [el]);
+  }
+  return byName;
+}
+
+/** Each named node's index among the layers that share its name. */
+function occurrencesByName(children: DesignElement[]): Map<string, number> {
+  const seen = new Map<string, number>();
+  const out = new Map<string, number>();
+  for (const el of flattenElements(children)) {
+    if (!el.name) continue;
+    const index = seen.get(el.name) ?? 0;
+    out.set(el.id, index);
+    seen.set(el.name, index + 1);
+  }
+  return out;
+}
+
+/** The node in `byName` that stands where `old` stood, or none. */
+function counterpart(
+  old: DesignElement,
+  byName: Map<string, DesignElement[]>,
+  occurrence: Map<string, number>
+): DesignElement | undefined {
+  const candidates = old.name ? byName.get(old.name) : undefined;
+  if (!candidates) return undefined;
+  return candidates[occurrence.get(old.id) ?? 0];
+}
+
+/**
+ * The `sizing` an instance should carry after a swap.
+ *
+ * `sizing` is not an override: it is COPIED from the master when the instance is
+ * created (so the size menu agrees with the box from the first frame), which is
+ * exactly why a swap has to copy the new master's across — the field is a
+ * statement about the master being projected, and the projection changed.
+ *
+ * Per axis, because an axis can be pinned on its own: a value that DIFFERS from
+ * the old master's is the user's edit (`withAxisMode` writes it beside a
+ * `sizeOverride`, and a component set's cell can leave only one axis said), so
+ * it stays. Everything the instance simply inherited follows the new master.
+ * Absent when neither the instance nor the new master says anything — an
+ * absent `sizing` is what "no opinion" looks like in the document.
+ */
+function swappedSizing(
+  inst: InstanceElement,
+  previous: ComponentElement | null,
+  next: ComponentElement
+): ElementSizing | undefined {
+  if (inst.sizeOverride) return inst.sizing;
+  const before = previous?.sizing;
+  const after = next.sizing;
+  const out: Record<string, unknown> = {};
+  for (const key of SIZING_KEYS) {
+    const mine = inst.sizing?.[key];
+    if (mine !== undefined && mine !== before?.[key]) {
+      out[key] = mine;
+      continue;
+    }
+    const inherited = after?.[key];
+    if (inherited !== undefined) out[key] = inherited;
+  }
+  return Object.keys(out).length > 0 ? (out as ElementSizing) : undefined;
+}
+
+const SIZING_KEYS = ["width", "height", "minWidth", "maxWidth", "minHeight", "maxHeight"] as const;
 
 /**
  * Points an instance at another component. Overrides are re-pointed by layer
@@ -405,6 +490,16 @@ export function swapInstanceComponent(
     width: inst.sizeOverride ? inst.width : scaled ? round2(master.width * scale.x) : master.width,
     height: inst.sizeOverride ? inst.height : scaled ? round2(master.height * scale.y) : master.height
   };
+  // The size menu had no such rule, so the BOX tracked the new master while the
+  // SIZING kept the old one's: a `fixed` instance swapped onto a hugging master
+  // came back with a hug's box and a Fixed menu, and the next relayout shrank it
+  // back to the old master's number. Same ownership test as the box — a
+  // `sizeOverride` means the user owns this instance's size — applied per axis,
+  // because an axis pinned by `withAxisMode` is the user's while the other still
+  // tracks. See `swappedSizing`.
+  const sizing = swappedSizing(inst, previous, master);
+  if (sizing) nextInst.sizing = sizing;
+  else delete nextInst.sizing;
 
   const nextDoc = updateActivePageElements(
     doc,
@@ -584,7 +679,7 @@ function remapPathTail(
 
   const oldNode = findElementById(previous.children || [], head);
   if (!oldNode) return null;
-  const nextNode = oldNode.name ? byName(next.children || []).get(oldNode.name) : undefined;
+  const nextNode = counterpartIn(previous, next, oldNode);
   if (!nextNode) return null;
   // Figma's second rule, as on a top-level swap: the change survives only when
   // both masters STARTED from the same value for it.
@@ -599,12 +694,13 @@ function remapPathTail(
   return deeper === null ? null : `${nextNode.id}/${deeper}`;
 }
 
-function byName(children: DesignElement[]): Map<string, DesignElement> {
-  const map = new Map<string, DesignElement>();
-  for (const el of flattenElements(children)) {
-    if (el.name && !map.has(el.name)) map.set(el.name, el);
-  }
-  return map;
+/** The name-and-occurrence match, rebuilt per call for the rare path form. */
+function counterpartIn(
+  previous: ComponentElement,
+  next: ComponentElement,
+  old: DesignElement
+): DesignElement | undefined {
+  return counterpart(old, namesByOccurrence(next.children || []), occurrencesByName(previous.children || []));
 }
 
 /**

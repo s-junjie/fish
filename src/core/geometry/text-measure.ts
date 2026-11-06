@@ -216,14 +216,72 @@ export function alignLineLeft(
  */
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
+/**
+ * The generation of the measurements in `cache`.
+ *
+ * A cache invalidation has to be visible to callers that keep their OWN derived
+ * caches. `instance-resolve` remembers a resolved instance subtree keyed on the
+ * inputs it read, and a text box is one of them — but throwing the measurements
+ * away changes an answer that key cannot see. Bumping a number the signature
+ * carries is the difference between "the same inputs" and "the same inputs,
+ * measured again", which is what a font arriving actually is.
+ */
+let measureRevision = 0;
+const asyncFontListeners = new Set<() => void>();
+
+/** The current generation — see `measureRevision`. */
+export function textMeasureRevision(): number {
+  return measureRevision;
+}
+
+/**
+ * Calls `listener` when font BYTES arrive, not when the cache is cleared.
+ *
+ * The two are different events. A clear is an internal bookkeeping step that
+ * happens on every measurement reset; a font finishing its download changes what
+ * the document's boxes MEASURE, and the layout that was derived from the fallback
+ * face is now wrong. Only the second is worth a relayout, and only the second is
+ * announced here.
+ *
+ * Returns the unsubscribe, so a caller can tie it to a component's lifetime.
+ */
+export function subscribeAsyncFontLoaded(listener: () => void): () => void {
+  asyncFontListeners.add(listener);
+  return () => {
+    asyncFontListeners.delete(listener);
+  };
+}
+
+/** Drops every measurement and moves it to a new generation. */
+function invalidateMeasurements(): void {
+  cache.clear();
+  measureRevision++;
+}
+
+/**
+ * Announces that a font finished downloading: drop what was measured with the
+ * fallback, then tell whoever is holding layout derived from it.
+ */
+export function notifyAsyncFontLoaded(): void {
+  invalidateMeasurements();
+  for (const listener of [...asyncFontListeners]) {
+    try {
+      listener();
+    } catch {
+      // A listener is a subscriber, not a participant: one that throws must not
+      // stop the canvas from being told the metrics changed.
+    }
+  }
+}
+
 /** Test/shell seam: replaces the measurer, or restores the default with `null`. */
 export function setTextMeasurer(next: TextMeasurer | null): void {
   injected = next;
-  cache.clear();
+  invalidateMeasurements();
 }
 
 export function clearTextMeasureCache(): void {
-  cache.clear();
+  invalidateMeasurements();
 }
 
 /**
@@ -354,13 +412,15 @@ function ensureMeasureElement(): HTMLDivElement {
 
   if (!fontWatchAttached && document.fonts?.ready) {
     fontWatchAttached = true;
-    // Metrics taken before a webfont loads are wrong for that font; drop them.
-    document.fonts.ready.then(() => clearTextMeasureCache()).catch(() => {});
+    // Metrics taken before a webfont loads are wrong for that font; drop them AND
+    // say so, because a box that was measured with the fallback is still on screen
+    // holding a size nobody asked for.
+    document.fonts.ready.then(() => notifyAsyncFontLoaded()).catch(() => {});
     // `ready` resolves once and only once, so a font that arrives LATER — a
     // custom family the document declares, a face the browser only fetches when
     // it first needs it — left its fallback metrics cached for the rest of the
     // session. Every further load has to drop them too.
-    document.fonts.addEventListener?.("loadingdone", () => clearTextMeasureCache());
+    document.fonts.addEventListener?.("loadingdone", () => notifyAsyncFontLoaded());
   }
   return el;
 }

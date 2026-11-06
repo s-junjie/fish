@@ -7,7 +7,7 @@
  * implementation.
  */
 
-import type { ComponentElement, DesignDocument, DesignElement, InstanceElement } from "../dsl/types";
+import type { ComponentElement, DesignDocument, DesignElement } from "../dsl/types";
 import { getActivePage, updateActivePageElements } from "../dsl/types";
 import { resolveInstanceSelection, type InstanceSelection } from "../interactions/instance-resolve";
 import {
@@ -18,7 +18,12 @@ import {
   mapElements,
   removeElementFromTree
 } from "../geometry/tree-ops";
-import { createComponentFromElement, createInstanceFromComponent, detachInstance } from "../interactions/component-ops";
+import {
+  createComponentFromElement,
+  createInstanceFromComponent,
+  detachInstance,
+  resetInstance
+} from "../interactions/component-ops";
 import { performBooleanOperation, type BooleanOp } from "../geometry/boolean-ops";
 import { variantName } from "../interactions/variant-naming";
 import { layoutOf } from "../dsl/layout-flat";
@@ -400,10 +405,15 @@ function applyOne(doc: DesignDocument, raw: unknown): { doc: DesignDocument; out
     case "reset-instance": {
       if (!target) return fail("reset-instance needs `targetId`");
       if (target.type !== "instance") return fail(`"${targetId}" is a ${target.type}, not an instance`, targetId);
-      const cleared = { ...target, overrides: [] } as unknown as InstanceElement;
-      delete cleared.sizeOverride;
-      delete cleared.sizing;
-      return { doc: commit(mapElements(els, (el) => (el.id === targetId ? (cleared as DesignElement) : el))), outcome: { op, ok: true, detail: "overrides cleared", id: targetId } };
+      // Delegated, not re-spelled: this branch used to clear `overrides` and the
+      // box flag by hand and left the instance's own paint, mode and scale
+      // fields behind, so a scripted reset came back to a master that still had
+      // the user's fill on it. `resetInstance` is the list the UI's Reset uses.
+      const cleared = resetInstance(doc, targetId as string);
+      if (!cleared) {
+        return { doc, outcome: { op, ok: true, detail: "nothing to reset — the instance already reads as its master", id: targetId } };
+      }
+      return { doc: cleared, outcome: { op, ok: true, detail: "overrides cleared", id: targetId } };
     }
 
     case "detach-instance": {

@@ -1,6 +1,6 @@
 import type { DesignElement } from "../../types";
 import { flattenLayout } from "../../layout-flat";
-import { asBoolean, isPlainObject, normalizeClipContent } from "../shared";
+import { asBoolean, isPlainObject, normalizeClipContent, normalizeScrollOverflow, normalizeScrollOffset } from "../shared";
 import { normalizeFillStack } from "../paint";
 import { cornerRadiusInput, normalizeCornerRadius, normalizeStrokes } from "../stroke";
 import { normalizeCornerControls, type ElementBranch } from "./shared";
@@ -26,6 +26,15 @@ export const normalizeContainer: ElementBranch = ({ el, base, path, repairs, typ
   // Defaults to false: a frame may be a purely structural wrapper, and a
   // default that hides overflowing children is the more destructive guess.
   base.clipContent = clip ?? false;
+  const scrollOverflow = normalizeScrollOverflow(el, path, repairs);
+  if (scrollOverflow !== undefined && scrollOverflow !== "none") {
+    base.scrollOverflow = scrollOverflow;
+    base.clipContent = true;
+  }
+  const sx = normalizeScrollOffset(el.scrollX ?? el.scrollLeft ?? el["scroll-x"] ?? el["scroll-left"]);
+  if (sx !== undefined && sx > 0) base.scrollX = sx;
+  const sy = normalizeScrollOffset(el.scrollY ?? el.scrollTop ?? el["scroll-y"] ?? el["scroll-top"]);
+  if (sy !== undefined && sy > 0) base.scrollY = sy;
 
   const radius = normalizeCornerRadius(cornerRadiusInput(el), path, repairs, box);
   if (radius !== undefined) base.borderRadius = radius;

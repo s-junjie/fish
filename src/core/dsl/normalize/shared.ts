@@ -1,4 +1,4 @@
-import type { DesignDocument, DesignElement, ElementType, SizeMode, TextStyle } from "../types";
+import type { DesignDocument, DesignElement, ElementType, ScrollOverflow, SizeMode, TextStyle } from "../types";
 import { ELEMENT_TYPES as ELEMENT_TYPE_VALUES } from "../schema-enums";
 
 export const ELEMENT_TYPES = ELEMENT_TYPE_VALUES;
@@ -207,7 +207,8 @@ export function normalizeClipContent(
   repairs: NormalizationRepair[]
 ): boolean | undefined {
   const dsl = asBoolean(el.clipContent ?? el.clipsContent ?? el.clip);
-  const css = readOverflow(el.overflow, path, repairs);
+  const parsed = readOverflow(el.overflow, path, repairs);
+  const css = parsed?.clip;
   if (dsl !== undefined && css !== undefined && dsl !== css) {
     repairs.push({
       kind: "element",
@@ -219,31 +220,71 @@ export function normalizeClipContent(
   return dsl ?? css;
 }
 
+interface ParsedOverflow {
+  clip: boolean;
+  scrollOverflow?: ScrollOverflow;
+}
+
 function readOverflow(
   raw: unknown,
   path: string,
   repairs: NormalizationRepair[]
-): boolean | undefined {
+): ParsedOverflow | undefined {
   if (typeof raw !== "string" || !raw.trim()) return undefined;
   const value = raw.trim().toLowerCase();
-  if (value === "hidden" || value === "clip" || value === "auto" || value === "scroll") {
-    if (value === "auto" || value === "scroll") {
-      repairs.push({
-        kind: "element",
-        path: `${path}/overflow`,
-        severity: "info",
-        message: `"overflow: ${value}" has no canvas equivalent; clipped like "hidden"`
-      });
-    }
-    return true;
+  if (value === "hidden" || value === "clip") {
+    return { clip: true, scrollOverflow: undefined };
   }
-  if (value === "visible") return false;
+  if (value === "scroll" || value === "auto") {
+    return { clip: true, scrollOverflow: "both" };
+  }
+  if (value === "scroll-y") {
+    return { clip: true, scrollOverflow: "vertical" };
+  }
+  if (value === "scroll-x") {
+    return { clip: true, scrollOverflow: "horizontal" };
+  }
+  if (value === "visible") return { clip: false, scrollOverflow: undefined };
   repairs.push({
     kind: "element",
     path: `${path}/overflow`,
-    message: `"overflow: ${value}" is not one of hidden | clip | auto | scroll | visible; ignored`
+    message: `"overflow: ${value}" is not one of hidden | clip | auto | scroll | scroll-x | scroll-y | visible; ignored`
   });
   return undefined;
+}
+
+export function normalizeScrollOverflow(
+  el: Record<string, unknown>,
+  path: string,
+  repairs: NormalizationRepair[]
+): ScrollOverflow | undefined {
+  const direct = el.scrollOverflow ?? el["scroll-overflow"];
+  if (typeof direct === "string") {
+    const v = direct.trim().toLowerCase();
+    if (v === "none" || v === "vertical" || v === "horizontal" || v === "both") {
+      return v as ScrollOverflow;
+    }
+  }
+  const css = readOverflow(el.overflow, path, repairs);
+  if (css?.scrollOverflow) return css.scrollOverflow;
+
+  const rawOx = el.overflowX ?? el["overflow-x"];
+  const rawOy = el.overflowY ?? el["overflow-y"];
+  const ox = typeof rawOx === "string" ? rawOx.trim().toLowerCase() : undefined;
+  const oy = typeof rawOy === "string" ? rawOy.trim().toLowerCase() : undefined;
+  const scrollX = ox === "scroll" || ox === "auto";
+  const scrollY = oy === "scroll" || oy === "auto";
+  if (scrollX && scrollY) return "both";
+  if (scrollX) return "horizontal";
+  if (scrollY) return "vertical";
+
+  return undefined;
+}
+
+export function normalizeScrollOffset(raw: unknown): number | undefined {
+  const n = asNumber(raw);
+  if (n === undefined) return undefined;
+  return Math.max(0, n);
 }
 
 /**

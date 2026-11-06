@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { EditorStore } from "../../core/store/editor-store";
 import { DesignDocument, getActivePage } from "../../core/dsl/types";
 import { loadInitialDocument } from "../../core/data-bridge";
+import { subscribeAsyncFontLoaded } from "../../core/geometry/text-measure";
 
 
 export interface ViewportSnapshot {
@@ -49,6 +50,13 @@ export function useEditorStore(restoreViewport?: (v: ViewportSnapshot) => void) 
       offView();
     };
   }, [store]);
+
+  /**
+   * A webfont finishes downloading after the first layout ran, so the boxes that
+   * pass wrote are the fallback face's. The store re-derives them once, and only
+   * while the document is still untouched — see `rebaselineInitialLayout`.
+   */
+  useEffect(() => subscribeAsyncFontLoaded(() => store.rebaselineInitialLayout()), [store]);
 
   const doc = view.doc;
   const docRef = useRef<DesignDocument>(doc);

@@ -39,6 +39,8 @@ export interface ViewerGestureOptions {
    * this hook owns pointer lifetime, not paint.
    */
   onPanChange?: (panning: boolean) => void;
+  /** Wheel callback. If it returns true, the wheel event is consumed and board panning is skipped. */
+  onWheel?: (e: WheelEvent) => boolean;
 }
 
 interface PinchStart {
@@ -205,6 +207,7 @@ export function useViewerGestures(options: ViewerGestureOptions) {
         commit(zoomCameraAt(camera, point.x, point.y, wheelZoomFactor(e.deltaY, e.deltaMode)));
         return;
       }
+      if (latest.current.onWheel?.(e)) return;
       commit(panCamera(camera, -e.deltaX, -e.deltaY));
     };
 

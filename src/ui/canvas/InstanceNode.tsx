@@ -15,10 +15,10 @@ import { shadowLodMarks } from "./shadow-lod";
 import type { NodeRenderContext } from "./SvgElementRenderer";
 import { bakeGlass, glassBackdropCss } from "./liquid-glass";
 import { backdropShapeStyle } from "./backdrop-shape";
-import { deviceScale } from "./device-scale";
 import { isGradientPaint } from "../../core/geometry/gradient-utils";
 import { resolveSolidPaintBlend } from "./SvgShapeNode";
 import { CANVAS_MEASURE, CANVAS_ON_SELECT, withAlpha } from "./canvas-colors";
+import { childScrollOffset } from "../../core/geometry/scroll-bounds";
 
 export interface InstanceNodeProps {
   el: InstanceElement;
@@ -312,14 +312,47 @@ export function InstanceNode({
           />
         )}
       </g>
-      <g
-        transform={`translate(${el.x}, ${el.y})`}
-        clipPath={box.clipContent ? `url(#clip_${el.id})` : undefined}
-        data-clip-chain={box.clipContent ? `url(#clip_${el.id})` : undefined}
-        data-clip-span={box.clipContent ? String(Math.max(box.width, box.height)) : undefined}
-      >
-        {renderChildren(resolvedChildren)}
-      </g>
+      {(() => {
+        const sx = box.scrollX || 0;
+        const sy = box.scrollY || 0;
+        const hasScroll = (sx !== 0 || sy !== 0) && Boolean(box.clipContent);
+        return (
+          <g
+            transform={`translate(${el.x}, ${el.y})`}
+            clipPath={box.clipContent ? `url(#clip_${el.id})` : undefined}
+            data-clip-chain={box.clipContent ? `url(#clip_${el.id})` : undefined}
+            data-clip-span={box.clipContent ? String(Math.max(box.width, box.height)) : undefined}
+          >
+            {(() => {
+              if (!hasScroll) {
+                return renderChildren(resolvedChildren);
+              }
+              const hasPinned = resolvedChildren.some((c) => {
+                const { offsetX, offsetY } = childScrollOffset(c, el, sx, sy);
+                return offsetX !== -sx || offsetY !== -sy;
+              });
+              if (!hasPinned) {
+                return (
+                  <g transform={`translate(${-sx}, ${-sy})`}>
+                    {renderChildren(resolvedChildren)}
+                  </g>
+                );
+              }
+              return resolvedChildren.map((c, i) => {
+                const { offsetX, offsetY } = childScrollOffset(c, el, sx, sy);
+                if (offsetX === 0 && offsetY === 0) {
+                  return renderChildren([c]);
+                }
+                return (
+                  <g key={c.id || i} transform={`translate(${offsetX}, ${offsetY})`}>
+                    {renderChildren([c])}
+                  </g>
+                );
+              });
+            })()}
+          </g>
+        );
+      })()}
     </g>
   );
 }

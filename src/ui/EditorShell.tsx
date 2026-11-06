@@ -1,5 +1,9 @@
-import { DesignDocument, DesignElement, Page, PathElement, updatePageCanvas } from "../core/dsl/types";
-import { useState, useEffect } from "preact/hooks";
+import { DesignDocument, DesignElement, Page, PathElement, updatePageCanvas, getActivePage, updateActivePageElements } from "../core/dsl/types";
+import { useState, useEffect, useRef, useCallback } from "preact/hooks";
+import { collectDescendantIds } from "../core/geometry/tree-query";
+import { mapElements } from "../core/geometry/tree-edit";
+import { findElementAtPoint } from "../core/geometry/tree-hit";
+import { canContainerScroll, clampScrollOffset, findScrollableContainersAtPoint } from "../core/geometry/scroll-bounds";
 import { collectComponents } from "../core/interactions/component-inventory";
 import type { ViewportBox } from "../core/geometry/cull";
 import { TITLE_BAR_HEIGHT } from "./toolbar/titlebar-layout";
@@ -256,6 +260,95 @@ export function EditorShell(p: EditorShellProps) {
     viewportBox,
     dropTopLeft
   } = p.viewport;
+
+  const scrollCommitTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (scrollCommitTimerRef.current !== null) {
+        clearTimeout(scrollCommitTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleCanvasWheel = useCallback((e: WheelEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      handleWheel(e);
+      return;
+    }
+    const container = canvasContainerRef.current;
+    if (!container) {
+      handleWheel(e);
+      return;
+    }
+    const rect = container.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    const worldX = (mouseX - pan.x) / zoom;
+    const worldY = (mouseY - pan.y) / zoom;
+
+    const page = getActivePage(docRef.current);
+
+    // Prioritize embedded HTML: scroll its content instead of canvas
+    const hit = findElementAtPoint(page.children, worldX, worldY, { includeLocked: true });
+    if (hit && hit.type === "html") {
+      e.preventDefault();
+      e.stopPropagation();
+      const iframe = container.querySelector<HTMLIFrameElement>(`iframe[data-html-embed-id="${hit.id}"]`);
+      if (iframe && iframe.contentWindow) {
+        try {
+          iframe.contentWindow.scrollBy({ left: e.deltaX, top: e.deltaY, behavior: "auto" });
+        } catch {
+          // sandbox / cross-origin fallback
+        }
+      }
+      return;
+    }
+
+    const candidates = findScrollableContainersAtPoint(page.children, worldX, worldY);
+    if (candidates.length > 0) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      let target: DesignElement | null = null;
+      for (const cand of candidates) {
+        if (canContainerScroll(cand, e.deltaX, e.deltaY)) {
+          target = cand;
+          break;
+        }
+      }
+
+      if (target) {
+        const curX = target.scrollX ?? 0;
+        const curY = target.scrollY ?? 0;
+        const { scrollX: nextX, scrollY: nextY } = clampScrollOffset(
+          target as any,
+          curX + e.deltaX,
+          curY + e.deltaY
+        );
+
+        if (nextX !== curX || nextY !== curY) {
+          const targetId = target.id;
+          setDoc((prev) => {
+            const p = getActivePage(prev);
+            const nextChildren = mapElements(p.children, (el) =>
+              el.id === targetId ? ({ ...el, scrollX: nextX, scrollY: nextY } as DesignElement) : el
+            );
+            return updateActivePageElements(prev, nextChildren);
+          });
+
+          if (scrollCommitTimerRef.current !== null) {
+            clearTimeout(scrollCommitTimerRef.current);
+          }
+          scrollCommitTimerRef.current = window.setTimeout(() => {
+            commitSnapshot(docRef.current);
+            scrollCommitTimerRef.current = null;
+          }, 250);
+        }
+      }
+      return;
+    }
+  }, [handleWheel, canvasContainerRef, pan, zoom, docRef, selectedIds, setDoc, commitSnapshot]);
   const {
     dragOverFrameId,
     dropSlot,
@@ -572,7 +665,7 @@ export function EditorShell(p: EditorShellProps) {
           onCanvasMouseDown={handleCanvasMouseDown}
           onCanvasMouseMove={handleCanvasMouseMove}
           onCanvasMouseLeave={handleCanvasMouseLeave}
-          onWheel={handleWheel}
+          onWheel={handleCanvasWheel}
           onCanvasClick={handleCanvasClick}
           onElementMouseDown={handleElementMouseDown}
           onResizePointerDown={handleResizePointerDown}

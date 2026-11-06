@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import type { ComponentElement, DesignElement, InstanceElement } from "../src/core/dsl/types";
 import { resolveInstanceContent } from "../src/core/interactions/instance-resolve";
+import { clearTextMeasureCache, textMeasureRevision } from "../src/core/geometry/text-measure";
 import {
   clearAmbientChildSizeResolver,
   setAmbientChildSizeResolver
@@ -151,5 +152,31 @@ describe("resolveInstanceContent caching", () => {
 
     nestedHeight = 60;
     expect(resolveInstanceContent(inst(), m)).not.toBe(first);
+  });
+});
+
+/**
+ * The key above lists everything a resolution READS — except the measurements it
+ * takes. A font that arrives changes what a box measures while leaving the
+ * master, the overrides and the instance untouched, so a cache that could not see
+ * it kept the fallback face's boxes for the rest of the session.
+ */
+describe("a new set of measurements is a new resolution", () => {
+  it("resolves again once the measurement cache is dropped", () => {
+    const m = master();
+    const first = resolveInstanceContent(instance(0, 0), m);
+    expect(resolveInstanceContent(instance(0, 0), m), "nothing changed yet").toBe(first);
+
+    clearTextMeasureCache();
+    const again = resolveInstanceContent(instance(0, 0), m);
+    expect(again).not.toBe(first);
+  });
+
+  it("moves the generation on a clear, and only then", () => {
+    const before = textMeasureRevision();
+    resolveInstanceContent(instance(0, 0), master());
+    expect(textMeasureRevision(), "measuring is not invalidating").toBe(before);
+    clearTextMeasureCache();
+    expect(textMeasureRevision()).toBe(before + 1);
   });
 });

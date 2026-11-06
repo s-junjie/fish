@@ -33,7 +33,7 @@
 import type { DesignDocument, DesignElement, TextElement, TextStyleDefinition } from "../dsl/types";
 import { getActivePage } from "../dsl/types";
 import { flattenElements } from "../geometry/tree-ops";
-import { clearTextMeasureCache } from "../geometry/text-measure";
+import { clearTextMeasureCache, notifyAsyncFontLoaded } from "../geometry/text-measure";
 import { cssFamilyName, declaresFallback, firstNamedFamily } from "../font-stack";
 import { subscribeLocalFonts } from "./local-font-access";
 
@@ -385,7 +385,10 @@ export function registerDocumentFonts(doc: DesignDocument | null): void {
       });
       document.fonts.add(face);
       face.load().then(
-        () => clearTextMeasureCache(),
+        // The bytes are here, which is more than "the measurements are stale":
+        // the boxes derived from the substitute face have to be re-derived, and
+        // that is a different announcement (`notifyAsyncFontLoaded`).
+        () => notifyAsyncFontLoaded(),
         // An unreadable `src` is the file's problem, not this module's: the
         // family stays `installed` (the file carries it) and the canvas paints
         // the substitute under its name, which no marker reports today.

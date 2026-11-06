@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks"
 import type { DesignDocument } from "../../core/dsl/types";
 import { isLaidOut, relayoutDocumentTree } from "../../core/compile";
 import { flattenElements } from "../../core/geometry/tree-ops";
+import { mapElements } from "../../core/geometry/tree-edit";
+import { findElementAtPoint } from "../../core/geometry/tree-hit";
+import { canContainerScroll, clampScrollOffset, findScrollableContainersAtPoint } from "../../core/geometry/scroll-bounds";
 import { contentBounds } from "../../core/geometry/element-bounds";
 import { formatZoomPercent, zoomStep } from "../../core/geometry/viewport";
 import { presentationFrames } from "../../core/presentation/frames";
@@ -61,7 +64,20 @@ export function ViewerShell({ doc, docRef, readOnly = false }: ViewerShellProps)
     if (!page) return [];
     return isLaidOut(page.children) ? page.children : relayoutDocumentTree(page.children);
   }, [page]);
-  const allElements = useMemo(() => flattenElements(elements), [elements]);
+  const [containerScrolls, setContainerScrolls] = useState<Record<string, { x: number; y: number }>>({});
+
+  useEffect(() => {
+    setContainerScrolls({});
+  }, [pageIndex]);
+
+  const displayElements = useMemo(() => {
+    if (Object.keys(containerScrolls).length === 0) return elements;
+    return mapElements(elements, (el) => {
+      const s = containerScrolls[el.id];
+      return s ? { ...el, scrollX: s.x, scrollY: s.y } : el;
+    });
+  }, [elements, containerScrolls]);
+  const allElements = useMemo(() => flattenElements(displayElements), [displayElements]);
   const board = useMemo(() => boardBounds(page?.canvas, contentBounds(elements)), [page, elements]);
 
   const hostRef = useRef<HTMLDivElement>(null);
@@ -199,6 +215,55 @@ export function ViewerShell({ doc, docRef, readOnly = false }: ViewerShellProps)
     [board, size.width, size.height]
   );
 
+  const handleWheel = useCallback(
+    (e: WheelEvent) => {
+      const host = hostRef.current;
+      if (!host) return false;
+      const rect = host.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      const worldX = (mouseX - camera.pan.x) / camera.zoom;
+      const worldY = (mouseY - camera.pan.y) / camera.zoom;
+
+      const hit = findElementAtPoint(displayElements, worldX, worldY, { includeLocked: true });
+      if (hit && hit.type === "html") {
+        const iframe = host.querySelector<HTMLIFrameElement>(`iframe[data-html-embed-id="${hit.id}"]`);
+        if (iframe && iframe.contentWindow) {
+          try {
+            iframe.contentWindow.scrollBy({ left: e.deltaX, top: e.deltaY, behavior: "auto" });
+          } catch {}
+        }
+        return true;
+      }
+
+      const candidates = findScrollableContainersAtPoint(displayElements, worldX, worldY);
+      if (candidates.length > 0) {
+        for (const cand of candidates) {
+          const curX = containerScrolls[cand.id]?.x ?? cand.scrollX ?? 0;
+          const curY = containerScrolls[cand.id]?.y ?? cand.scrollY ?? 0;
+          const candWithScroll = { ...cand, scrollX: curX, scrollY: curY };
+          if (canContainerScroll(candWithScroll, e.deltaX, e.deltaY)) {
+            const { scrollX: nextX, scrollY: nextY } = clampScrollOffset(
+              candWithScroll as any,
+              curX + e.deltaX,
+              curY + e.deltaY
+            );
+            if (nextX !== curX || nextY !== curY) {
+              setContainerScrolls((prev) => ({
+                ...prev,
+                [cand.id]: { x: nextX, y: nextY }
+              }));
+              return true;
+            }
+          }
+        }
+        return true;
+      }
+      return false;
+    },
+    [camera, displayElements, containerScrolls]
+  );
+
   useViewerGestures({
     hostRef,
     camera,
@@ -207,7 +272,8 @@ export function ViewerShell({ doc, docRef, readOnly = false }: ViewerShellProps)
     onChange: setCamera,
     onTap: handleTap,
     onDoubleTap: handleDoubleTap,
-    onPanChange: setPanning
+    onPanChange: setPanning,
+    onWheel: handleWheel
   });
 
   const zoomByStep = useCallback(
@@ -228,7 +294,7 @@ export function ViewerShell({ doc, docRef, readOnly = false }: ViewerShellProps)
       <ViewerStage
         hostRef={hostRef}
         page={page}
-        elements={elements}
+        elements={displayElements}
         allElements={allElements}
         docRef={docRef}
         camera={camera}

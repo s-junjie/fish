@@ -236,8 +236,7 @@ export function App() {
     startDragGesture,
     endDragGesture,
     setSelectedIds,
-    selectedIds,
-    virtualSelections
+    selectedIds
   });
   const tool = useToolState(docRef, selectedIds);
   const primarySelected = selectedElements[0] as DesignElement | undefined;
@@ -573,13 +572,27 @@ export function App() {
    * therefore read at call time instead of captured — safe because a section only
    * ever calls this from an event handler, never while rendering.
    */
-  const mutateInputsRef = useRef({ selectedIds, realSelected, virtualSelections });
-  mutateInputsRef.current = { selectedIds, realSelected, virtualSelections };
+  const mutateInputsRef = useRef({ selectedIds });
+  mutateInputsRef.current = { selectedIds };
 
   const mutateSelected = useCallback(
     (updater: (el: DesignElement) => DesignElement, discrete = false) => {
-      const { selectedIds, realSelected, virtualSelections } = mutateInputsRef.current;
-      const hasReal = realSelected.length > 0;
+      const { selectedIds } = mutateInputsRef.current;
+      // Both halves resolved at call time against the document as it is. The
+      // memoized selection lists are render snapshots, and an inspector write
+      // landing in the same tick as another write — an inline edit, a ⌘Z, a
+      // previous panel press — would diff its overrides against a node the
+      // model has already left behind.
+      const children = getActivePage(docRef.current).children;
+      const virtualSelections: InstanceSelection[] = [];
+      let hasReal = false;
+      for (const id of selectedIds) {
+        if (findElementById(children, id)) hasReal = true;
+        else {
+          const sel = resolveInstanceSelection(docRef.current, id);
+          if (sel) virtualSelections.push(sel);
+        }
+      }
       if (virtualSelections.length > 0) {
         const virtualNext = commitInstanceOverrides(docRef.current, virtualSelections, updater);
         if (virtualNext) {

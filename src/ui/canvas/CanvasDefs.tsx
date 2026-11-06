@@ -149,26 +149,38 @@ export function CanvasDefs({ allElements, viewportBox, selectedIds, viewScale = 
       return el && el.type === "component" ? (el as ComponentElement) : null;
     };
 
+    /**
+     * The two axes of one node, resolved against what its parent passed down —
+     * `SvgNodeRenderer`'s own rule, and the two have to agree: a def emitted from
+     * the light palette is a gradient painted onto a dark box, and only when the
+     * master itself is themed. An instance takes its master's mode until it
+     * declares one; everything else takes its own or its parent's.
+     */
+    const modesOf = (
+      el: DesignElement,
+      inheritedTheme: string,
+      inheritedNumber: string
+    ): { theme: string; numberMode: string; master: ComponentElement | null } => {
+      const master = el.type === "instance" ? findMaster((el as InstanceElement).componentId) : null;
+      const theme =
+        el.type === "instance"
+          ? resolveInstanceTheme(el as InstanceElement, master, inheritedTheme)
+          : el.themeMode || inheritedTheme;
+      // The number axis walks the same tree with the same rule, on its own map: a
+      // def does not care about density, but the instance box it is measured
+      // against does.
+      const numberMode =
+        el.type === "instance"
+          ? resolveInstanceNumberMode(el as InstanceElement, master, inheritedNumber)
+          : el.numberMode || inheritedNumber;
+      return { theme, numberMode, master };
+    };
+
     if (docRef) {
       const collectThemes = (elements: DesignElement[], inherited: string, inheritedNumber: string) => {
         for (const el of elements) {
-          // An instance takes its master's mode until it declares one — the same
-          // inheritance `SvgNodeRenderer` applies, and the two have to agree: a
-          // def emitted from the light palette is a gradient painted onto a dark
-          // box, and only when the master itself is themed.
-          const master = el.type === "instance" ? findMaster((el as InstanceElement).componentId) : null;
-          const theme =
-            el.type === "instance"
-              ? resolveInstanceTheme(el as InstanceElement, master, inherited)
-              : el.themeMode || inherited;
+          const { theme, numberMode } = modesOf(el, inherited, inheritedNumber);
           themeMap.set(el.id, theme);
-          // The number axis walks the same tree with the same rule, on its own
-          // map: a def does not care about density, but the instance box it is
-          // measured against does.
-          const numberMode =
-            el.type === "instance"
-              ? resolveInstanceNumberMode(el as InstanceElement, master, inheritedNumber)
-              : el.numberMode || inheritedNumber;
           numberModeMap.set(el.id, numberMode);
           if (isContainer(el)) collectThemes(el.children || [], theme, numberMode);
         }
@@ -217,25 +229,48 @@ export function CanvasDefs({ allElements, viewportBox, selectedIds, viewScale = 
      * never emitted them. An SVG paint server that does not exist paints nothing,
      * which is how a component inside a component lost its photograph, its ramp
      * and its shadow while keeping its type (text needs no def).
+     *
+     * The MODES travel down the same walk, one resolved pair per node, by the
+     * renderer's own rule (`SvgNodeRenderer`): an instance takes its master's mode
+     * until it declares one, everything else takes its own or its parent's. They
+     * have to be recorded on each clone because `themeOptions` reads this map by
+     * id — and a clone is not in it until this line puts it there. Reading a
+     * three-level nest off `__instanceId` alone fell back to the document's
+     * active theme at the third level, where the owner is itself a clone.
      */
     const defElements: DesignElement[] = [...visible];
-    const addClones = (clones: DesignElement[]) => {
+
+    const addClones = (clones: DesignElement[], inheritedTheme: string, inheritedNumber: string) => {
       for (const el of clones) {
         defElements.push(el);
+        const { theme, numberMode, master } = modesOf(el, inheritedTheme, inheritedNumber);
+        themeMap.set(el.id, theme);
+        numberModeMap.set(el.id, numberMode);
         if (el.type === "instance") {
-          const master = findMaster((el as InstanceElement).componentId);
           // `resolveInstanceContent` cuts a cycle on `__masterChain`, so this
           // terminates even for a document that somehow nested itself.
-          if (master) addClones(resolveInstanceContent(el as InstanceElement, master, themeOptions(el)).children);
+          if (master) {
+            const deeper = resolveInstanceContent(el as InstanceElement, master, {
+              theme,
+              numberMode,
+              ...(themeTables ? { tables: themeTables } : {})
+            });
+            addClones(deeper.children, theme, numberMode);
+          }
           continue;
         }
-        if (isContainer(el)) addClones(el.children || []);
+        if (isContainer(el)) addClones(el.children || [], theme, numberMode);
       }
     };
     for (const el of visible) {
       if (el.type !== "instance") continue;
       const master = findMaster((el as InstanceElement).componentId);
-      if (master) addClones(resolveInstanceContent(el as InstanceElement, master, themeOptions(el)).children);
+      if (!master) continue;
+      addClones(
+        resolveInstanceContent(el as InstanceElement, master, themeOptions(el)).children,
+        themeMap.get(el.id) ?? activeTheme,
+        numberModeMap.get(el.id) ?? activeNumberMode
+      );
     }
     for (const el of defElements) byId.set(el.id, el);
 

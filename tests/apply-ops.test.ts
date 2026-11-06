@@ -3,6 +3,7 @@ import { getActivePage } from "../src/core/dsl/types";
 import { describe, it, expect } from "vitest";
 import { applyOps } from "../src/core/ops/apply-ops";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
+import { resetInstance } from "../src/core/interactions/component-ops";
 import type { DesignDocument, DesignElement, InstanceElement, PathElement } from "../src/core/dsl/types";
 
 const canvas = { width: 800, height: 600, unit: "px" as const, background: { type: "solid" as const, color: "#101010" } };
@@ -609,5 +610,79 @@ describe("repeat", () => {
     const serialized = JSON.stringify(next);
     expect(serialized).not.toContain("$");
     expect(serialized).not.toContain('"repeat"');
+  });
+});
+
+/**
+ * The UI's Reset and the scripted one are the same promise, so they have to be
+ * the same list. `reset-instance` used to spell the reset itself — clearing
+ * `overrides` and the box flag and nothing else — which left a scripted reset
+ * with the instance's own fill, theme and scale still on it.
+ */
+describe("reset-instance is the UI's Reset", () => {
+  const master = {
+    id: "c_card",
+    type: "component",
+    name: "Card",
+    x: 0,
+    y: 0,
+    width: 200,
+    height: 80,
+    sizing: { width: "fixed", height: "fixed" },
+    children: [{ id: "label", type: "text", name: "Label", x: 8, y: 8, width: 60, height: 16, content: "Hi" }]
+  } as unknown as DesignElement;
+
+  const dirty = {
+    id: "inst_1",
+    type: "instance",
+    name: "Card",
+    componentId: "c_card",
+    x: 300,
+    y: 0,
+    width: 240,
+    height: 90,
+    sizing: { width: "fit-content", height: "fixed" },
+    fills: [{ type: "solid", color: "#FF0000" }],
+    strokes: [],
+    instanceScale: { x: 1.2, y: 1.2 },
+    themeMode: "dark",
+    numberMode: "compact",
+    sizeOverride: true,
+    overrides: [{ targetId: "label", property: "content", value: "Edited" }]
+  } as unknown as InstanceElement;
+
+  it("clears everything the UI clears, including the instance's own fields", () => {
+    const start = doc([master, dirty]);
+    const { doc: viaOps, outcomes } = applyOps(start, [{ op: "reset-instance", targetId: "inst_1" }]);
+    expect(outcomes[0].ok).toBe(true);
+    const reset = byId(viaOps, "inst_1") as InstanceElement;
+    expect(reset.overrides).toEqual([]);
+    expect(reset.fills).toBeUndefined();
+    expect(reset.strokes).toBeUndefined();
+    expect(reset.instanceScale).toBeUndefined();
+    expect(reset.themeMode).toBeUndefined();
+    expect(reset.numberMode).toBeUndefined();
+    expect(reset.sizeOverride).toBeUndefined();
+    expect(reset.sizing).toBeUndefined();
+    expect(reset.width).toBe(200);
+    expect(reset.height).toBe(80);
+  });
+
+  it("lands on the same document as the UI command", () => {
+    const start = doc([master, dirty]);
+    const { doc: viaOps } = applyOps(start, [{ op: "reset-instance", targetId: "inst_1" }]);
+    const viaUi = resetInstance(start, "inst_1");
+    expect(viaUi).not.toBeNull();
+    expect(getActivePage(viaOps).children).toEqual(getActivePage(viaUi!).children);
+  });
+
+  it("reports nothing to reset for an instance that already reads as its master", () => {
+    const start = applyOps(doc([master, { ...dirty, x: 500 }]), [
+      { op: "reset-instance", targetId: "inst_1" }
+    ]).doc;
+    const clean = byId(start, "inst_1") as InstanceElement;
+    const again = applyOps(start, [{ op: "reset-instance", targetId: clean.id }]);
+    expect(again.doc).toBe(start);
+    expect(again.outcomes[0].detail).toMatch(/nothing to reset/);
   });
 });

@@ -2,6 +2,7 @@ import { ContainerElement, DesignElement } from "../dsl/types";
 import { elementPivot, elementTransformMatrix } from "./transforms";
 import { identityMatrix, multiply, translation, type Matrix2D } from "./matrix";
 import { collectDescendantIds, isContainer } from "./tree-query";
+import { childScrollOffset } from "./scroll-bounds";
 
 export function getTopLevelAncestorFrame(elements: DesignElement[], targetId: string): ContainerElement | null {
   for (const root of elements) {
@@ -35,7 +36,12 @@ function parentOriginMap(elements: DesignElement[]): Map<string, { x: number; y:
     for (const el of list) {
       if (!map.has(el.id)) map.set(el.id, { x: originX, y: originY });
       if (isContainer(el)) {
-        walk(el.children || [], originX + el.x, originY + el.y);
+        const sx = el.scrollX || 0;
+        const sy = el.scrollY || 0;
+        for (const child of el.children || []) {
+          const { offsetX, offsetY } = childScrollOffset(child, el, sx, sy);
+          walk([child], originX + el.x + offsetX, originY + el.y + offsetY);
+        }
       }
     }
   };
@@ -91,7 +97,13 @@ function parentMatrixMap(elements: DesignElement[]): Map<string, Matrix2D> {
       // turn-then-shift, and the two must not be swapped.
       const pivot = elementPivot(el);
       const own = elementTransformMatrix(el, pivot.x, pivot.y);
-      walk(el.children || [], multiply(multiply(parentM, own), translation(el.x, el.y)));
+      const sx = el.scrollX || 0;
+      const sy = el.scrollY || 0;
+      const containerM = multiply(parentM, own);
+      for (const child of el.children || []) {
+        const { offsetX, offsetY } = childScrollOffset(child, el, sx, sy);
+        walk([child], multiply(containerM, translation(el.x + offsetX, el.y + offsetY)));
+      }
     }
   };
   walk(elements, identityMatrix());
@@ -131,7 +143,9 @@ export function computeParentOrigin(
         }
       }
       if (isContainer(el)) {
-        const childMatch = findInstanceOwner(el.children || [], originX + el.x, originY + el.y);
+        const sx = el.scrollX || 0;
+        const sy = el.scrollY || 0;
+        const childMatch = findInstanceOwner(el.children || [], originX + el.x - sx, originY + el.y - sy);
         if (childMatch && (!best || childMatch.inst.id.length > best.inst.id.length)) {
           best = childMatch;
         }
@@ -141,9 +155,11 @@ export function computeParentOrigin(
   }
   const instOwner = findInstanceOwner(elements, 0, 0);
   if (instOwner) {
+    const sx = instOwner.inst.scrollX || 0;
+    const sy = instOwner.inst.scrollY || 0;
     return {
-      x: instOwner.originX + instOwner.inst.x,
-      y: instOwner.originY + instOwner.inst.y
+      x: instOwner.originX + instOwner.inst.x - sx,
+      y: instOwner.originY + instOwner.inst.y - sy
     };
   }
 

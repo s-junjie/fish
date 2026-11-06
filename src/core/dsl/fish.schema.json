@@ -2149,7 +2149,11 @@
                   "effectStyleId",
                   "tokenBindings",
                   "themeMode",
-                  "numberMode"
+                  "numberMode",
+                  "scrollOverflow",
+                  "scrollX",
+                  "scrollY",
+                  "scrollBehavior"
                 ]
               },
               "value": {}
@@ -3339,9 +3343,11 @@
             "clip",
             "auto",
             "scroll",
+            "scroll-x",
+            "scroll-y",
             "visible"
           ],
-          "description": "CSS `overflow`, folded onto `clipContent`: `\"hidden\"` / `\"clip\"` clip; `\"visible\"` does not; `\"auto\"` / `\"scroll\"` are clipped like `\"hidden\"` (reported)."
+          "description": "CSS `overflow`, folded onto `clipContent` and `scrollOverflow`: `\"hidden\"` / `\"clip\"` clip; `\"visible\"` does not; `\"scroll\"` / `\"auto\"` clips and scrolls both axes; `\"scroll-x\"` / `\"scroll-y\"` scroll that axis."
         },
         "visibility": {
           "type": "string",
@@ -3708,6 +3714,116 @@
         "clipsContent": {
           "type": "boolean",
           "description": "Input alias of `clipContent`; both are read. Files write the CSS spelling `overflow`. `clipsContent` (Figma) and `clip` are input aliases. Defaults to false."
+        },
+        "scrollOverflow": {
+          "type": "string",
+          "enum": [
+            "none",
+            "vertical",
+            "horizontal",
+            "both"
+          ],
+          "description": "Direction of container scroll. When set to anything other than `\"none\"`, `clipContent` is enabled."
+        },
+        "scroll-overflow": {
+          "type": "string",
+          "enum": [
+            "none",
+            "vertical",
+            "horizontal",
+            "both"
+          ],
+          "description": "Kebab-case spelling of `scrollOverflow`."
+        },
+        "scrollX": {
+          "oneOf": [
+            { "type": "number" },
+            { "type": "string" }
+          ],
+          "description": "Initial horizontal scroll offset of the container in px. Default 0."
+        },
+        "scroll-x": {
+          "oneOf": [
+            { "type": "number" },
+            { "type": "string" }
+          ],
+          "description": "CSS kebab-case spelling of `scrollX`."
+        },
+        "scrollY": {
+          "oneOf": [
+            { "type": "number" },
+            { "type": "string" }
+          ],
+          "description": "Initial vertical scroll offset of the container in px. Default 0."
+        },
+        "scroll-y": {
+          "oneOf": [
+            { "type": "number" },
+            { "type": "string" }
+          ],
+          "description": "CSS kebab-case spelling of `scrollY`."
+        },
+        "scrollBehavior": {
+          "type": "string",
+          "enum": [
+            "scroll",
+            "fixed",
+            "sticky"
+          ],
+          "description": "How this child behaves when its parent container scrolls: `\"scroll\"` (default, scrolls with parent), `\"fixed\"` (stays in place), or `\"sticky\"` (sticks to top edge)."
+        },
+        "scroll-behavior": {
+          "type": "string",
+          "enum": [
+            "scroll",
+            "fixed",
+            "sticky"
+          ],
+          "description": "Kebab-case spelling of `scrollBehavior`."
+        },
+        "scrollLeft": {
+          "oneOf": [
+            { "type": "number" },
+            { "type": "string" }
+          ],
+          "description": "Alias of `scrollX`."
+        },
+        "scroll-left": {
+          "oneOf": [
+            { "type": "number" },
+            { "type": "string" }
+          ],
+          "description": "Kebab-case alias of `scrollX`."
+        },
+        "scrollTop": {
+          "oneOf": [
+            { "type": "number" },
+            { "type": "string" }
+          ],
+          "description": "Alias of `scrollY`."
+        },
+        "scroll-top": {
+          "oneOf": [
+            { "type": "number" },
+            { "type": "string" }
+          ],
+          "description": "Kebab-case alias of `scrollY`."
+        },
+        "overflowX": {
+          "type": "string",
+          "description": "CSS `overflow-x` input alias."
+        },
+        "overflow-x": {
+          "type": "string",
+          "description": "CSS `overflow-x` input property."
+        },
+        "overflowY": {
+          "type": "string",
+          "description": "CSS `overflow-y` input alias."
+        },
+        "overflow-y": {
+          "type": "string",
+          "description": "CSS `overflow-y` input property."
         },
         "href": {
           "type": "string",

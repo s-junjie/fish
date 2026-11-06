@@ -1,5 +1,5 @@
 import { OVERRIDABLE_PROPERTIES } from "../../types";
-import { asBoolean, asNumber, isPlainObject, normalizeClipContent } from "../shared";
+import { asBoolean, asNumber, isPlainObject, normalizeClipContent, normalizeScrollOverflow, normalizeScrollOffset } from "../shared";
 import { normalizeFillStack } from "../paint";
 import { cornerRadiusInput, normalizeCornerRadius, normalizeStrokes } from "../stroke";
 import type { ElementBranch } from "./shared";
@@ -58,6 +58,15 @@ export const normalizeInstance: ElementBranch = ({ el, base, path, repairs, box 
   if (instRadius !== undefined) base.borderRadius = instRadius;
   const instClip = normalizeClipContent(el, path, repairs);
   if (instClip !== undefined) base.clipContent = instClip;
+  const instScroll = normalizeScrollOverflow(el, path, repairs);
+  if (instScroll !== undefined) {
+    base.scrollOverflow = instScroll;
+    if (instScroll !== "none") base.clipContent = true;
+  }
+  const instSx = normalizeScrollOffset(el.scrollX ?? el.scrollLeft ?? el["scroll-x"] ?? el["scroll-left"]);
+  if (instSx !== undefined && instSx > 0) base.scrollX = instSx;
+  const instSy = normalizeScrollOffset(el.scrollY ?? el.scrollTop ?? el["scroll-y"] ?? el["scroll-top"]);
+  if (instSy !== undefined && instSy > 0) base.scrollY = instSy;
   // A hand-set box: without this the flag is lost on save, and the instance
   // would snap back to its master's size on the next master resize.
   if (asBoolean(el.sizeOverride) === true) base.sizeOverride = true;

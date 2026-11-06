@@ -145,7 +145,10 @@ export function resolveTextSizing(textEl: TextElement, availableWidth: number | 
   // would overwrite the layout the file was made in — and only on the machines
   // that cannot show it, which is the worst possible place to lose it. The stored
   // box IS the author's; it thaws when the family arrives, because the answer
-  // comes from `textFontStatus` rather than a flag set here.
+  // comes from `textFontStatus` rather than a flag set here. Arriving is not the
+  // same as being re-measured: the face announces itself
+  // (`notifyAsyncFontLoaded`) and `EditorStore.rebaselineInitialLayout` runs the
+  // pass, so the box does not wait for the next unrelated edit to catch up.
   if (textSizingIsFrozen(textEl)) return textEl;
   const widthMode = resolveAxis(textEl, null, "width");
   const heightMode = resolveAxis(textEl, null, "height");

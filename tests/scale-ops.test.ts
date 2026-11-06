@@ -1041,3 +1041,78 @@ describe("a hugging layer scales with the content it measures", () => {
     expect(after.margin, "margin follows the axis each edge belongs to").toEqual([8, 16, 8, 16]);
   });
 });
+
+/**
+ * A rotated layer's W / H are its own box, while the anchor it grows from is a
+ * point on screen. Those are two different questions — the turn is about the box
+ * CENTRE — and answering the second with the first moves the layer.
+ */
+describe("a rotated layer scales by its own box, not its silhouette", () => {
+  const at = (el: DesignElement, px: number, py: number) => {
+    const rad = ((el.rotation || 0) * Math.PI) / 180;
+    const cx = el.x + el.width / 2;
+    const cy = el.y + el.height / 2;
+    const dx = px - cx;
+    const dy = py - cy;
+    return { x: cx + dx * Math.cos(rad) - dy * Math.sin(rad), y: cy + dx * Math.sin(rad) + dy * Math.cos(rad) };
+  };
+  const centreOf = (el: DesignElement) => ({ x: el.x + el.width / 2, y: el.y + el.height / 2 });
+
+  const tilted = () => rect({ id: "r", x: 200, y: 100, width: 100, height: 50, rotation: 45 });
+
+  it("types a width into W and gets that width, not that silhouette", () => {
+    // The selection bounds answer the SILHOUETTE, which is what framing a
+    // selection and the Scale readout are about. W is about the layer: a
+    // rotated rect told 200 has to be 200 wide, not 200 across its envelope.
+    const out = scaleSelectionToSizeInDocument(doc([tilted()]), new Set(["r"]), { width: 200, height: 100 });
+    expect(out.refusal).toBeUndefined();
+    const after = read(out.doc, "r");
+    expect([after.width, after.height]).toEqual([200, 100]);
+    expect(after.rotation, "the turn is the author's").toBe(45);
+    const before = centreOf(tilted());
+    expect(centreOf(after), "a centre anchor holds the centre").toEqual(before);
+  });
+
+  it("holds a corner anchor where the corner was, not where its silhouette was", () => {
+    // The turn is about the CENTRE, so every other point moves along an arc. The
+    // point that was at the box's top-left has to end up where it was — that is
+    // what a top-left anchor promises — and it does not follow from scaling about
+    // the axis-aligned bounds.
+    const start = tilted();
+    const corner = at(start, start.x, start.y);
+    const out = scaleSelectionToSizeInDocument(doc([start]), new Set(["r"]), { width: 200, height: 100 }, { x: 0, y: 0 });
+    const after = read(out.doc, "r");
+    const moved = at(after, after.x, after.y);
+    // Stored positions are rounded to two decimals, and a turn magnifies that.
+    expect(moved.x).toBeCloseTo(corner.x, 2);
+    expect(moved.y).toBeCloseTo(corner.y, 2);
+  });
+
+  it("writes the factor onto the instance, not only onto its box", () => {
+    const inst = {
+      id: "i",
+      type: "instance",
+      name: "Card",
+      componentId: "c_card",
+      x: 200,
+      y: 100,
+      width: 100,
+      height: 50,
+      rotation: 45
+    } as unknown as DesignElement;
+    const out = scaleSelectionToSizeInDocument(doc([inst]), new Set(["i"]), { width: 200, height: 100 });
+    const after = read(out.doc, "i") as { width: number; instanceScale?: { x: number; y: number } };
+    expect(after.width).toBe(200);
+    expect(after.instanceScale).toEqual({ x: 2, y: 2 });
+  });
+
+  it("refuses a zero box instead of rewriting the tree at 1x", () => {
+    // `sanitizeFactor` reads a non-positive request as "use 1", and a rewrite that
+    // lands on the same numbers is indistinguishable from a scale that worked.
+    const start = doc([tilted()]);
+    const out = scaleSelectionToSizeInDocument(start, new Set(["r"]), { width: 0, height: 0 });
+    expect(out.doc, "nothing was written").toBe(start);
+    expect(out.changed).toBe(false);
+    expect(out.refusal).toBe("no-op");
+  });
+});

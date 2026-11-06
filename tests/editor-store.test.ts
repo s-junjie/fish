@@ -1,7 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
 import { getActivePage, updateActivePageElements } from "../src/core/dsl/types";
 import { EditorStore } from "../src/core/store/editor-store";
-import { DesignDocument, RectElement } from "../src/core/dsl/types";
+import { DesignDocument, DesignElement, RectElement } from "../src/core/dsl/types";
+import { relayoutDocumentTree } from "../src/core/compile";
+import { setTextMeasurer } from "../src/core/geometry/text-measure";
 
 const makeTestDoc = (): DesignDocument => ({
   version: "0.1",
@@ -229,5 +231,75 @@ describe("gesture boundary signal", () => {
     store.endGesture();
     expect(seen).toEqual([true, false]);
     expect(store.isGestureActive()).toBe(false);
+  });
+});
+
+/**
+ * A document's first layout runs the moment it opens, and a webfont is not
+ * downloaded yet: the pass measures the fallback face and writes those numbers
+ * into a hugging box and every stack above it. When the file lands the glyphs
+ * change and the boxes do not.
+ *
+ * `rebaselineInitialLayout` is that second pass — and it has to be invisible:
+ * no undo step, no auto-save flush, and nothing at all once the user has started
+ * editing, because those boxes are where the user put their hands.
+ */
+describe("EditorStore.rebaselineInitialLayout", () => {
+  const twice = (content: string) => ({ width: content.length * 10, height: 20, lines: 1 });
+  const wider = (content: string) => ({ width: content.length * 20, height: 20, lines: 1 });
+
+  const huggingDoc = (): DesignDocument => {
+    const label = {
+      id: "label",
+      type: "text",
+      name: "Label",
+      x: 10,
+      y: 10,
+      width: 1,
+      height: 1,
+      content: "abcd",
+      sizing: { width: "fit-content", height: "fit-content" },
+      style: { fontFamily: "Inter", fontSize: 16, lineHeight: 20, color: "#111111" }
+    } as unknown as DesignElement;
+    const base = makeTestDoc();
+    return { ...base, pages: [{ ...base.pages[0], children: relayoutDocumentTree([label]) }] };
+  };
+
+  const widthOf = (store: EditorStore) => (store.getActivePage().children[0] as { width: number }).width;
+
+  it("re-measures the fallback's boxes and touches neither history nor auto-save", () => {
+    setTextMeasurer(twice);
+    const store = new EditorStore(huggingDoc());
+    expect(widthOf(store)).toBe(40);
+
+    const autosave = vi.fn();
+    const repaint = vi.fn();
+    store.subscribe(autosave);
+    store.onViewChange(repaint);
+
+    setTextMeasurer(wider);
+    expect(store.rebaselineInitialLayout()).toBe(true);
+    expect(widthOf(store), "the box follows the real face").toBe(80);
+    expect(store.canUndo(), "an arriving font is not an edit").toBe(false);
+    expect(autosave, "and must not flush a save").not.toHaveBeenCalled();
+    expect(repaint, "but the canvas has to draw the new box").toHaveBeenCalled();
+  });
+
+  it("leaves an edited document alone", () => {
+    setTextMeasurer(twice);
+    const store = new EditorStore(huggingDoc());
+    store.dispatch({ type: "TOUCH", patch: (doc) => ({ ...doc, name: "Edited" }) });
+
+    setTextMeasurer(wider);
+    expect(store.rebaselineInitialLayout()).toBe(false);
+    expect(widthOf(store), "the box stays where the user left it").toBe(40);
+  });
+
+  it("keeps the document identity when nothing measured differently", () => {
+    setTextMeasurer(twice);
+    const store = new EditorStore(huggingDoc());
+    const before = store.getDoc();
+    expect(store.rebaselineInitialLayout()).toBe(false);
+    expect(store.getDoc()).toBe(before);
   });
 });

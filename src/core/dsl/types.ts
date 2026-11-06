@@ -676,10 +676,13 @@ export interface SlideHost {
   slide?: SlideSpec;
 }
 
+export type ElementScrollBehavior = "scroll" | "fixed" | "sticky";
+
 export interface BaseElement {
   id: string;
   type: ElementType;
   name?: string;
+  scrollBehavior?: ElementScrollBehavior;
   x: number;
   y: number;
   width: number;
@@ -819,12 +822,17 @@ export interface BaseElement {
 }
 
 
+export type ScrollOverflow = "none" | "vertical" | "horizontal" | "both";
+
 export interface FrameElement extends BaseElement, SlideHost, AutoLayoutFields {
   type: "frame";
   children: DesignElement[];
   /** Ordered background paint stack (first layer bottom-most). */
   fills?: PaintStack;
   clipContent?: boolean;
+  scrollOverflow?: ScrollOverflow;
+  scrollX?: number;
+  scrollY?: number;
   borderRadius?: CornerRadius;
   isThumbnail?: boolean;
   /**
@@ -927,6 +935,10 @@ export type OverridableProperty =
   | "themeMode"
   /** The same, on the NUMBER axis: a compact card inside a comfortable page. */
   | "numberMode"
+  | "scrollOverflow"
+  | "scrollX"
+  | "scrollY"
+  | "scrollBehavior"
   ;
 
 /**
@@ -964,7 +976,11 @@ const OVERRIDABLE_PROPERTY_MAP: Record<OverridableProperty, true> = {
   effectStyleId: true,
   tokenBindings: true,
   themeMode: true,
-  numberMode: true
+  numberMode: true,
+  scrollOverflow: true,
+  scrollX: true,
+  scrollY: true,
+  scrollBehavior: true
 };
 
 export const OVERRIDABLE_PROPERTIES = Object.keys(
@@ -982,6 +998,9 @@ export interface ComponentElement extends BaseElement, SlideHost, AutoLayoutFiel
   children: DesignElement[];
   fills?: PaintStack;
   clipContent?: boolean;
+  scrollOverflow?: ScrollOverflow;
+  scrollX?: number;
+  scrollY?: number;
   borderRadius?: CornerRadius;
   cornerSmoothing?: number;
   /**
@@ -1063,6 +1082,9 @@ export interface InstanceElement extends BaseElement {
    * for the one rule that resolves them.
    */
   clipContent?: boolean;
+  scrollOverflow?: ScrollOverflow;
+  scrollX?: number;
+  scrollY?: number;
   /**
    * The user sized THIS instance by hand. Without it the instance keeps following
    * its master's box — `propagateMasterSize` copies a resized master onto every

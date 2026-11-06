@@ -87,7 +87,7 @@ export const CANONICAL_KEYS: ReadonlySet<string> = new Set([
   "strokeSides", "borderSides", "strokeTopWeight", "strokeRightWeight", "strokeBottomWeight", "strokeLeftWeight", "strokeSide", "borderSide",
   "from", "to", "children",
   "arrow", "arrowhead",
-  "clipContent", "clipsContent", "clip", "overflow", "boxSizing", "box-sizing", "flex", "flex-grow", "layoutGrow", "flexGrow", "padding",
+  "clipContent", "clipsContent", "clip", "overflow", "scrollOverflow", "scrollX", "scrollY", "scrollLeft", "scrollTop", "scrollBehavior", "overflowX", "overflowY", "boxSizing", "box-sizing", "flex", "flex-grow", "layoutGrow", "flexGrow", "padding",
   // The flat CSS auto-layout keys: this IS the stored vocabulary, not an alias.
   "display", "flex-direction", "justify-content", "align-items", "align-content", "flex-wrap",
   "row-gap", "column-gap", "grid-template-columns", "grid-template-rows", "grid-auto-flow",
@@ -641,6 +641,13 @@ export function normalizeElement(
       path: `${path}/position`,
       message: `"${rawLayoutPosition}" is not a layout position (expected "absolute")`
     });
+  }
+
+  const rawScrollBehavior = elRecord.scrollBehavior ?? elRecord["scroll-behavior"];
+  if (rawScrollBehavior === "fixed" || rawScrollBehavior === "sticky" || rawScrollBehavior === "scroll") {
+    if (rawScrollBehavior !== "scroll") {
+      base.scrollBehavior = rawScrollBehavior;
+    }
   }
 
   // `start` is stored rather than folded into "absent": the two say different

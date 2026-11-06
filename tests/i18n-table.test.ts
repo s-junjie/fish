@@ -1,4 +1,3 @@
-import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { en } from "../src/i18n/en";
@@ -12,13 +11,14 @@ const valueAt = new Map(keys.map((key, index) => [key, values[index]]));
 
 const SOURCE_DIR = path.resolve(process.cwd(), "src");
 
-function sourceFiles(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const file = path.join(dir, entry.name);
-    if (entry.isDirectory()) return sourceFiles(file);
-    return /\.(ts|tsx)$/.test(entry.name) ? [file] : [];
-  });
-}
+/**
+ * ONE scan, awaited once for the whole file.
+ *
+ * Reading `src` is the expensive half — ~700 file opens — so the three places
+ * that need it share this one instead of each walking the tree. It is async
+ * because `scanI18n` reads concurrently for exactly that reason.
+ */
+const scan = await scanI18n(SOURCE_DIR);
 
 /** The runtime decoder's contract, reimplemented: a bug here is a value mismatch. */
 function decode(encoded: string): Map<string, number> {
@@ -71,18 +71,11 @@ describe("the flattened i18n table", () => {
 describe("every key a call site names is in the dictionary", () => {
   it("names one at every t() argument, including the ternary branches", () => {
     // The build plugin raises this for the files it rewrites; this catches the
-    // drift before a build, in the one reader the plugin also uses.
-    const known = new Set(keys);
-    const missing: string[] = [];
-    let checked = 0;
-    for (const file of sourceFiles(SOURCE_DIR)) {
-      if (file.includes(`${path.sep}i18n${path.sep}`)) continue;
-      const analysis = analyzeSource(readFileSync(file, "utf-8"), (key) => known.has(key));
-      for (const call of analysis.calls) checked += call.literals.length;
-      for (const key of analysis.unknown) missing.push(`${path.relative(process.cwd(), file)}: ${key}`);
-    }
-    expect(checked, "the scan must find the call sites, not an empty lex").toBeGreaterThan(1000);
-    expect(missing).toEqual([]);
+    // drift before a build, in the one reader the plugin also uses. `checked`
+    // is half the assertion: a lexer that quietly stopped matching reports no
+    // missing keys either, and that is the failure this whole scan can cause.
+    expect(scan.checked, "the scan must find the call sites, not an empty lex").toBeGreaterThan(1000);
+    expect(scan.unknown).toEqual([]);
   });
 });
 
@@ -116,7 +109,7 @@ describe("the t() reader", () => {
 });
 
 describe("the compiled table", () => {
-  const { table, orphans } = scanI18n(SOURCE_DIR);
+  const { table, orphans } = scan;
 
   it("prunes the dictionary rather than restating it", () => {
     // Guards the optimisation itself: a scanner that quietly stops matching
@@ -158,54 +151,56 @@ describe("i18nIndexPlugin transform", () => {
 
   const filePath = path.resolve(process.cwd(), "src/ui/test.tsx");
 
-  it("rewrites both double-quoted and single-quoted t() calls to slot indices", () => {
+  // `transform` returns a promise now — it awaits the shipped table, the one scan
+  // this build shares — so every case here reads its result.
+  it("rewrites both double-quoted and single-quoted t() calls to slot indices", async () => {
     const transform = plugin();
     const codeDouble = 'import { t } from "./i18n";\nconst msg = t("common.add");';
     const codeSingle = "import { t } from './i18n';\nconst msg = t('common.add');";
     const codeWithArgs = "import { t } from './i18n';\nconst msg = t('common.add', { count: 1 });";
 
-    const resDouble = transform.call({}, codeDouble, filePath);
-    const resSingle = transform.call({}, codeSingle, filePath);
-    const resWithArgs = transform.call({}, codeWithArgs, filePath);
+    const resDouble = await transform.call({}, codeDouble, filePath);
+    const resSingle = await transform.call({}, codeSingle, filePath);
+    const resWithArgs = await transform.call({}, codeWithArgs, filePath);
 
     expect(resDouble.code).toMatch(/const msg = t\(\d+\);/);
     expect(resSingle.code.match(/t\(\d+\)/)![0]).toBe(resDouble.code.match(/t\(\d+\)/)![0]);
     expect(resWithArgs.code).toMatch(/const msg = t\(\d+, \{ count: 1 \}\);/);
   });
 
-  it("rewrites the branches of a ternary, and only the branches", () => {
+  it("rewrites the branches of a ternary, and only the branches", async () => {
     const transform = plugin();
     const code =
       'import { t } from "./i18n";\nconst msg = t(kind === "hug" ? "stack.alignContentHug" : "stack.alignContentNoRoom");';
-    const out = transform.call({}, code, filePath).code;
+    const out = (await transform.call({}, code, filePath)).code;
 
     expect(out).toMatch(/t\(kind === "hug" \? \d+ : \d+\)/);
     const slots = out.match(/t\(kind === "hug" \? (\d+) : (\d+)\)/)!;
-    const { table } = scanI18n(SOURCE_DIR);
+    const { table } = scan;
     expect(table.values[Number(slots[1])]).toBe(en.stack.alignContentHug);
     expect(table.values[Number(slots[2])]).toBe(en.stack.alignContentNoRoom);
   });
 
-  it("leaves a built path and a key it cannot resolve alone", () => {
+  it("leaves a built path and a key it cannot resolve alone", async () => {
     const transform = plugin();
     const template = 'import { t } from "./i18n";\nconst msg = t(`pen.mode${next}`);';
     const variable = 'import { t } from "./i18n";\nconst msg = t(LABEL[mode]);';
 
-    expect(transform.call({}, template, filePath)).toBeNull();
-    expect(transform.call({}, variable, filePath)).toBeNull();
+    expect(await transform.call({}, template, filePath)).toBeNull();
+    expect(await transform.call({}, variable, filePath)).toBeNull();
   });
 
-  it("does not mistake a quote inside a string for the start of a call", () => {
+  it("does not mistake a quote inside a string for the start of a call", async () => {
     const transform = plugin();
     const code = `import { t } from './i18n';\nconst note = "don't";\nconst msg = t('common.add');`;
-    expect(transform.call({}, code, filePath).code).toMatch(/t\(\d+\)/);
+    expect((await transform.call({}, code, filePath)).code).toMatch(/t\(\d+\)/);
   });
 
-  it("ignores files in i18n directory with POSIX or Windows separators", () => {
+  it("ignores files in i18n directory with POSIX or Windows separators", async () => {
     const transform = plugin();
     const code = 'import { t } from "./i18n";\nconst msg = t("common.add");';
 
-    expect(transform.call({}, code, path.resolve(process.cwd(), "src") + "/i18n/foo.ts")).toBeNull();
-    expect(transform.call({}, code, path.resolve(process.cwd(), "src") + "\\i18n\\foo.ts")).toBeNull();
+    expect(await transform.call({}, code, path.resolve(process.cwd(), "src") + "/i18n/foo.ts")).toBeNull();
+    expect(await transform.call({}, code, path.resolve(process.cwd(), "src") + "\\i18n\\foo.ts")).toBeNull();
   });
 });
