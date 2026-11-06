@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
-import type { DesignDocument } from "../../core/dsl/types";
+import type { DesignDocument, InstanceElement } from "../../core/dsl/types";
 import { isLaidOut, relayoutDocumentTree } from "../../core/compile";
 import { flattenElements } from "../../core/geometry/tree-ops";
 import { mapElements } from "../../core/geometry/tree-edit";
 import { findElementAtPoint } from "../../core/geometry/tree-hit";
-import { canContainerScroll, clampScrollOffset, findScrollableContainersAtPoint } from "../../core/geometry/scroll-bounds";
+import { canContainerScroll, clampScrollOffset, computeContainerScrollBounds, findScrollableContainersAtPoint } from "../../core/geometry/scroll-bounds";
+import { findMasterComponent } from "../../core/interactions/component-inventory";
 import { contentBounds } from "../../core/geometry/element-bounds";
 import { formatZoomPercent, zoomStep } from "../../core/geometry/viewport";
 import { presentationFrames } from "../../core/presentation/frames";
@@ -236,17 +237,19 @@ export function ViewerShell({ doc, docRef, readOnly = false }: ViewerShellProps)
         return true;
       }
 
-      const candidates = findScrollableContainersAtPoint(displayElements, worldX, worldY);
+      const candidates = findScrollableContainersAtPoint(displayElements, worldX, worldY, doc);
       if (candidates.length > 0) {
         for (const cand of candidates) {
           const curX = containerScrolls[cand.id]?.x ?? cand.scrollX ?? 0;
           const curY = containerScrolls[cand.id]?.y ?? cand.scrollY ?? 0;
           const candWithScroll = { ...cand, scrollX: curX, scrollY: curY };
-          if (canContainerScroll(candWithScroll, e.deltaX, e.deltaY)) {
+          if (canContainerScroll(candWithScroll, e.deltaX, e.deltaY, doc)) {
             const { scrollX: nextX, scrollY: nextY } = clampScrollOffset(
               candWithScroll as any,
               curX + e.deltaX,
-              curY + e.deltaY
+              curY + e.deltaY,
+              undefined,
+              doc
             );
             if (nextX !== curX || nextY !== curY) {
               setContainerScrolls((prev) => ({
@@ -257,11 +260,25 @@ export function ViewerShell({ doc, docRef, readOnly = false }: ViewerShellProps)
             }
           }
         }
-        return true;
+        const hasOverflow = candidates.some((cand) => {
+          const { maxScrollX, maxScrollY } = computeContainerScrollBounds(cand, undefined, doc);
+          const mode =
+            cand.scrollOverflow ??
+            (cand.type === "instance"
+              ? findMasterComponent(doc, (cand as InstanceElement).componentId)?.scrollOverflow
+              : "none");
+          return (
+            ((mode === "horizontal" || mode === "both") && maxScrollX > 0) ||
+            ((mode === "vertical" || mode === "both") && maxScrollY > 0)
+          );
+        });
+        if (hasOverflow) {
+          return true;
+        }
       }
       return false;
     },
-    [camera, displayElements, containerScrolls]
+    [camera, displayElements, containerScrolls, doc]
   );
 
   useViewerGestures({

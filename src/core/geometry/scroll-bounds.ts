@@ -1,7 +1,9 @@
-import type { ContainerElement, DesignElement, InstanceElement, ScrollOverflow } from "../dsl/types";
+import type { ContainerElement, DesignDocument, DesignElement, InstanceElement, ScrollOverflow } from "../dsl/types";
 import { resolvePadding } from "../layout/box";
 import { findElementAtPoint } from "./tree-hit";
 import { findParentById } from "./tree-query";
+import { findMasterComponent } from "../interactions/component-inventory";
+import { resolveInstanceChildren } from "../interactions/instance-resolve";
 
 export interface ScrollBounds {
   maxScrollX: number;
@@ -75,10 +77,21 @@ export function childScrollOffset(
  */
 export function computeContainerScrollBounds(
   container: ContainerElement | InstanceElement,
-  resolvedChildren?: DesignElement[]
+  resolvedChildren?: DesignElement[],
+  doc?: DesignDocument
 ): ScrollBounds {
-  const children = resolvedChildren ?? (container as ContainerElement).children ?? [];
-  const padding = resolvePadding((container as any).padding);
+  let children = resolvedChildren ?? (container as ContainerElement).children;
+  let masterPadding: any = undefined;
+  if (!children && container.type === "instance" && doc) {
+    const master = findMasterComponent(doc, (container as InstanceElement).componentId);
+    if (master) {
+      children = resolveInstanceChildren(container as InstanceElement, master);
+      masterPadding = master.padding;
+    }
+  }
+  children = children ?? [];
+  const paddingVal = (container as any).padding ?? masterPadding;
+  const padding = resolvePadding(paddingVal);
   const [, pr, pb] = padding;
 
   let maxX = 0;
@@ -109,6 +122,8 @@ export function computeContainerScrollBounds(
  */
 export function clampScrollOffset(
   el: {
+    type?: string;
+    componentId?: string;
     scrollOverflow?: ScrollOverflow;
     width: number;
     height: number;
@@ -117,13 +132,19 @@ export function clampScrollOffset(
   },
   nextScrollX: number,
   nextScrollY: number,
-  resolvedChildren?: DesignElement[]
+  resolvedChildren?: DesignElement[],
+  doc?: DesignDocument
 ): { scrollX: number; scrollY: number } {
-  const mode = el.scrollOverflow ?? "none";
+  let mode = el.scrollOverflow;
+  if (!mode && el.type === "instance" && el.componentId && doc) {
+    const master = findMasterComponent(doc, el.componentId);
+    mode = master?.scrollOverflow;
+  }
+  mode = mode ?? "none";
   if (mode === "none") {
     return { scrollX: 0, scrollY: 0 };
   }
-  const { maxScrollX, maxScrollY } = computeContainerScrollBounds(el as any, resolvedChildren);
+  const { maxScrollX, maxScrollY } = computeContainerScrollBounds(el as any, resolvedChildren, doc);
   const canX = mode === "horizontal" || mode === "both";
   const canY = mode === "vertical" || mode === "both";
 
@@ -134,24 +155,39 @@ export function clampScrollOffset(
 }
 
 export function isScrollableContainer(
-  el: DesignElement
+  el: DesignElement,
+  doc?: DesignDocument
 ): el is ContainerElement | InstanceElement {
-  return (
-    (el.type === "frame" || el.type === "component" || el.type === "instance") &&
-    el.scrollOverflow !== undefined &&
-    el.scrollOverflow !== "none"
-  );
+  if (el.type === "frame" || el.type === "component") {
+    return el.scrollOverflow !== undefined && el.scrollOverflow !== "none";
+  }
+  if (el.type === "instance") {
+    const inst = el as InstanceElement;
+    if (inst.scrollOverflow !== undefined) {
+      return inst.scrollOverflow !== "none";
+    }
+    if (doc) {
+      const master = findMasterComponent(doc, inst.componentId);
+      return master?.scrollOverflow !== undefined && master.scrollOverflow !== "none";
+    }
+  }
+  return false;
 }
 
 export function canContainerScroll(
   container: ContainerElement | InstanceElement,
   deltaX: number,
   deltaY: number,
+  doc?: DesignDocument,
   resolvedChildren?: DesignElement[]
 ): boolean {
-  const mode = container.scrollOverflow ?? "none";
-  if (mode === "none") return false;
-  const { maxScrollX, maxScrollY } = computeContainerScrollBounds(container, resolvedChildren);
+  let mode = container.scrollOverflow;
+  if (!mode && container.type === "instance" && doc) {
+    const master = findMasterComponent(doc, (container as InstanceElement).componentId);
+    mode = master?.scrollOverflow;
+  }
+  if (!mode || mode === "none") return false;
+  const { maxScrollX, maxScrollY } = computeContainerScrollBounds(container, resolvedChildren, doc);
   const curX = container.scrollX ?? 0;
   const curY = container.scrollY ?? 0;
   const canX = (mode === "horizontal" || mode === "both") && maxScrollX > 0;
@@ -171,15 +207,16 @@ export function canContainerScroll(
 export function findScrollableContainersAtPoint(
   elements: DesignElement[],
   x: number,
-  y: number
+  y: number,
+  doc?: DesignDocument
 ): (ContainerElement | InstanceElement)[] {
   const hit = findElementAtPoint(elements, x, y, { includeLocked: true });
   if (!hit) return [];
   const candidates: (ContainerElement | InstanceElement)[] = [];
   let curr: DesignElement | null = hit;
   while (curr) {
-    if (isScrollableContainer(curr)) {
-      candidates.push(curr);
+    if (isScrollableContainer(curr, doc)) {
+      candidates.push(curr as ContainerElement | InstanceElement);
     }
     curr = findParentById(elements, curr.id);
   }

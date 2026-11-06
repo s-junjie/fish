@@ -164,8 +164,8 @@ export function resolveInstanceBox(
         : (master as { cornerSmoothing?: number }).cornerSmoothing,
     clipContent: inst.clipContent !== undefined ? inst.clipContent : Boolean(master.clipContent),
     scrollOverflow: inst.scrollOverflow !== undefined ? inst.scrollOverflow : master.scrollOverflow,
-    scrollX: inst.scrollX !== undefined ? inst.scrollX : master.scrollX,
-    scrollY: inst.scrollY !== undefined ? inst.scrollY : master.scrollY,
+    scrollX: inst.scrollX !== undefined ? inst.scrollX : 0,
+    scrollY: inst.scrollY !== undefined ? inst.scrollY : 0,
     effects:
       inst.effects === undefined && scaledBox
         ? (master.effects || []).map((e) => scaleEffect(e, scale.x, scale.y, k))

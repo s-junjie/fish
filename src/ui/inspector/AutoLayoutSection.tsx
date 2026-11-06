@@ -131,6 +131,7 @@ export function AutoLayoutSection({
   const clipControl = clipsChildren && (
     <ScrollOverflowControl
       element={primarySelected}
+      docRef={docRef}
       onMutate={onMutate}
     />
   );

@@ -1,23 +1,30 @@
 import type { JSX } from "preact";
-import type { DesignElement, ScrollOverflow } from "../../core/dsl/types";
+import type { DesignDocument, DesignElement, InstanceElement, ScrollOverflow } from "../../core/dsl/types";
 import { CheckRow } from "../CheckRow";
 import { Select } from "../Select";
 import { t } from "../../i18n";
 import { SUB_LABEL_CLASS } from "../label-tier";
+import { findMasterComponent } from "../../core/interactions/component-inventory";
 
 interface ScrollOverflowControlProps {
   element: DesignElement;
+  docRef?: { current: DesignDocument };
   onMutate: (updater: (el: DesignElement) => DesignElement, recordSnapshot?: boolean) => void;
 }
 
-export function ScrollOverflowControl({ element, onMutate }: ScrollOverflowControlProps): JSX.Element {
+export function ScrollOverflowControl({ element, docRef, onMutate }: ScrollOverflowControlProps): JSX.Element {
   const el = element as {
     clipContent?: boolean;
     scrollOverflow?: ScrollOverflow;
   };
 
-  const clip = Boolean(el.clipContent);
-  const overflow = el.scrollOverflow ?? "none";
+  const master =
+    element.type === "instance" && docRef
+      ? findMasterComponent(docRef.current, (element as InstanceElement).componentId)
+      : null;
+
+  const clip = el.clipContent !== undefined ? Boolean(el.clipContent) : Boolean(master?.clipContent);
+  const overflow = el.scrollOverflow ?? master?.scrollOverflow ?? "none";
 
   const handleClipChange = (checked: boolean) => {
     onMutate(

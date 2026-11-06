@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "preact/hooks";
-import { DesignDocument, DesignElement, Page } from "../../core/dsl/types";
+import { DesignDocument, DesignElement, InstanceElement, Page } from "../../core/dsl/types";
 import { DEFAULT_CANVAS_BACKGROUND } from "../../core/dsl/defaults";
 import { PresentationFrame } from "../../core/presentation/frames";
 import { DocumentStage } from "../canvas/DocumentStage";
@@ -15,7 +15,8 @@ import { morphSlide, slidePaint } from "../../core/presentation/animate";
 import { flattenElements } from "../../core/geometry/tree-ops";
 import { mapElements } from "../../core/geometry/tree-edit";
 import { findElementAtPoint } from "../../core/geometry/tree-hit";
-import { canContainerScroll, clampScrollOffset, findScrollableContainersAtPoint } from "../../core/geometry/scroll-bounds";
+import { canContainerScroll, clampScrollOffset, computeContainerScrollBounds, findScrollableContainersAtPoint } from "../../core/geometry/scroll-bounds";
+import { findMasterComponent } from "../../core/interactions/component-inventory";
 import { MENU_ITEM_CLASS, MENU_ITEM_ON_CLASS, MENU_SEPARATOR_CLASS, MENU_SURFACE_CLASS } from "../menu-style";
 import { LEADER_RULE_CLASS } from "../inspector/SectionHeader";
 import { ScaleModeIcon } from "../scale-icons";
@@ -408,17 +409,19 @@ export function PresentOverlay({
             return;
           }
 
-          const candidates = findScrollableContainersAtPoint(scrolledElements, worldX, worldY);
+          const candidates = findScrollableContainersAtPoint(scrolledElements, worldX, worldY, docRef.current);
           if (candidates.length > 0) {
             for (const cand of candidates) {
               const curX = containerScrolls[cand.id]?.x ?? cand.scrollX ?? 0;
               const curY = containerScrolls[cand.id]?.y ?? cand.scrollY ?? 0;
               const candWithScroll = { ...cand, scrollX: curX, scrollY: curY };
-              if (canContainerScroll(candWithScroll, e.deltaX, e.deltaY)) {
+              if (canContainerScroll(candWithScroll, e.deltaX, e.deltaY, docRef.current)) {
                 const { scrollX: nextX, scrollY: nextY } = clampScrollOffset(
                   candWithScroll as any,
                   curX + e.deltaX,
-                  curY + e.deltaY
+                  curY + e.deltaY,
+                  undefined,
+                  docRef.current
                 );
                 if (nextX !== curX || nextY !== curY) {
                   setContainerScrolls((prev) => ({
@@ -429,7 +432,21 @@ export function PresentOverlay({
                 }
               }
             }
-            return;
+            const hasOverflow = candidates.some((cand) => {
+              const { maxScrollX, maxScrollY } = computeContainerScrollBounds(cand, undefined, docRef.current);
+              const mode =
+                cand.scrollOverflow ??
+                (cand.type === "instance"
+                  ? findMasterComponent(docRef.current, (cand as InstanceElement).componentId)?.scrollOverflow
+                  : "none");
+              return (
+                ((mode === "horizontal" || mode === "both") && maxScrollX > 0) ||
+                ((mode === "vertical" || mode === "both") && maxScrollY > 0)
+              );
+            });
+            if (hasOverflow) {
+              return;
+            }
           }
         }
 

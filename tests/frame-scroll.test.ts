@@ -12,7 +12,8 @@ import {
 } from "../src/core/geometry/scroll-bounds";
 import { computeParentOrigin, computeParentWorldMatrix } from "../src/core/geometry/tree-coords";
 import { findElementAtPoint } from "../src/core/geometry/tree-hit";
-import type { FrameElement, RectElement } from "../src/core/dsl/types";
+import { resolveInstanceBox } from "../src/core/interactions/instance-inherit";
+import type { ComponentElement, FrameElement, InstanceElement, RectElement } from "../src/core/dsl/types";
 
 describe("frame scroll capabilities", () => {
   describe("normalization & persistence", () => {
@@ -403,6 +404,99 @@ describe("frame scroll capabilities", () => {
       expect(childScrollOffset(fixedHeader, container, 0, 150)).toEqual({ offsetX: 0, offsetY: 0 });
       expect(childScrollOffset(stickySection, container, 0, 150)).toEqual({ offsetX: -0, offsetY: -100 });
       expect(childScrollOffset(normalChild, container, 0, 150)).toEqual({ offsetX: -0, offsetY: -150 });
+    });
+  });
+
+  describe("instance scroll behavior", () => {
+    const master: ComponentElement = {
+      id: "master1",
+      type: "component",
+      name: "Card",
+      x: 0,
+      y: 0,
+      width: 200,
+      height: 200,
+      clipContent: true,
+      scrollOverflow: "vertical",
+      scrollX: 50,
+      scrollY: 100,
+      children: []
+    };
+
+    const doc: any = {
+      pages: [
+        {
+          id: "p1",
+          children: [master]
+        }
+      ]
+    };
+
+    it("instance inherits scrollOverflow from master, but does NOT inherit scroll position", () => {
+      const inst: InstanceElement = {
+        id: "inst1",
+        type: "instance",
+        componentId: "master1",
+        x: 50,
+        y: 50,
+        width: 200,
+        height: 200
+      };
+      const box = resolveInstanceBox(inst, master);
+      expect(box.scrollOverflow).toBe("vertical");
+      expect(box.scrollX).toBe(0);
+      expect(box.scrollY).toBe(0);
+    });
+
+    it("instance preserves its own scroll position override", () => {
+      const inst: InstanceElement = {
+        id: "inst1",
+        type: "instance",
+        componentId: "master1",
+        x: 50,
+        y: 50,
+        width: 200,
+        height: 200,
+        scrollX: 10,
+        scrollY: 25
+      };
+      const box = resolveInstanceBox(inst, master);
+      expect(box.scrollOverflow).toBe("vertical");
+      expect(box.scrollX).toBe(10);
+      expect(box.scrollY).toBe(25);
+    });
+
+    it("isScrollableContainer recognizes scrollable instances via master or override", () => {
+      const instWithoutOverride: InstanceElement = {
+        id: "inst1",
+        type: "instance",
+        componentId: "master1",
+        x: 0,
+        y: 0,
+        width: 200,
+        height: 200
+      };
+      expect(isScrollableContainer(instWithoutOverride, doc)).toBe(true);
+
+      const instWithNoneOverride: InstanceElement = {
+        ...instWithoutOverride,
+        scrollOverflow: "none"
+      };
+      expect(isScrollableContainer(instWithNoneOverride, doc)).toBe(false);
+    });
+
+    it("findScrollableContainersAtPoint finds scrollable instance under cursor", () => {
+      const inst: InstanceElement = {
+        id: "inst1",
+        type: "instance",
+        componentId: "master1",
+        x: 0,
+        y: 0,
+        width: 200,
+        height: 200
+      };
+      const candidates = findScrollableContainersAtPoint([inst], 100, 100, doc);
+      expect(candidates.map((c) => c.id)).toEqual(["inst1"]);
     });
   });
 });

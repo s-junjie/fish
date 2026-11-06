@@ -1,10 +1,10 @@
-import { DesignDocument, DesignElement, Page, PathElement, updatePageCanvas, getActivePage, updateActivePageElements } from "../core/dsl/types";
+import { ContainerElement, DesignDocument, DesignElement, InstanceElement, Page, PathElement, updatePageCanvas, getActivePage, updateActivePageElements } from "../core/dsl/types";
 import { useState, useEffect, useRef, useCallback } from "preact/hooks";
 import { collectDescendantIds } from "../core/geometry/tree-query";
 import { mapElements } from "../core/geometry/tree-edit";
 import { findElementAtPoint } from "../core/geometry/tree-hit";
-import { canContainerScroll, clampScrollOffset, findScrollableContainersAtPoint } from "../core/geometry/scroll-bounds";
-import { collectComponents } from "../core/interactions/component-inventory";
+import { canContainerScroll, clampScrollOffset, computeContainerScrollBounds, findScrollableContainersAtPoint } from "../core/geometry/scroll-bounds";
+import { collectComponents, findMasterComponent } from "../core/interactions/component-inventory";
 import type { ViewportBox } from "../core/geometry/cull";
 import { TITLE_BAR_HEIGHT } from "./toolbar/titlebar-layout";
 import { t } from "../i18n";
@@ -305,26 +305,28 @@ export function EditorShell(p: EditorShellProps) {
       return;
     }
 
-    const candidates = findScrollableContainersAtPoint(page.children, worldX, worldY);
+    const candidates = findScrollableContainersAtPoint(page.children, worldX, worldY, docRef.current);
     if (candidates.length > 0) {
-      e.preventDefault();
-      e.stopPropagation();
-
-      let target: DesignElement | null = null;
+      let target: (ContainerElement | InstanceElement) | null = null;
       for (const cand of candidates) {
-        if (canContainerScroll(cand, e.deltaX, e.deltaY)) {
+        if (canContainerScroll(cand, e.deltaX, e.deltaY, docRef.current)) {
           target = cand;
           break;
         }
       }
 
       if (target) {
+        e.preventDefault();
+        e.stopPropagation();
+
         const curX = target.scrollX ?? 0;
         const curY = target.scrollY ?? 0;
         const { scrollX: nextX, scrollY: nextY } = clampScrollOffset(
           target as any,
           curX + e.deltaX,
-          curY + e.deltaY
+          curY + e.deltaY,
+          undefined,
+          docRef.current
         );
 
         if (nextX !== curX || nextY !== curY) {
@@ -345,9 +347,29 @@ export function EditorShell(p: EditorShellProps) {
             scrollCommitTimerRef.current = null;
           }, 250);
         }
+        return;
       }
-      return;
+
+      const hasOverflow = candidates.some((cand) => {
+        const { maxScrollX, maxScrollY } = computeContainerScrollBounds(cand, undefined, docRef.current);
+        const mode =
+          cand.scrollOverflow ??
+          (cand.type === "instance" && docRef.current
+            ? findMasterComponent(docRef.current, (cand as InstanceElement).componentId)?.scrollOverflow
+            : "none");
+        return (
+          ((mode === "horizontal" || mode === "both") && maxScrollX > 0) ||
+          ((mode === "vertical" || mode === "both") && maxScrollY > 0)
+        );
+      });
+      if (hasOverflow) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
     }
+
+    handleWheel(e);
   }, [handleWheel, canvasContainerRef, pan, zoom, docRef, selectedIds, setDoc, commitSnapshot]);
   const {
     dragOverFrameId,
