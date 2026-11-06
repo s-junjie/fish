@@ -4,6 +4,7 @@ import type {
   ComponentElement,
   DesignDocument,
   DesignElement,
+  FrameElement,
   InstanceElement
 } from "../src/core/dsl/types";
 import { createInstanceFromComponent } from "../src/core/interactions/component-ops";
@@ -206,6 +207,78 @@ describe("an assetId override changes the painted asset", () => {
     expect(applyPropertyToSubtree(elements, "v", "assetId", "new")).toBe(true);
     expect((elements[0] as any).assetId).toBe("new");
     expect(elements[0].fills).toBeUndefined();
+  });
+});
+
+/**
+ * Both renderers gate the scroll offset AND the clip path on `clipContent`, and
+ * `ScrollOverflowControl` writes the pair together for that reason. An override
+ * that names only the mode — written by an AI op, a paste, or the override API —
+ * landed on a frame that still had clipping off, so it painted nothing at all.
+ */
+describe("an overflow override brings the clipping it needs", () => {
+  const docWith = (value: unknown): DesignDocument => {
+    const master: ComponentElement = {
+      id: "panelCmp",
+      type: "component",
+      name: "PANEL",
+      x: 0,
+      y: 0,
+      width: 200,
+      height: 120,
+      children: [
+        {
+          id: "body",
+          type: "frame",
+          name: "body",
+          x: 0,
+          y: 0,
+          width: 200,
+          height: 120,
+          clipContent: false,
+          children: []
+        } as DesignElement
+      ]
+    };
+    const instance: InstanceElement = {
+      id: "panelInst",
+      type: "instance",
+      name: "PANEL",
+      componentId: "panelCmp",
+      x: 300,
+      y: 0,
+      width: 200,
+      height: 120,
+      overrides: [{ targetId: "body", property: "scrollOverflow", value }]
+    };
+    const elements = [master, instance] as DesignElement[];
+    return {
+      version: "0.1",
+      id: "doc",
+      name: "Doc",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      canvas,
+      pages: [{ id: "page_1", name: "Page 1", canvas, children: elements }],
+      activePageId: "page_1",
+      elements
+    };
+  };
+
+  const body = (doc: DesignDocument) =>
+    resolveInstanceChildren(instOf(doc, "panelInst"), findMasterComponent(doc, "panelCmp")!)[0] as FrameElement;
+
+  it("turns clipping on, and does it on the clone rather than the master", () => {
+    const doc = docWith("vertical");
+    const resolved = body(doc);
+    expect(resolved.scrollOverflow).toBe("vertical");
+    expect(resolved.clipContent, "the offset would move nothing without it").toBe(true);
+    const master = findMasterComponent(doc, "panelCmp")!;
+    expect((master.children[0] as any).clipContent, "the master is a definition, not this instance's").toBe(false);
+  });
+
+  it("says nothing about clipping when the override turns overflow off", () => {
+    expect(body(docWith("none")).clipContent).toBe(false);
   });
 });
 

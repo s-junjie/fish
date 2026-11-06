@@ -1,9 +1,13 @@
 import type { ContainerElement, DesignDocument, DesignElement, InstanceElement, ScrollOverflow } from "../dsl/types";
 import { resolvePadding } from "../layout/box";
+import { layoutOf } from "../dsl/layout-flat";
 import { findElementAtPoint } from "./tree-hit";
 import { findParentById } from "./tree-query";
 import { findMasterComponent } from "../interactions/component-inventory";
 import { resolveInstanceChildren } from "../interactions/instance-resolve";
+import { instanceScaleOf } from "./scale-geometry";
+
+const round2 = (n: number): number => Math.round(n * 100) / 100;
 
 export interface ScrollBounds {
   maxScrollX: number;
@@ -13,17 +17,37 @@ export interface ScrollBounds {
 /**
  * Returns the effective translation offset for a child element inside a scrolling container,
  * respecting the child's constraint pins (e.g. fixed top/bottom headers or position: absolute).
+ *
+ * `layoutHost` is the element whose auto layout decides whether the child is in
+ * the flow, and whose scroll fields are the real ones when the container is an
+ * INSTANCE — it stores no layout and, until the user overrides it, no overflow
+ * of its own, so both belong to the master it projects.
  */
 export function childScrollOffset(
   child: DesignElement,
   container: ContainerElement | InstanceElement,
   scrollX: number,
-  scrollY: number
+  scrollY: number,
+  layoutHost?: object | null
 ): { offsetX: number; offsetY: number } {
   if (scrollX === 0 && scrollY === 0) {
     return { offsetX: 0, offsetY: 0 };
   }
 
+  const host = layoutHost as
+    | { scrollOverflow?: ScrollOverflow; clipContent?: boolean }
+    | null
+    | undefined;
+  const overflow: ScrollOverflow = container.scrollOverflow ?? host?.scrollOverflow ?? "none";
+  // Both renderers offset a container's children only while it clips, and that is
+  // the whole test they make — the mode decides whether the user MAY scroll, not
+  // whether an offset already stored is painted. A reader that moved the box for
+  // an offset nothing paints is the offset frame the selection shows for a node
+  // that sits still; so this one mirrors the renderer exactly.
+  const clips = container.clipContent ?? host?.clipContent;
+  if (!clips) {
+    return { offsetX: 0, offsetY: 0 };
+  }
   const behavior = child.scrollBehavior;
 
   if (behavior === "fixed") {
@@ -32,8 +56,7 @@ export function childScrollOffset(
 
   if (behavior === "sticky") {
     const offsetX =
-      child.x - scrollX <= 0 &&
-      (container.scrollOverflow === "horizontal" || container.scrollOverflow === "both")
+      child.x - scrollX <= 0 && (overflow === "horizontal" || overflow === "both")
         ? -child.x
         : -scrollX;
     const offsetY = child.y - scrollY <= 0 ? -child.y : -scrollY;
@@ -46,7 +69,7 @@ export function childScrollOffset(
 
   const c = child.constraints;
   const isAbs = child.position === "absolute";
-  const parentHasLayout = Boolean((container as any).layout);
+  const parentHasLayout = layoutOf(layoutHost ?? container) !== undefined;
 
   let pinX = false;
   let pinY = false;
@@ -81,24 +104,27 @@ export function computeContainerScrollBounds(
   doc?: DesignDocument
 ): ScrollBounds {
   let children = resolvedChildren ?? (container as ContainerElement).children;
-  let masterPadding: any = undefined;
-  if (!children && container.type === "instance" && doc) {
-    const master = findMasterComponent(doc, (container as InstanceElement).componentId);
-    if (master) {
-      children = resolveInstanceChildren(container as InstanceElement, master);
-      masterPadding = master.padding;
-    }
-  }
+  const instance = container.type === "instance" ? (container as InstanceElement) : null;
+  const master = instance && doc ? findMasterComponent(doc, instance.componentId) : null;
+  if (!children && master) children = resolveInstanceChildren(instance!, master);
   children = children ?? [];
-  const paddingVal = (container as any).padding ?? masterPadding;
-  const padding = resolvePadding(paddingVal);
-  const [, pr, pb] = padding;
+
+  // The padding belongs to whatever authored the box: the frame's own, or the
+  // master's for an instance, which stores none — and which is read whether or
+  // not the caller brought its own children, because it bounds them either way.
+  const padding = resolvePadding((container as any).padding ?? master?.padding);
+  // A SCALED instance lays its children out at master × factor, so the padding
+  // that bounds them travels with the same factor — right by the x one, bottom
+  // by the y one, exactly as `scaleLayout` scales it for the pass itself.
+  const scale = instance ? instanceScaleOf(instance) : { x: 1, y: 1 };
+  const pr = round2(padding[1] * scale.x);
+  const pb = round2(padding[2] * scale.y);
 
   let maxX = 0;
   let maxY = 0;
   for (const child of children) {
     if (child.visible === false) continue;
-    const { offsetX, offsetY } = childScrollOffset(child, container, 1, 1);
+    const { offsetX, offsetY } = childScrollOffset(child, container, 1, 1, master);
     const pinX = offsetX === 0;
     const pinY = offsetY === 0;
     if (!pinX) {

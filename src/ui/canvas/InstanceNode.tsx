@@ -330,7 +330,7 @@ export function InstanceNode({
                 return renderChildren(resolvedChildren);
               }
               const hasPinned = resolvedChildren.some((c) => {
-                const { offsetX, offsetY } = childScrollOffset(c, containerLike, sx, sy);
+                const { offsetX, offsetY } = childScrollOffset(c, containerLike, sx, sy, master);
                 return offsetX !== -sx || offsetY !== -sy;
               });
               if (!hasPinned) {
@@ -341,7 +341,7 @@ export function InstanceNode({
                 );
               }
               return resolvedChildren.map((c, i) => {
-                const { offsetX, offsetY } = childScrollOffset(c, containerLike, sx, sy);
+                const { offsetX, offsetY } = childScrollOffset(c, containerLike, sx, sy, master);
                 if (offsetX === 0 && offsetY === 0) {
                   return renderChildren([c]);
                 }

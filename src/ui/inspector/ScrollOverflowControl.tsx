@@ -12,6 +12,39 @@ interface ScrollOverflowControlProps {
   onMutate: (updater: (el: DesignElement) => DesignElement, recordSnapshot?: boolean) => void;
 }
 
+/**
+ * Turning clipping off ends the scroll.
+ *
+ * Both renderers offset a container's children only while it clips, so a scroll
+ * position left behind on a container that stopped clipping is invisible on the
+ * canvas and still moves the box that hit testing and the selection frame read.
+ * The overflow goes with it — there is nothing left to overflow into.
+ */
+export function withClipContent(el: DesignElement, checked: boolean): DesignElement {
+  if (checked) return { ...el, clipContent: true } as unknown as DesignElement;
+  return {
+    ...el,
+    clipContent: false,
+    scrollOverflow: "none",
+    scrollX: undefined,
+    scrollY: undefined
+  } as unknown as DesignElement;
+}
+
+/** Picking a mode: anything that scrolls needs clipping, and "none" ends the pan. */
+export function withScrollOverflow(el: DesignElement, value: ScrollOverflow): DesignElement {
+  if (value === "none") {
+    return {
+      ...el,
+      scrollOverflow: "none",
+      clipContent: Boolean((el as { clipContent?: boolean }).clipContent),
+      scrollX: undefined,
+      scrollY: undefined
+    } as unknown as DesignElement;
+  }
+  return { ...el, scrollOverflow: value, clipContent: true } as unknown as DesignElement;
+}
+
 export function ScrollOverflowControl({ element, docRef, onMutate }: ScrollOverflowControlProps): JSX.Element {
   const el = element as {
     clipContent?: boolean;
@@ -27,28 +60,11 @@ export function ScrollOverflowControl({ element, docRef, onMutate }: ScrollOverf
   const overflow = el.scrollOverflow ?? master?.scrollOverflow ?? "none";
 
   const handleClipChange = (checked: boolean) => {
-    onMutate(
-      (curr) =>
-        ({
-          ...curr,
-          clipContent: checked,
-          ...(checked ? {} : { scrollOverflow: "none" })
-        }) as DesignElement,
-      true
-    );
+    onMutate((curr) => withClipContent(curr, checked), true);
   };
 
   const handleOverflowChange = (val: string) => {
-    const nextOverflow = val as ScrollOverflow;
-    onMutate(
-      (curr) =>
-        ({
-          ...curr,
-          scrollOverflow: nextOverflow,
-          clipContent: nextOverflow !== "none" ? true : Boolean((curr as any).clipContent)
-        }) as DesignElement,
-      true
-    );
+    onMutate((curr) => withScrollOverflow(curr, val as ScrollOverflow), true);
   };
 
   return (

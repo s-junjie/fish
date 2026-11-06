@@ -13,7 +13,16 @@ import {
 import { computeParentOrigin, computeParentWorldMatrix } from "../src/core/geometry/tree-coords";
 import { findElementAtPoint } from "../src/core/geometry/tree-hit";
 import { resolveInstanceBox } from "../src/core/interactions/instance-inherit";
-import type { ComponentElement, FrameElement, InstanceElement, RectElement } from "../src/core/dsl/types";
+import { resolveInstanceChildren } from "../src/core/interactions/instance-resolve";
+import { worldMatrixOf, worldOriginOf } from "../src/core/interactions/component-swap";
+import type {
+  ComponentElement,
+  DesignDocument,
+  DesignElement,
+  FrameElement,
+  InstanceElement,
+  RectElement
+} from "../src/core/dsl/types";
 
 describe("frame scroll capabilities", () => {
   describe("normalization & persistence", () => {
@@ -125,6 +134,7 @@ describe("frame scroll capabilities", () => {
         height: 200,
         padding: [10, 20, 30, 40], // top, right, bottom, left
         scrollOverflow: "both",
+        clipContent: true,
         children: [
           { id: "r1", type: "rect", x: 0, y: 0, width: 400, height: 100 },
           { id: "r2", type: "rect", x: 100, y: 150, width: 100, height: 250 }
@@ -149,6 +159,7 @@ describe("frame scroll capabilities", () => {
         width: 200,
         height: 200,
         scrollOverflow: "vertical",
+        clipContent: true,
         children: [{ id: "r", type: "rect", x: 0, y: 0, width: 500, height: 500 }]
       };
 
@@ -175,6 +186,7 @@ describe("frame scroll capabilities", () => {
         width: 200,
         height: 200,
         scrollOverflow: "vertical",
+        clipContent: true,
         scrollY: 100,
         children: [{ id: "r", type: "rect", x: 0, y: 0, width: 200, height: 400 }]
       };
@@ -201,6 +213,7 @@ describe("frame scroll capabilities", () => {
         width: 200,
         height: 200,
         scrollOverflow: "both",
+        clipContent: true,
         scrollX: 40,
         scrollY: 60,
         children: [child]
@@ -317,6 +330,7 @@ describe("frame scroll capabilities", () => {
         width: 200,
         height: 200,
         scrollOverflow: "vertical",
+        clipContent: true,
         scrollY: 80,
         children: [content, header, footer]
       };
@@ -384,6 +398,7 @@ describe("frame scroll capabilities", () => {
         width: 100,
         height: 200,
         scrollOverflow: "vertical",
+        clipContent: true,
         children: [fixedHeader, stickySection, normalChild]
       };
 
@@ -404,6 +419,86 @@ describe("frame scroll capabilities", () => {
       expect(childScrollOffset(fixedHeader, container, 0, 150)).toEqual({ offsetX: 0, offsetY: 0 });
       expect(childScrollOffset(stickySection, container, 0, 150)).toEqual({ offsetX: -0, offsetY: -100 });
       expect(childScrollOffset(normalChild, container, 0, 150)).toEqual({ offsetX: -0, offsetY: -150 });
+    });
+
+    it("leaves the children of an auto-layout container in the flow", () => {
+      // A layout parent owns its children's boxes, so a constraint cannot pin one.
+      // The test used to read a top-level `layout` object the document no longer
+      // stores (layout is flat, `display: "flex"`), so EVERY parent read as a free
+      // one and the child a flex column places first — at (0, 0), constraints
+      // `top` — was treated as a fixed header and never scrolled.
+      const first: RectElement = {
+        id: "first",
+        type: "rect",
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 40,
+        constraints: { vertical: "top", horizontal: "left" }
+      };
+      const stacked: FrameElement = {
+        id: "stack",
+        type: "frame",
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 200,
+        scrollOverflow: "vertical",
+        clipContent: true,
+        display: "flex",
+        "flex-direction": "column",
+        children: [first]
+      };
+
+      expect(childScrollOffset(first, stacked, 0, 60)).toEqual({ offsetX: -0, offsetY: -60 });
+      // An instance stores no layout of its own: the recipe is the master's.
+      const master = { id: "m", type: "component", display: "flex", clipContent: true, children: [] };
+      const instance = { id: "i", type: "instance", componentId: "m", x: 0, y: 0, width: 100, height: 200 };
+      expect(childScrollOffset(first, instance as never, 0, 60, master)).toEqual({
+        offsetX: -0,
+        offsetY: -60
+      });
+    });
+
+    it("reads a sticky child's axis off the master when the container is an instance", () => {
+      // The mode is inherited: an instance that never overrode it carries no
+      // `scrollOverflow` of its own, so asking the instance said "vertical" for a
+      // horizontal scroller and the child slid out of view instead of sticking.
+      const sticky: RectElement = {
+        id: "sticky",
+        type: "rect",
+        x: 0,
+        y: 0,
+        width: 40,
+        height: 40,
+        scrollBehavior: "sticky"
+      };
+      const master = {
+        id: "m",
+        type: "component",
+        display: "flex",
+        clipContent: true,
+        scrollOverflow: "horizontal",
+        children: [sticky]
+      } as unknown as ComponentElement;
+      const instance = {
+        id: "i",
+        type: "instance",
+        componentId: "m",
+        x: 0,
+        y: 0,
+        width: 200,
+        height: 200
+      } as InstanceElement;
+
+      expect(childScrollOffset(sticky, instance, 60, 0, master), "held at the left edge").toEqual({
+        offsetX: -0,
+        offsetY: -0
+      });
+      expect(
+        childScrollOffset({ ...sticky, scrollBehavior: "scroll" } as RectElement, instance, 60, 0, master),
+        "and one that scrolls still travels"
+      ).toEqual({ offsetX: -60, offsetY: -0 });
     });
   });
 
@@ -497,6 +592,124 @@ describe("frame scroll capabilities", () => {
       };
       const candidates = findScrollableContainersAtPoint([inst], 100, 100, doc);
       expect(candidates.map((c) => c.id)).toEqual(["inst1"]);
+    });
+  });
+
+  describe("a clone's chrome sits where the clone is painted", () => {
+    const header: RectElement = {
+      id: "hdr",
+      type: "rect",
+      x: 0,
+      y: 0,
+      width: 200,
+      height: 40,
+      scrollBehavior: "fixed"
+    };
+    const body: RectElement = { id: "body", type: "rect", x: 0, y: 40, width: 200, height: 300 };
+    const master: ComponentElement = {
+      id: "cmp",
+      type: "component",
+      name: "Panel",
+      x: 0,
+      y: 0,
+      width: 200,
+      height: 200,
+      clipContent: true,
+      scrollOverflow: "vertical",
+      children: [header, body]
+    };
+    const instance: InstanceElement = {
+      id: "inst",
+      type: "instance",
+      componentId: "cmp",
+      x: 500,
+      y: 300,
+      width: 200,
+      height: 200,
+      scrollY: 100
+    };
+    const doc = {
+      pages: [{ id: "p1", name: "P1", children: [master, instance] }]
+    } as unknown as DesignDocument;
+    const clone = (child: DesignElement): DesignElement => ({ ...child, id: `inst_${child.id}` });
+
+    it("does not move a fixed clone with the scroll", () => {
+      expect(worldOriginOf(doc, clone(header))).toEqual({ x: 500, y: 300 });
+      const m = worldMatrixOf(doc, clone(header));
+      expect([m.e, m.f]).toEqual([500, 300]);
+    });
+
+    it("does move a scrolling clone, by the same amount the renderer uses", () => {
+      expect(worldOriginOf(doc, clone(body))).toEqual({ x: 500, y: 200 });
+      const m = worldMatrixOf(doc, clone(body));
+      expect([m.e, m.f]).toEqual([500, 200]);
+    });
+
+    it("leaves a pinned instance where it is pinned", () => {
+      const frame: FrameElement = {
+        id: "scroll",
+        type: "frame",
+        x: 10,
+        y: 20,
+        width: 400,
+        height: 400,
+        scrollOverflow: "vertical",
+        clipContent: true,
+        scrollY: 60,
+        children: [{ ...instance, x: 40, y: 30, scrollY: 0, scrollBehavior: "fixed" } as InstanceElement]
+      };
+      expect(computeParentOrigin([frame], "inst_hdr")).toEqual({ x: 50, y: 50 });
+
+      const free = { ...frame, children: [{ ...instance, x: 40, y: 30, scrollY: 0 } as InstanceElement] };
+      expect(computeParentOrigin([free], "inst_hdr"), "a free instance travels with the scroll").toEqual({
+        x: 50,
+        y: -10
+      });
+    });
+  });
+
+  describe("the extent a scaled instance may scroll to", () => {
+    const tall: RectElement = { id: "tall", type: "rect", x: 0, y: 0, width: 100, height: 300 };
+    const master: ComponentElement = {
+      id: "cmp",
+      type: "component",
+      name: "List",
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+      padding: 10,
+      clipContent: true,
+      scrollOverflow: "vertical",
+      children: [tall]
+    };
+    const instance = (scale?: { x: number; y: number }): InstanceElement => ({
+      id: "inst",
+      type: "instance",
+      componentId: "cmp",
+      x: 0,
+      y: 0,
+      width: scale ? 200 : 100,
+      height: scale ? 200 : 100,
+      ...(scale ? { instanceScale: scale } : {})
+    });
+    const doc = (inst: InstanceElement) =>
+      ({ pages: [{ id: "p1", name: "P1", children: [master, inst] }] }) as unknown as DesignDocument;
+
+    it("scales the master's padding with the contents it bounds", () => {
+      const inst = instance({ x: 2, y: 2 });
+      // The tall layer resolves to 600 and the bottom padding to 20, against a
+      // 200-tall box — the padding is a length of the SCALED box too.
+      expect(computeContainerScrollBounds(inst, undefined, doc(inst)).maxScrollY).toBe(420);
+      expect(
+        computeContainerScrollBounds(inst, resolveInstanceChildren(inst, master), doc(inst)).maxScrollY,
+        "the same answer when the caller brings the resolved children"
+      ).toBe(420);
+    });
+
+    it("leaves an unscaled instance on the padding its master authored", () => {
+      const inst = instance();
+      expect(computeContainerScrollBounds(inst, undefined, doc(inst)).maxScrollY).toBe(210);
     });
   });
 });

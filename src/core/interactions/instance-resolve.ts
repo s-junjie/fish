@@ -710,6 +710,12 @@ export function applyPropertyToSubtree(
         updated.clipContent = Boolean(value);
       } else if (property === "scrollOverflow") {
         updated.scrollOverflow = value as any;
+        // Overflow without clipping paints nothing: both renderers gate the clip
+        // path and the scroll offset on `clipContent`. `ScrollOverflowControl`
+        // writes the pair together for that reason, and an override that names
+        // only the mode has to say the same thing.
+        const mode = updated.scrollOverflow as string | undefined;
+        if (mode && mode !== "none") updated.clipContent = true;
       } else if (property === "scrollX") {
         updated.scrollX = Math.max(0, Number(value) || 0);
       } else if (property === "scrollY") {

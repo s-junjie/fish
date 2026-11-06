@@ -166,6 +166,13 @@ const RESET_KEYS = [
   "stroke",
   "effects",
   "clipContent",
+  // The scroll group travels together. Unchecking clip content makes
+  // `ScrollOverflowControl` write `scrollOverflow: "none"` beside it, and leaving
+  // THAT behind would shadow the master's overflow for good while `clipContent`
+  // came back — the instance reset into a state no master could produce.
+  "scrollOverflow",
+  "scrollX",
+  "scrollY",
   "borderRadius",
   "fillEnabled",
   "fillStyleId",
@@ -498,6 +505,13 @@ export function detachInstance(
   const themeMode = instance.themeMode ?? master.themeMode;
   const numberMode = instance.numberMode ?? master.numberMode;
 
+  // The frame has to keep what the instance was SHOWING. Scroll is the part of
+  // that look which is not in `children`: those arrived already materialised, so
+  // dropping the mode and the offset would hand back a frame whose contents sit
+  // where the instance's did not — scrolled back to the top with no way to say
+  // it should scroll at all.
+  const scrollOverflow = box.scrollOverflow && box.scrollOverflow !== "none" ? box.scrollOverflow : undefined;
+
   const frame: FrameElement = withLayout(
     {
       id: instance.id,
@@ -517,6 +531,11 @@ export function detachInstance(
       effects: box.effects,
       ...(themeMode ? { themeMode } : {}),
       ...(numberMode ? { numberMode } : {}),
+      ...(scrollOverflow ? { scrollOverflow } : {}),
+      ...(instance.scrollX ? { scrollX: instance.scrollX } : {}),
+      ...(instance.scrollY ? { scrollY: instance.scrollY } : {}),
+      ...(instance.scrollBehavior ? { scrollBehavior: instance.scrollBehavior } : {}),
+      ...(box.cornerSmoothing !== undefined ? { cornerSmoothing: box.cornerSmoothing } : {}),
       children: clonedChildren
     } as FrameElement,
     frameLayout

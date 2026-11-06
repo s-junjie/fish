@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ComponentElement, DesignDocument, InstanceElement } from "../src/core/dsl/types";
 import {
+  hasAnythingToReset,
   instanceOwnFields,
-  resetInstanceField
+  resetInstanceField,
+  resetInstanceOverrides
 } from "../src/core/interactions/component-ops";
 
 const canvas = { width: 1000, height: 1000, background: { type: "solid", color: "#FFFFFF" } } as const;
@@ -72,7 +74,27 @@ describe("an instance's own fields are listed one by one", () => {
 
   it("counts a sizing that went from the master's to something else", () => {
     const inst: InstanceElement = { ...pristine(), sizing: { width: "fit-content", height: "fixed" } };
-    expect(instanceOwnFields(inst, master)).toEqual(["sizing"]);
+    expect(instanceOwnFields(inst, master), "the instance's own answer is an edit").toEqual(["sizing"]);
+  });
+
+  it("counts the scroll group, and gives every one of them back", () => {
+    const inst: InstanceElement = {
+      ...pristine(),
+      clipContent: false,
+      scrollOverflow: "none",
+      scrollX: 12,
+      scrollY: 40
+    };
+    expect(instanceOwnFields(inst, master)).toEqual(["clipContent", "scrollOverflow", "scrollX", "scrollY"]);
+    expect(hasAnythingToReset(inst, master), "Reset is offered for them").toBe(true);
+
+    const after = resetInstanceOverrides(inst, master);
+    expect(after.clipContent, "the master's clipping is back").toBeUndefined();
+    expect(after.scrollOverflow, "and its overflow — `none` must not survive the reset").toBeUndefined();
+    expect([after.scrollX, after.scrollY], "the pan was this instance's and goes with it").toEqual([
+      undefined,
+      undefined
+    ]);
   });
 });
 
@@ -120,6 +142,13 @@ describe("one field at a time goes back to the master", () => {
     expect(noScale.instanceScale).toBeUndefined();
     expect(noScale.sizeOverride, "a hand-set box stays the user's").toBe(true);
     expect([noScale.width, noScale.height], "and is not overwritten by the master's").toEqual([180, 90]);
+  });
+
+  it("gives back the overflow without touching the pan", () => {
+    const inst: InstanceElement = { ...pristine(), scrollOverflow: "none", scrollY: 40 };
+    const after = read(resetInstanceField(docWith(inst), "inst", "scrollOverflow")!);
+    expect(after.scrollOverflow, "the master's overflow again").toBeUndefined();
+    expect(after.scrollY, "the pan is a different statement").toBe(40);
   });
 
   it("gives back a hand-set box without touching anything else", () => {

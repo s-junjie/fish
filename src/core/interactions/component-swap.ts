@@ -1,6 +1,7 @@
 import {
   ComponentElement,
   ComponentOverride,
+  ContainerElement,
   DesignDocument,
   DesignElement,
   ElementSizing,
@@ -20,6 +21,7 @@ import {
 } from "../geometry/tree-ops";
 import { identityMatrix, multiply, translation, type Matrix2D } from "../geometry/matrix";
 import { instanceScaleOf } from "../geometry/scale-geometry";
+import { childScrollOffset } from "../geometry/scroll-bounds";
 
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 import { elementPivot, elementTransformMatrix } from "../geometry/transforms";
@@ -74,6 +76,13 @@ export function findNodeById(doc: DesignDocument, id: string): DesignElement | n
  * inside the master, sits at the sum of them. `computeParentOrigin` only sees
  * the outermost instance, which drew the selection box for such a node one or
  * more levels short of where it is painted.
+ *
+ * Every step asks `childScrollOffset`, because how far a child moved is a fact
+ * about the CHILD: a `fixed` / `sticky` one, or one the container's layout
+ * places, does not travel with the scroll the way its siblings do. Subtracting
+ * the container's `scrollX` / `scrollY` put the selection box, the hover
+ * highlight and the inline text editor at the scrolled position while
+ * `InstanceNode` painted the child where it actually sits.
  */
 export function worldOriginOf(doc: DesignDocument, el: DesignElement): { x: number; y: number } {
   const elements = getActivePage(doc).children;
@@ -81,18 +90,43 @@ export function worldOriginOf(doc: DesignDocument, el: DesignElement): { x: numb
   const route = resolvedRoute(doc, el.id);
   if (!route || route.length === 0) return { x: 0, y: 0 };
   const base = computeParentOrigin(elements, route[0].id);
-  const sx0 = (route[0] as any).scrollX || 0;
-  const sy0 = (route[0] as any).scrollY || 0;
-  let x = base.x + route[0].x - sx0;
-  let y = base.y + route[0].y - sy0;
+  let x = base.x;
+  let y = base.y;
   // The last step is the node itself; its own offset belongs to the caller.
-  for (let i = 1; i < route.length - 1; i++) {
-    const sxi = (route[i] as any).scrollX || 0;
-    const syi = (route[i] as any).scrollY || 0;
-    x += route[i].x - sxi;
-    y += route[i].y - syi;
+  for (let i = 0; i < route.length - 1; i++) {
+    const shift = shiftInto(doc, route[i], route[i + 1]);
+    x += shift.x;
+    y += shift.y;
   }
   return { x, y };
+}
+
+/**
+ * Where a container places one of its children: the container's own `x` / `y`
+ * plus the offset that child gets from the scroll, read the way the renderer
+ * reads it.
+ */
+function shiftInto(
+  doc: DesignDocument,
+  container: DesignElement,
+  child: DesignElement
+): { x: number; y: number } {
+  const { scrollX = 0, scrollY = 0 } = container as { scrollX?: number; scrollY?: number };
+  const { offsetX, offsetY } = childScrollOffset(
+    child,
+    container as ContainerElement | InstanceElement,
+    scrollX,
+    scrollY,
+    layoutHostOf(doc, container)
+  );
+  return { x: container.x + offsetX, y: container.y + offsetY };
+}
+
+/** The element whose layout governs a container's children — a master, for an instance. */
+function layoutHostOf(doc: DesignDocument, container: DesignElement): ComponentElement | null {
+  return container.type === "instance"
+    ? findMasterComponent(doc, (container as InstanceElement).componentId)
+    : null;
 }
 
 /**
@@ -136,10 +170,10 @@ export function worldMatrixOf(doc: DesignDocument, el: DesignElement): Matrix2D 
   const route = resolvedRoute(doc, el.id);
   if (!route) return identityMatrix();
 
-  let m = multiply(computeParentWorldMatrix(elements, route[0].id), stepMatrix(route[0]));
+  let m = multiply(computeParentWorldMatrix(elements, route[0].id), stepMatrix(doc, route[0], route[1]));
   // The last step is the node itself; its own turn belongs to the caller.
   for (let i = 1; i < route.length - 1; i++) {
-    m = multiply(m, stepMatrix(route[i]));
+    m = multiply(m, stepMatrix(doc, route[i], route[i + 1]));
   }
   return multiply(m, own());
 }
@@ -165,12 +199,15 @@ export function worldShapeMatrixOf(doc: DesignDocument, el: DesignElement): Matr
 /**
  * One step of a resolved route: the node's own turn, then the shift that places
  * it inside its parent — the two the renderer nests, in the order it nests them.
+ * The shift is `shiftInto`'s, so a pinned child lands where it is painted.
  */
-function stepMatrix(el: DesignElement): Matrix2D {
-  const pivot = elementPivot(el);
-  const sx = (el as any).scrollX || 0;
-  const sy = (el as any).scrollY || 0;
-  return multiply(elementTransformMatrix(el, pivot.x, pivot.y), translation(el.x - sx, el.y - sy));
+function stepMatrix(doc: DesignDocument, container: DesignElement, child: DesignElement): Matrix2D {
+  const pivot = elementPivot(container);
+  const shift = shiftInto(doc, container, child);
+  return multiply(
+    elementTransformMatrix(container, pivot.x, pivot.y),
+    translation(shift.x, shift.y)
+  );
 }
 
 /**

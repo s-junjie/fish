@@ -145,9 +145,12 @@ export function computeParentOrigin(
       if (isContainer(el)) {
         const sx = el.scrollX || 0;
         const sy = el.scrollY || 0;
-        const childMatch = findInstanceOwner(el.children || [], originX + el.x - sx, originY + el.y - sy);
-        if (childMatch && (!best || childMatch.inst.id.length > best.inst.id.length)) {
-          best = childMatch;
+        for (const child of el.children || []) {
+          const { offsetX, offsetY } = childScrollOffset(child, el, sx, sy);
+          const childMatch = findInstanceOwner([child], originX + el.x + offsetX, originY + el.y + offsetY);
+          if (childMatch && (!best || childMatch.inst.id.length > best.inst.id.length)) {
+            best = childMatch;
+          }
         }
       }
     }

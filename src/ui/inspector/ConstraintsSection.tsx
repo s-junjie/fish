@@ -1,12 +1,15 @@
 import type { DesignDocument, DesignElement, ElementScrollBehavior } from "../../core/dsl/types";
-import { getActivePage } from "../../core/dsl/types";
-import { layoutOf } from "../../core/dsl/layout-flat";
-import { findParentById } from "../../core/geometry/tree-ops";
 import { ConstraintsWidget } from "../ConstraintsWidget";
 import { Section } from "./SectionHeader";
 import { Select } from "../Select";
 import { SUB_LABEL_CLASS } from "../label-tier";
 import { t } from "../../i18n";
+import {
+  canConstrainChild,
+  parentPlacesChildren,
+  parentScrollOf,
+  selectionParent
+} from "./selection-parent";
 
 interface ConstraintsSectionProps {
   primarySelected: DesignElement;
@@ -22,20 +25,18 @@ interface ConstraintsSectionProps {
  * else — an availability test that asks a different question than the engine (a
  * `mode === "flex"` test does) hides the widget in exactly the case it exists for,
  * and offers it where the engine ignores the value.
+ *
+ * A layer inside an instance is the third answer, and it is not a constraint
+ * question at all: that geometry is the master's, so the section keeps only the
+ * scroll half for it. See `canConstrainChild`.
  */
 export function ConstraintsSection({ primarySelected, doc, onMutate }: ConstraintsSectionProps) {
-  const parent = findParentById(getActivePage(doc).children, primarySelected.id);
+  const parent = selectionParent(doc, primarySelected);
   if (!parent) return null;
 
-  const parentPlacesChildren = Boolean(parent && layoutOf(parent));
-  const leftTheFlow = primarySelected.position === "absolute";
-  const canConstrain = !parentPlacesChildren || leftTheFlow;
-
-  const parentHasScroll = Boolean(
-    (parent as any).clipContent &&
-    (parent as any).scrollOverflow &&
-    (parent as any).scrollOverflow !== "none"
-  );
+  const canConstrain = canConstrainChild(primarySelected, parentPlacesChildren(doc, parent));
+  const scroll = parentScrollOf(doc, parent);
+  const parentHasScroll = scroll.clipContent && scroll.scrollOverflow !== "none";
 
   if (!canConstrain && !parentHasScroll) return null;
 
