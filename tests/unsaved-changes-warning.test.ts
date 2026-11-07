@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { DesignDocument } from "../src/core/dsl/types";
+import { EditorStore } from "../src/core/store/editor-store";
 import { MemoryBackend } from "../src/core/persistence/backend";
 import { createRecoveryStore } from "../src/core/persistence/recovery";
 import { createAssetStore } from "../src/core/persistence/assets";
@@ -107,5 +108,120 @@ describe("AutosaveController.hasPendingWork", () => {
     await inFlight;
     expect(controller.hasPendingWork()).toBe(false);
     controller.disable();
+  });
+
+  it("clears pending debounce timers on noteFileSaved so explicit save disarms beforeunload", async () => {
+    let current = createTestDoc();
+    const notify = { cb: (_d: DesignDocument) => undefined };
+    const controller = controllerFor(() => current, notify);
+    await controller.ready();
+    controller.enable();
+
+    current = { ...current, name: "Edited then saved via Cmd+S" };
+    notify.cb(current);
+    expect(controller.hasPendingWork()).toBe(true);
+
+    await controller.noteFileSaved(current, "hash_after_save");
+    expect(controller.hasPendingWork()).toBe(false);
+    expect(
+      shouldWarnBeforeUnload({
+        saved: current,
+        current,
+        owed: controller.hasPendingWork()
+      })
+    ).toBe(false);
+    controller.disable();
+  });
+});
+
+describe("EditorStore.onRebaseline", () => {
+  it("advances the saved baseline when async webfont layout replaces an untouched document", () => {
+    const base = createTestDoc();
+    const initial: DesignDocument = {
+      ...base,
+      pages: [
+        {
+          id: "p1",
+          name: "Page 1",
+          canvas: base.canvas,
+          children: [
+            {
+              id: "t1",
+              type: "text",
+              name: "Title",
+              x: 0,
+              y: 0,
+              width: 999,
+              height: 999,
+              content: "FISH",
+              style: { fontSize: 24, fontFamily: "Bodoni Moda" },
+              sizing: { width: "max-content", height: "fit-content" }
+            } as never
+          ]
+        }
+      ]
+    };
+    const store = new EditorStore(initial);
+    const bootDoc = store.getDoc();
+    let saved = bootDoc;
+    store.onRebaseline((prev, next) => {
+      if (saved === prev) saved = next;
+    });
+
+    store.rebaselineInitialLayout();
+    expect(store.getDoc()).not.toBe(bootDoc);
+    expect(saved).toBe(store.getDoc());
+    expect(store.resolveBaseline(bootDoc)).toBe(store.getDoc());
+    expect(shouldWarnBeforeUnload({ saved, current: store.getDoc(), owed: false })).toBe(false);
+  });
+
+  it("treats renderer-measured on-path text bounds as a baseline update rather than an unsaved edit", () => {
+    const base = createTestDoc();
+    const initial: DesignDocument = {
+      ...base,
+      pages: [
+        {
+          id: "p1",
+          name: "Page 1",
+          canvas: base.canvas,
+          children: [
+            {
+              id: "seal_text",
+              type: "text",
+              name: "Seal",
+              x: 894.4,
+              y: 1055.7,
+              width: 184.1,
+              height: 179.7,
+              content: "CIRCULAR TEXT",
+              onPath: { pathId: "circle_1", startOffset: 0 }
+            } as never
+          ]
+        }
+      ]
+    };
+    const store = new EditorStore(initial);
+    const savedBeforeMeasure = store.getDoc();
+    let commitNotified = false;
+    store.subscribe(() => {
+      commitNotified = true;
+    });
+
+    const changed = store.recordMeasuredTextBounds("seal_text", {
+      x: 894.95,
+      y: 1056.25,
+      width: 183.1,
+      height: 178.7
+    });
+    expect(changed).toBe(true);
+    expect(commitNotified).toBe(false);
+    expect(store.resolveBaseline(savedBeforeMeasure)).toBe(store.getDoc());
+    expect(
+      shouldWarnBeforeUnload({
+        saved: store.resolveBaseline(savedBeforeMeasure),
+        current: store.resolveBaseline(store.getDoc()),
+        owed: false
+      })
+    ).toBe(false);
   });
 });

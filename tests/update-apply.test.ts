@@ -10,7 +10,13 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { APP_VERSION } from "../src/core/version";
 import { checkAtLaunch, checkForUpdate } from "../src/core/update/check";
 import { buildUpdatedFile, downloadShell, assertUsableShell } from "../src/core/update/apply";
-import { documentFromHtml, serializeSelf, createEmptyDocument } from "../src/core/data-bridge";
+import {
+  documentFromHtml,
+  serializeSelf,
+  createEmptyDocument,
+  setPristineHtml,
+  writeFileSafely
+} from "../src/core/data-bridge";
 import type { ReleasePayload } from "../src/core/update";
 
 const SHELL_V1 = `<!DOCTYPE html>
@@ -77,6 +83,37 @@ describe("buildUpdatedFile", () => {
     const doc = createEmptyDocument();
     doc.name = "Untouched";
     expect(documentFromHtml(buildUpdatedFile(doc, SHELL_V1))?.name).toBe("Untouched");
+  });
+
+  it("promotes the updated shell to pristineHtml so a subsequent autosave does not revert to the old version", async () => {
+    const doc = createEmptyDocument();
+    doc.name = "Dashboard";
+    setPristineHtml(SHELL_V1);
+
+    const writes: string[] = [];
+    const fakeHandle = {
+      name: "dashboard.fish.html",
+      createWritable: async () => ({
+        write: async (content: string) => {
+          writes.push(content);
+        },
+        close: async () => undefined
+      })
+    };
+
+    // 1. In-place auto-update writes SHELL_V2.
+    await writeFileSafely(doc, fakeHandle, SHELL_V2);
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toContain('data-chars="99">BBBB');
+
+    // 2. A subsequent autosave / save-in-place (templateHtml = undefined) must
+    //    keep SHELL_V2 rather than falling back to SHELL_V1.
+    doc.name = "Dashboard Edited";
+    await writeFileSafely(doc, fakeHandle);
+    expect(writes).toHaveLength(2);
+    expect(writes[1]).toContain('data-chars="99">BBBB');
+    expect(writes[1]).not.toContain('data-chars="10">AAAA');
+    expect(documentFromHtml(writes[1])?.name).toBe("Dashboard Edited");
   });
 });
 

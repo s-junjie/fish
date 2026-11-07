@@ -16,7 +16,7 @@ import { renderFills, renderStrokes, resolveSolidPaintBlend } from "./SvgShapeNo
 function reportOnPathTextBounds(node: SVGTextElement | null, el: TextElement, ctx: NodeRenderContext) {
   const report = ctx.onOnPathTextBounds;
   if (!node || !report) return;
-  requestAnimationFrame(() => {
+  const measure = () => {
     if (!node.isConnected) return;
     let b: DOMRect;
     try {
@@ -33,6 +33,13 @@ function reportOnPathTextBounds(node: SVGTextElement | null, el: TextElement, ct
     ) {
       report(el.id, box);
     }
+  };
+  requestAnimationFrame(() => {
+    if (typeof document !== "undefined" && document.fonts?.status === "loading") {
+      void document.fonts.ready.then(() => requestAnimationFrame(measure));
+      return;
+    }
+    measure();
   });
 }
 

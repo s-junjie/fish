@@ -250,16 +250,15 @@ export function App() {
     comments.setDraftTarget(null);
   }, [tool.activeTool, comments.setActiveThreadId, comments.setDraftTarget]);
 
-  // Renderer-measured glyph-run box of an on-path text. Transient (no history
-  // entry): the next gesture's baseline snapshots the already-corrected box.
-  const handleOnPathTextBounds = useCallback((id: string, box: { x: number; y: number; width: number; height: number }) => {
-    setDoc((prev) =>
-      updateActivePageElements(
-        prev,
-        mapElements(getActivePage(prev).children, (el) => (el.id === id ? { ...el, ...box } : el))
-      )
-    );
-  }, []);
+  // Renderer-measured glyph-run box of an on-path text. Recorded as a derived
+  // layout measurement rather than a user edit so post-paint SVG `<textPath>`
+  // measurement neither marks a saved file dirty nor arms `beforeunload`.
+  const handleOnPathTextBounds = useCallback(
+    (id: string, box: { x: number; y: number; width: number; height: number }) => {
+      store.recordMeasuredTextBounds(id, box);
+    },
+    [store]
+  );
 
   const pen = usePenEditing({
     docRef,

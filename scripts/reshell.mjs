@@ -24,6 +24,7 @@ import { scanElements, blockById } from "./lib/html-blocks.mjs";
 
 const PAYLOAD_TYPE = "fish/deflate-b86";
 const LOADER_MARK = "__fishBooted";
+const PKG_VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf-8")).version;
 
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
@@ -105,6 +106,10 @@ function reshell(file) {
   if (bodyClose < 0) return { file, ok: false, reason: "no </body>" };
   const injected = [...shell.payloads, shell.loader].join("\n  ");
   next = next.slice(0, bodyClose) + injected + "\n  " + next.slice(bodyClose);
+  next = next.replace(
+    /(<meta\s+name=["']fish:version["']\s+content=["'])[^"']*(['"][^>]*>)/i,
+    `$1${PKG_VERSION}$2`
+  );
 
   // The document and its bitmaps are the user's work. A re-shell that moved
   // either one would be silently rewriting the thing it was asked to preserve.

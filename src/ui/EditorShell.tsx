@@ -232,7 +232,7 @@ export function EditorShell(p: EditorShellProps) {
   } = p.docState;
   // One hook for the whole shell: the title bar's badge, the panel, and the
   // notice that announces a launch find are three readers of the same check.
-  const updates = useUpdateStatus(doc);
+  const updates = useUpdateStatus(doc, file.noteUpdatedFile);
   // The style editors' live preview writes here: a draft is materialised into
   // the document transiently and put back when the editor closes unsaved.
   const stylePreview = useStylePreviewController(docRef, setDoc);

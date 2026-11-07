@@ -5,7 +5,7 @@ import { getFileHandle, setFileHandle, clearFileHandle } from "./file-handle";
 import { openedFileName, pickerStartIn, getFileName } from "./file-paths";
 import { getFileId, adoptFileId, FILE_ID_META_RE } from "./file-identity";
 import { reconcileCommentsWithFile, clearDeletedCommentIds } from "../comments/comments-bridge";
-import { serializeSelf, payloadHashFromHtml } from "./container";
+import { serializeSelf, payloadHashFromHtml, setPristineHtml } from "./container";
 import { documentTitleFor } from "../document-title";
 
 export interface WriteOutcome {
@@ -134,6 +134,12 @@ export async function writeFileSafely(
     ...(mergedComments ? { comments: mergedComments } : {})
   });
   await writeBytesAtomically(handle, fileContent);
+  // An explicit template (an in-place shell update) replaced the container on
+  // disk; promote it to the pristine template so any subsequent auto-save or
+  // ⌘S before reload does not pour the document back into the old shell.
+  if (templateHtml) {
+    setPristineHtml(fileContent);
+  }
   // The deletions are on disk now, so remembering them can only do harm: a
   // thread an agent legitimately re-adds under the same id would be dropped.
   clearDeletedCommentIds();

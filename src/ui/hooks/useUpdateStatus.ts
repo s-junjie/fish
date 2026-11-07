@@ -59,7 +59,10 @@ export interface UpdateStatus {
  * act rather than a side effect of the write — reloading under the user
  * mid-edit would discard whatever they had done since the last save.
  */
-export function useUpdateStatus(doc: DesignDocument): UpdateStatus {
+export function useUpdateStatus(
+  doc: DesignDocument,
+  onApplied?: (payloadHash?: string) => void | Promise<void>
+): UpdateStatus {
   const configured = isConfigured();
   const blocked = disabledReason();
   const [check, setCheck] = useState<UpdateCheck | null>(null);
@@ -151,12 +154,15 @@ export function useUpdateStatus(doc: DesignDocument): UpdateStatus {
   const update = useCallback(() => {
     if (applying || check?.status !== "update") return;
     setApplying(true);
-    void applyUpdate(doc, check.release).then((outcome) => {
+    void applyUpdate(doc, check.release).then(async (outcome) => {
+      if (outcome.ok && onApplied) {
+        await onApplied(outcome.payloadHash);
+      }
       if (!liveRef.current) return;
       setApplying(false);
       setApplied(outcome);
     });
-  }, [applying, check, doc]);
+  }, [applying, check, doc, onApplied]);
 
   const reload = useCallback(() => {
     location.reload();

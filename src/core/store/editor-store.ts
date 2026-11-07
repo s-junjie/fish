@@ -8,6 +8,7 @@ import {
   updateActivePageElements,
   adoptTopLevelElements
 } from "../dsl/types";
+import { mapElements } from "../geometry/tree-edit";
 import { relayoutDocumentTree } from "../compile";
 import { setAmbientChildSizeResolver } from "../layout/context";
 import { measureSpan } from "../perf";
@@ -54,6 +55,8 @@ export class EditorStore {
   private viewDoc: DesignDocument | null = null;
   private readOnlyReason: ReadOnlyReason | null = null;
   private viewListeners = new Set<() => void>();
+  private rebaselineListeners = new Set<(prev: DesignDocument, next: DesignDocument) => void>();
+  private rebaselined = new WeakMap<DesignDocument, DesignDocument>();
   private readonly historyLimit: number;
 
   constructor(initialDoc: DesignDocument, historyLimit = DEFAULT_HISTORY_LIMIT) {
@@ -387,6 +390,32 @@ export class EditorStore {
    * to commits, and a font arriving is not one: it must repaint, not mint a
    * version and not start a write.
    */
+  /**
+   * Fires when `rebaselineInitialLayout` replaces the untouched document with
+   * one measured against a newly arrived font.
+   *
+   * A rebaseline is not an edit, so anything that tracks "which document object
+   * is the clean baseline" (`useFileWriteback`'s unload guard) must move its
+   * pointer from `prev` to `next` rather than mistaking the new reference for
+   * unsaved work.
+   */
+  onRebaseline(listener: (prev: DesignDocument, next: DesignDocument) => void): () => void {
+    this.rebaselineListeners.add(listener);
+    return () => this.rebaselineListeners.delete(listener);
+  }
+
+  /**
+   * Follows any non-edit rebaseline chain (`rebaselineInitialLayout`,
+   * `recordMeasuredTextBounds`) from `doc` to the document reference it became.
+   */
+  resolveBaseline(doc: DesignDocument): DesignDocument {
+    let cur = doc;
+    while (this.rebaselined.has(cur)) {
+      cur = this.rebaselined.get(cur)!;
+    }
+    return cur;
+  }
+
   rebaselineInitialLayout(): boolean {
     if (this.writesRefused()) return false;
     if (this.canUndo() || this.canRedo() || this.gestureInitialDoc) return false;
@@ -396,8 +425,50 @@ export class EditorStore {
     // document has no text that hugs. Keep the document identity so nothing that
     // renders off it rebuilds.
     if (deepEqual(page.children, elements)) return false;
+    const prev = this.doc;
     this.doc = updateActivePageElements(this.doc, elements);
+    this.rebaselined.set(prev, this.doc);
     this.publishChildSizeResolver();
+    for (const listener of this.rebaselineListeners) listener(prev, this.doc);
+    this.notifyView();
+    return true;
+  }
+
+  /**
+   * Records a renderer-measured bounding box for an on-path text (`<textPath>`)
+   * without treating it as a user edit.
+   *
+   * On-path text geometry is measured via `SVGTextElement.getBBox()` after paint
+   * rather than during `relayoutDocumentTree`. Routing that post-paint measurement
+   * through `setTransient` (`commit`) used to replace `this.doc` as an edit and
+   * fire `notify()`, arming `beforeunload` on load and again after saving.
+   */
+  recordMeasuredTextBounds(
+    id: string,
+    box: { x: number; y: number; width: number; height: number }
+  ): boolean {
+    if (this.writesRefused()) return false;
+    const prev = this.doc;
+    const page = getActivePage(prev);
+    let changed = false;
+    const nextChildren = mapElements(page.children || [], (el) => {
+      if (el.id !== id) return el;
+      if (
+        Math.abs(box.x - el.x) <= 0.5 &&
+        Math.abs(box.y - el.y) <= 0.5 &&
+        Math.abs(box.width - el.width) <= 0.5 &&
+        Math.abs(box.height - el.height) <= 0.5
+      ) {
+        return el;
+      }
+      changed = true;
+      return { ...el, ...box };
+    });
+    if (!changed) return false;
+    this.doc = updateActivePageElements(prev, nextChildren);
+    this.rebaselined.set(prev, this.doc);
+    this.publishChildSizeResolver();
+    for (const listener of this.rebaselineListeners) listener(prev, this.doc);
     this.notifyView();
     return true;
   }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { EditorStore } from "../../core/store/editor-store";
 import { DesignDocument, getActivePage } from "../../core/dsl/types";
 import { loadInitialDocument } from "../../core/data-bridge";
-import { subscribeAsyncFontLoaded } from "../../core/geometry/text-measure";
+import { subscribeAsyncFontLoaded, textMeasureRevision } from "../../core/geometry/text-measure";
 
 
 export interface ViewportSnapshot {
@@ -27,8 +27,10 @@ export interface ViewportSnapshot {
  */
 export function useEditorStore(restoreViewport?: (v: ViewportSnapshot) => void) {
   const storeRef = useRef<EditorStore | null>(null);
+  const bootMeasureRevRef = useRef<number>(0);
   if (!storeRef.current) {
     storeRef.current = new EditorStore(loadInitialDocument());
+    bootMeasureRevRef.current = textMeasureRevision();
   }
   const store = storeRef.current;
   // One snapshot for both facts the UI needs: which document it renders and
@@ -56,7 +58,12 @@ export function useEditorStore(restoreViewport?: (v: ViewportSnapshot) => void) 
    * pass wrote are the fallback face's. The store re-derives them once, and only
    * while the document is still untouched — see `rebaselineInitialLayout`.
    */
-  useEffect(() => subscribeAsyncFontLoaded(() => store.rebaselineInitialLayout()), [store]);
+  useEffect(() => {
+    if (textMeasureRevision() !== bootMeasureRevRef.current) {
+      store.rebaselineInitialLayout();
+    }
+    return subscribeAsyncFontLoaded(() => store.rebaselineInitialLayout());
+  }, [store]);
 
   const doc = view.doc;
   const docRef = useRef<DesignDocument>(doc);

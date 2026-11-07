@@ -3,6 +3,9 @@ import {
   getFileName,
   openedFileName,
   serializeSelf,
+  setFileHandle,
+  setOpenedFileHash,
+  setPristineHtml,
   writeFileSafely
 } from "../data-bridge";
 import { queryWritebackPermission, saveDocAsNewFile } from "../persistence/writeback";
@@ -16,7 +19,7 @@ import type { FetchLike } from "./check";
 const RUNTIME_BLOCK_ID = "fish-rt";
 
 export type ApplyOutcome =
-  | { ok: true; method: "in-place" | "saved-as" | "downloaded"; version: string }
+  | { ok: true; method: "in-place" | "saved-as" | "downloaded"; version: string; payloadHash?: string }
   | { ok: false; reason: string; message: string };
 
 /**
@@ -124,7 +127,12 @@ export async function applyUpdate(
           return { ok: false, reason, message: reason };
         }
         rememberJustUpdated(release.version);
-        return { ok: true, method: "in-place", version: release.version };
+        return {
+          ok: true,
+          method: "in-place",
+          version: release.version,
+          payloadHash: outcome.payloadHash
+        };
       } catch (e) {
         return { ok: false, reason: "write", message: describe(e) };
       }
@@ -136,13 +144,22 @@ export async function applyUpdate(
     if (!saved.ok) {
       return { ok: false, reason: saved.reason ?? "save-failed", message: saved.reason ?? "" };
     }
+    // Choosing the open file in the save picker is an in-place update without a
+    // prior handle; adopt the handle and the new shell so a subsequent save or
+    // reload-time flush in this tab writes the new runtime rather than the old.
+    if (saved.handle && (!name || saved.name === name)) {
+      setFileHandle(saved.handle);
+      setOpenedFileHash(saved.payloadHash);
+    }
+    setPristineHtml(shell);
     rememberJustUpdated(release.version);
     return {
       ok: true,
       method: typeof (globalThis as { showSaveFilePicker?: unknown }).showSaveFilePicker === "function"
         ? "saved-as"
         : "downloaded",
-      version: release.version
+      version: release.version,
+      payloadHash: saved.payloadHash
     };
   } catch (e) {
     return { ok: false, reason: "save", message: describe(e) };

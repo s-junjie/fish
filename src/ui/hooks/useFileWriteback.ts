@@ -159,6 +159,29 @@ export function useFileWriteback(
   // expression is evaluated on every render and thrown away after the first.
   const lastSavedDocRef = useRef<DesignDocument | null>(null);
   if (lastSavedDocRef.current === null) lastSavedDocRef.current = store.getDoc();
+  // `rebaselineInitialLayout` replaces the untouched document when a webfont
+  // finishes loading. It is not an edit, so both `lastSavedDocRef` and any
+  // write that started before the font arrived must follow the chain to the
+  // rebaselined reference rather than leaving `beforeunload` permanently armed.
+  const rebaselinedRef = useRef<WeakMap<DesignDocument, DesignDocument>>(new WeakMap());
+  const latestBaseline = useCallback(
+    (doc: DesignDocument): DesignDocument => {
+      let cur = store.resolveBaseline(doc);
+      while (rebaselinedRef.current.has(cur)) {
+        cur = store.resolveBaseline(rebaselinedRef.current.get(cur)!);
+      }
+      return cur;
+    },
+    [store]
+  );
+  useEffect(() => {
+    return store.onRebaseline((prev, next) => {
+      rebaselinedRef.current.set(prev, next);
+      if (lastSavedDocRef.current === prev) {
+        lastSavedDocRef.current = next;
+      }
+    });
+  }, [store]);
   // True while this tab wants write-back but is standing down for another tab.
   // The controller's own flag is off in that state, so it cannot answer
   // "resume when the other tab leaves" on its own.
@@ -215,8 +238,8 @@ export function useFileWriteback(
       const saved = lastSavedDocRef.current;
       if (!saved) return;
       const dirty = shouldWarnBeforeUnload({
-        saved,
-        current: store.getDoc(),
+        saved: latestBaseline(saved),
+        current: latestBaseline(store.getDoc()),
         owed: controllerRef.current?.hasPendingWork() === true
       });
       if (dirty) {
@@ -229,7 +252,7 @@ export function useFileWriteback(
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
-  }, [store]);
+  }, [store, latestBaseline]);
 
   // What the tab says: the file this tab is editing. `writebackTarget` is a
   // dependency because it is the only signal that the target can change — a save
@@ -273,7 +296,7 @@ export function useFileWriteback(
         if (status.kind === "file-saved") {
           // The document that reached the file, which is not necessarily the
           // one on screen now: the user can type during a write.
-          lastSavedDocRef.current = status.doc;
+          lastSavedDocRef.current = latestBaseline(status.doc);
         }
       },
       onTimeline: setVersions
@@ -363,8 +386,14 @@ export function useFileWriteback(
         if (check.ok) {
           // `loadHandle` runs after `coordinator.start()`, so another tab may
           // already own this file. Arming here would undo the suspension.
+          // `verifyRestoredHandle` just proved the file on disk already holds
+          // this tab's baseline, so arming write-back must not rewrite it on
+          // boot or race with async font rebaselining.
           if (tabRef.current?.isSuperseded()) writebackWantedRef.current = true;
-          else controller.setWritebackEnabled(true);
+          else {
+            controller.setWritebackEnabled(true, { flush: false });
+            setAutosaveStatus({ kind: "file-saved", at: new Date().toISOString(), doc: latestBaseline(store.getDoc()) });
+          }
         } else {
           setFileHandle(null);
           await forgetHandle(getFileId()).catch(() => undefined);
@@ -400,7 +429,7 @@ export function useFileWriteback(
             }
             const hash = payloadHashFromHtml(text);
             await controller.noteFileSaved(store.getDoc(), hash);
-            lastSavedDocRef.current = store.getDoc();
+            lastSavedDocRef.current = latestBaseline(store.getDoc());
           }
           void persistHandle(getFileId()).catch(() => undefined);
           // The launched file already holds this document; enabling write-back
@@ -501,8 +530,8 @@ export function useFileWriteback(
           return;
         }
         await controllerRef.current?.noteFileSaved(written, res.payloadHash);
-        lastSavedDocRef.current = written;
-        setAutosaveStatus({ kind: "file-saved", at: new Date().toISOString(), doc: written });
+        lastSavedDocRef.current = latestBaseline(written);
+        setAutosaveStatus({ kind: "file-saved", at: new Date().toISOString(), doc: latestBaseline(written) });
       }
       // Remembering the handle only saves the user a re-pick next time. It must
       // never be able to block the feature: a full or unavailable IndexedDB
@@ -519,7 +548,7 @@ export function useFileWriteback(
       console.error("FISH: enabling auto-save failed:", err);
       setShowActivateAutosave(true);
     }
-  }, [openedDocName, rejectTarget, store, fileDoc]);
+  }, [openedDocName, rejectTarget, store, fileDoc, latestBaseline]);
 
   const triggerSave = useCallback(async () => {
     // Without `showOpenFilePicker` there is no handle to arm, so ⌘S must take
@@ -549,7 +578,7 @@ export function useFileWriteback(
           else controllerRef.current?.setWritebackEnabled(true, { flush: false });
           setShowActivateAutosave(false);
         }
-        lastSavedDocRef.current = sourceDoc;
+        lastSavedDocRef.current = latestBaseline(sourceDoc);
         setWritebackTarget(writebackTargetName() ?? null);
         // The save named the file it wrote — a picker name this tab had no other
         // way to learn, and on the download path the only file the work now has.
@@ -567,7 +596,7 @@ export function useFileWriteback(
       console.error("FISH: save threw:", err);
       flashSaveStatus(t("app.saveFailed"), "error");
     }
-  }, [activateAutosave, showActivateAutosave, store, fileDoc, flashSaveStatus]);
+  }, [activateAutosave, showActivateAutosave, store, fileDoc, flashSaveStatus, latestBaseline]);
 
   const triggerSaveAs = useCallback(async () => {
     flashSaveStatus(t("app.saving"), "busy");
@@ -598,7 +627,7 @@ export function useFileWriteback(
           else controllerRef.current?.setWritebackEnabled(true, { flush: false });
           setShowActivateAutosave(false);
         }
-        lastSavedDocRef.current = sourceDoc;
+        lastSavedDocRef.current = latestBaseline(sourceDoc);
         setWritebackTarget(res.name ?? writebackTargetName() ?? null);
         applyDocumentTitle(res.name, store.getDoc().name);
         flashSaveStatus(t("app.saved"));
@@ -613,7 +642,7 @@ export function useFileWriteback(
       console.error("FISH: save-as threw:", err);
       flashSaveStatus(t("app.saveFailed"), "error");
     }
-  }, [openedName, store, fileDoc, clearSaveStatus, flashSaveStatus]);
+  }, [openedName, store, fileDoc, clearSaveStatus, flashSaveStatus, latestBaseline]);
 
   /**
    * Write a copy this tab does not adopt.
@@ -714,6 +743,19 @@ export function useFileWriteback(
     store.setViewDoc(null);
   }, [store]);
 
+  /**
+   * Record that an in-place shell update wrote the current document to disk so
+   * the unload guard and autosave baseline stay in sync across the reload.
+   */
+  const noteUpdatedFile = useCallback(
+    async (payloadHash?: string) => {
+      const saved = latestBaseline(store.getDoc());
+      lastSavedDocRef.current = saved;
+      await controllerRef.current?.noteFileSaved(fileDoc(), payloadHash);
+    },
+    [store, fileDoc, latestBaseline]
+  );
+
   return {
     saveStatus,
     flashSaveStatus,
@@ -737,6 +779,7 @@ export function useFileWriteback(
     triggerSaveAs,
     triggerSaveAsReadOnly,
     triggerNewFile,
+    noteUpdatedFile,
     savedAsCopyOf,
     filePath: savedAsCopyOf ? undefined : openedFilePath(),
     fileDirectory: savedAsCopyOf ? undefined : openedFileDirectory(),
@@ -746,6 +789,8 @@ export function useFileWriteback(
     previewVersion,
     exitPreview,
     previewingId,
-    isDirty: () => lastSavedDocRef.current !== store.getDoc()
+    isDirty: () =>
+      lastSavedDocRef.current !== null &&
+      latestBaseline(lastSavedDocRef.current) !== latestBaseline(store.getDoc())
   };
 }

@@ -182,6 +182,10 @@ export class AutosaveController {
    * the file a later boot will read.
    */
   async noteFileSaved(doc: DesignDocument, payloadHash?: string): Promise<void> {
+    // An explicit save has already written what the debounce was waiting to
+    // flush; leaving the timers armed would keep `hasPendingWork()` true on
+    // `beforeunload` and rewrite the file a second time when they fire.
+    this.clearTimers();
     await this.runQueued(async () => {
       await this.persistRecovery(doc);
       if (payloadHash) await this.anchorToFile(payloadHash);
@@ -267,6 +271,7 @@ export class AutosaveController {
 
   private onVisibility = (): void => {
     if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+      if (!this.hasPendingWork()) return;
       void this.flush();
     }
   };
