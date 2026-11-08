@@ -12,7 +12,7 @@ import { spacingScrubHooks } from "../hooks/spacing-scrub";
 import { PadMode, PadTuple } from "./pad-fields";
 import { SUB_LABEL_CLASS } from "../label-tier";
 import { ROW_SPREAD_CLASS } from "../row-style";
-import { layoutOf } from "../../core/dsl/layout-flat";
+import { DEFAULT_FLEX_ALIGN, layoutOf } from "../../core/dsl/layout-flat";
 import { flexCrossAlignReason } from "../../core/layout/flex-layout";
 import { LayoutPaddingBlock } from "./layout-controls-shared";
 
@@ -129,7 +129,7 @@ export function FlexLayoutControls({
           className="w-36"
           attrs={{ "data-stack-align": "true" }}
           label={t("stack.align")}
-          value={layout.align ?? "start"}
+          value={layout.align ?? DEFAULT_FLEX_ALIGN}
           options={ALIGN_OPTIONS}
           onChange={(val) => onLayout({ align: val as "start" }, true)}
         />

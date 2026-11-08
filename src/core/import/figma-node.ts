@@ -21,6 +21,7 @@ import type { FigmaGap, FigmaNode, FigmaPaint, Rect } from "./figma-types";
 import type { FigmaTokens } from "./figma-tokens";
 import type { FigmaStyleIndex } from "./figma-styles";
 import { flattenLayout, toCssLine } from "../dsl/layout-flat";
+import { readAffine } from "../geometry/affine";
 import { sanitizeElementId } from "../id";
 
 export interface NodeWalkState {
@@ -236,6 +237,38 @@ function nodeRotationDeg(node: FigmaNode): number | undefined {
     }
   }
   return declaredRotationDeg(node);
+}
+
+/**
+ * The shear a node's matrix carries, if any.
+ *
+ * Figma has no skew CONTROL — no field on the node, nothing in the UI — but
+ * `relativeTransform` is a general affine and a plugin, or a shape pasted in
+ * from an SVG, can put a shear in it. The matrix is then the only place the
+ * shear exists, so it is where one is read from; the rotation beside it comes
+ * off the same numbers, which is why the two cannot disagree.
+ */
+function figmaSkew(node: FigmaNode): { skewX?: number; skewY?: number } {
+  const m = node.relativeTransform;
+  if (!Array.isArray(m) || !Array.isArray(m[0]) || !Array.isArray(m[1])) return {};
+  const [[a, b], [c, d]] = m;
+  if (![a, b, c, d].every((v) => typeof v === "number" && Number.isFinite(v))) return {};
+  // Figma writes rows, SVG columns: the same map, transposed.
+  const fields = readAffine({ a, b: c, c: b, d, e: 0, f: 0 });
+  if (!fields) return {};
+
+  // The element's own rotation is read elsewhere, from `nodeRotationDeg`. A
+  // shear is only carried when this decomposition agrees with it — a standalone
+  // `skewY` reads as a turn plus a shear in this field set, and applying both
+  // would draw a transform the node never had.
+  const rotation = normalizeDeg(nodeRotationDeg(node) ?? deg(Math.atan2(c, a)));
+  const drift = ((fields.rotation - rotation + 540) % 360) - 180;
+  if (Math.abs(drift) > 0.01) return {};
+
+  return {
+    ...(fields.skewX ? { skewX: fields.skewX } : {}),
+    ...(fields.skewY ? { skewY: fields.skewY } : {})
+  };
 }
 
 /**
@@ -610,6 +643,9 @@ function base(node: FigmaNode, rect: Rect, parentX: number, parentY: number): Dr
     const flip = figmaFlip(node);
     if (flip.flipX) out.flipX = true;
     if (flip.flipY) out.flipY = true;
+    const skew = figmaSkew(node);
+    if (skew.skewX !== undefined) out.skewX = skew.skewX;
+    if (skew.skewY !== undefined) out.skewY = skew.skewY;
   }
   // `isMask`, not `mask`: the short name matches nothing in a real response, so
   // every mask layer would have imported as an ordinary one.

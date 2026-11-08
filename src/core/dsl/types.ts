@@ -691,6 +691,16 @@ export interface BaseElement {
   flipX?: boolean;
   flipY?: boolean;
   /**
+   * Shear about the box centre, degrees per axis: `skewX` slides x with y (the
+   * italic lean), `skewY` slides y with x. Affine like `rotation`, so it rides
+   * the same `Matrix2D` path — inside the rotation, outside the flip.
+   *
+   * ±89 is the finite limit; a pair whose tangents multiply to 1 collapses the
+   * box to a line, and normalize refuses that pair rather than storing it.
+   */
+  skewX?: number;
+  skewY?: number;
+  /**
    * Perspective tilt about the box's horizontal axis, degrees. Rendered as a
    * CSS 3D transform — a projection, not an affine map — so the outline is a
    * general quad and the Matrix2D machinery does not see it.
@@ -1116,6 +1126,17 @@ export interface TextElement extends BaseElement {
   style: TextStyle;
   spans?: TextSpan[];
   textStyleId?: string | null;
+  /**
+   * Paint-time only: the box does not get to soft-break this run.
+   *
+   * Not authored and never serialized — undefined in every document. The
+   * renderer already refuses to wrap a `max-content` box, because a box measured
+   * to hold its longest line has nothing to break FOR; this is that same
+   * refusal stated directly, which is what a morph needs: a transition
+   * interpolates the box and the glyph run on different paths, so the browser
+   * finds breaks in between that neither slide has.
+   */
+  noSoftWrap?: boolean;
 
   /**
    * The glyphs as a path, in the element's own coordinates.

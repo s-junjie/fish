@@ -394,7 +394,7 @@ export function SvgTextNode({
             primaryStroke={Boolean(primaryStroke)}
             textStrokeWidth={textStrokeWidth}
             textStrokeColor={textStrokeCssColor}
-            noSoftWrap={el.sizing?.width === "max-content"}
+            noSoftWrap={el.noSoftWrap === true || el.sizing?.width === "max-content"}
           />
       </div>
     </foreignObject>

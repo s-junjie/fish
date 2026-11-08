@@ -197,6 +197,23 @@ export function measureTextBlockHeight(el: TextElement, content: string): number
 }
 
 /**
+ * Whether this text paints as a single line inside its own box.
+ *
+ * The same measurement `fit-content` sizing uses — one spec, one box — so the
+ * answer is the line count the painter will produce rather than a guess from the
+ * string. `maxLines` is already in the spec, so a clamped label counts the lines
+ * it actually shows.
+ *
+ * A run on a path answers NO: it never wraps (the path is its layout), so it is
+ * not the question this answers, and its box is meaningless.
+ */
+export function textPaintsOneLine(el: TextElement): boolean {
+  if (el.onPath?.pathId) return false;
+  const spec = textSpec(el.style, el.spans);
+  return measureText(el.content, spec, Math.max(1, el.width)).lines === 1;
+}
+
+/**
  * Bakes the measured size of every `fit-content` text into the tree. Children of
  * an auto-layout container are skipped — `applyAutoLayout` already wrote their
  * resolved box, as long as it was allowed to place them (`isInFlow`) — so this

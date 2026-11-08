@@ -363,7 +363,10 @@ function mapElement(
      left as the only thing in the right place. `unrotate` above only strips the
      ANCESTORS' turns, because a frame is known before its children are walked;
      the element's own angle is only known here. */
-  const rect = style.rotation !== undefined ? unrotateBox(measured, style.rotation) : measured;
+  const sheared = style.rotation !== undefined || style.skewX !== undefined || style.skewY !== undefined;
+  const rect = sheared
+    ? unrotateBox(measured, style.rotation ?? 0, style.skewX ?? 0, style.skewY ?? 0)
+    : measured;
 
   const childFrames =
     style.rotation !== undefined

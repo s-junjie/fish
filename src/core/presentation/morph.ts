@@ -1,6 +1,7 @@
 import { DesignElement } from "../dsl/types";
 import { Rect } from "../geometry/bounds";
 import { isContainer } from "../geometry/tree-ops";
+import { textPaintsOneLine } from "../layout/text-sizing";
 
 export interface MorphPair {
   /** The name both halves share — the whole of the identity that carries. */
@@ -20,6 +21,23 @@ export interface MorphPair {
   toOpacity: number;
   /** 0 is a direct child of a slide. */
   depth: number;
+  /**
+   * Both halves paint ONE line, so the flight has to as well.
+   *
+   * A text's wrap is decided by a box and a run that do not travel together:
+   * the box interpolates, but the run is the INCOMING one from frame one (its
+   * string, its family, its weight, its runs). Anywhere those two disagree the
+   * paragraph breaks mid-flight and unbreaks at the end — and a line count is
+   * discrete, so what the audience sees is the block flickering through two or
+   * three lines that neither slide has.
+   *
+   * When both halves are one line there is nothing to break: the only truthful
+   * intermediate is one line, so the player forbids the soft wrap and lets the
+   * glyphs overrun the box for a few frames. A pair whose halves disagree (one
+   * line leaving, three arriving) is a real reflow of the layout, and it keeps
+   * the browser's own progressive answer.
+   */
+  oneLine: boolean;
   fromEl?: DesignElement;
   toEl?: DesignElement;
 }
@@ -70,8 +88,9 @@ export interface MorphMatch {
  *
  * The TYPE is deliberately NOT part of it. The reshape is one of the two things
  * a morph is for — a rect that becomes an ellipse, a dot that becomes a bar —
- * and the only properties that travel are the box and the alpha, which every
- * type has. What the audience sees at the end is the layer the author drew on
+ * and what travels is the box, the alpha and whatever numeric fields the two
+ * halves share, none of which depends on the type. What the audience sees at
+ * the end is the layer the author drew on
  * the slide it lands on, because that is the element the walk interpolates and
  * the player paints. Putting the type in the key refused exactly that gesture,
  * and refused it in silence.
@@ -194,6 +213,7 @@ export function matchSlides(from: DesignElement, to: DesignElement): MorphMatch 
             fromOpacity: opacityOf(a),
             toOpacity: opacityOf(b),
             depth,
+            oneLine: a.type === "text" && b.type === "text" && textPaintsOneLine(a) && textPaintsOneLine(b),
             fromEl: a,
             toEl: b
           });

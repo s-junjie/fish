@@ -1759,6 +1759,14 @@
         "perspective": {
           "type": "number"
         },
+        "skewX": {
+          "type": "number",
+          "description": "Shear of x by y, degrees about the box centre — the italic lean. Applied inside rotation, outside flip. Clamped to ±89; a pair whose tangents multiply to 1 (skewX 45 beside skewY 45) collapses the box to a line and is refused."
+        },
+        "skewY": {
+          "type": "number",
+          "description": "Shear of y by x, degrees about the box centre. See skewX."
+        },
         "opacity": {
           "type": "number",
           "minimum": 0,
@@ -3508,6 +3516,14 @@
           "type": "number",
           "description": "Kebab-case spelling of `rotateY`; both spellings are read."
         },
+        "skew-x": {
+          "type": "number",
+          "description": "Kebab-case spelling of `skewX`; both spellings are read."
+        },
+        "skew-y": {
+          "type": "number",
+          "description": "Kebab-case spelling of `skewY`; both spellings are read."
+        },
         "flip-x": {
           "type": "boolean",
           "description": "Kebab-case spelling of `flipX`; both spellings are read."
@@ -3551,6 +3567,20 @@
         "pathData": {
           "type": "string",
           "description": "Input alias of `d`; both are read. Path only: SVG path data in the element's LOCAL box, ideally within 0..width \u00d7 0..height. `path` / `pathData` are aliases."
+        },
+        "viewBox": {
+          "description": "Path only: SVG's `viewBox`, as `\"0 0 24 24\"`, four numbers, or `{ x, y, width, height }`. Read once and baked into `d` at the element's box, so the key is never stored; without a box the viewBox's own extent is the target."
+        },
+        "view-box": {
+          "description": "Kebab-case spelling of `viewBox`."
+        },
+        "whiteSpace": {
+          "type": "string",
+          "description": "`nowrap` is a width statement: it measures the text as `max-content`, and an authored `width` still wins. Folds into `sizing.width` on read and is not written back."
+        },
+        "white-space": {
+          "type": "string",
+          "description": "CSS spelling of `whiteSpace`."
         },
         "characters": {
           "type": "string",

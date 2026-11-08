@@ -172,3 +172,56 @@ describe("a partial border still draws one", () => {
     expect(repairs.some((r) => r.message.includes("border-top-width"))).toBe(true);
   });
 });
+
+describe("a line style the dash vocabulary cannot hold", () => {
+  const repairsFor = (over: Record<string, unknown>) =>
+    normalizeDesignDocument({
+      version: "0.1",
+      canvas,
+      pages: [{ id: "p1", name: "P1", canvas, children: [{ id: "r", type: "rect", width: 100, height: 100, ...over }] }],
+      activePageId: "p1"
+    } as unknown as DesignDocument).repairs;
+
+  it("draws `dotted` as dashed and names what it could not keep", () => {
+    expect(strokeOf({ border: "2px dotted #333" })).toMatchObject({ width: 2, style: "dashed" });
+    expect(repairsFor({ border: "2px dotted #333" }).some((r) => /"dotted".*drawn as dashed/.test(r.message))).toBe(true);
+  });
+
+  it("reports `double` the same way", () => {
+    expect(repairsFor({ border: "3px double #333" }).some((r) => /"double".*drawn as dashed/.test(r.message))).toBe(true);
+  });
+
+  it("stays quiet for `dashed`, which is what it already is", () => {
+    expect(repairsFor({ border: "1px dashed #333" }).some((r) => /drawn as dashed/.test(r.message))).toBe(false);
+  });
+});
+
+describe("a hand-written border sits inside the box, the way CSS paints it", () => {
+  it("defaults `align` to inside", () => {
+    expect(strokeOf({ border: "2px solid #000" })).toMatchObject({ width: 2, align: "inside" });
+  });
+
+  it("reads a lone border-width the same way", () => {
+    expect(strokeOf({ borderWidth: 3 })).toMatchObject({ width: 3, align: "inside" });
+  });
+
+  it("keeps an explicit stack's own align, and its absence", () => {
+    const el = normalizeRect({ border: "2px solid #000", strokes: [{ color: "#000", width: 2 }] });
+    expect(el.strokes?.[0]?.align).toBeUndefined();
+  });
+
+  it("leaves `strokeWidth` at the renderer's centre — it is not a CSS border", () => {
+    expect(strokeOf({ strokeWidth: 2 })?.align).toBeUndefined();
+  });
+
+  it("leaves a line segment centred, because a segment has no inside", () => {
+    const doc = {
+      version: "0.1",
+      canvas,
+      pages: [{ id: "p1", name: "P1", canvas, children: [{ id: "l", type: "line", dx: 20, dy: 0, border: "2px solid #000" }] }],
+      activePageId: "p1"
+    } as unknown as DesignDocument;
+    const line = normalizeDesignDocument(doc).document.pages[0].children[0] as unknown as { strokes?: Stroke[] };
+    expect(line.strokes?.[0]?.align).toBeUndefined();
+  });
+});

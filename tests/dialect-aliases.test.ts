@@ -105,6 +105,18 @@ describe("clipContent absorbs Figma and CSS spellings", () => {
   });
 });
 
+describe("display: none is reported, not silently read as free placement", () => {
+  it("keeps the element visible and says hiding is `visible: false`", () => {
+    const input = page([frame({ display: "none" })]);
+    expect(prop(first(input), "visible")).not.toBe(false);
+    expect(repaired(input, "visible: false")).toBe(true);
+  });
+
+  it("leaves `block` alone — it names the same thing without a CSS meaning to contradict", () => {
+    expect(repaired(page([frame({ display: "block" })]), "visible: false")).toBe(false);
+  });
+});
+
 describe("text absorbs Figma and CSS spellings for its content", () => {
   const text = (over: Record<string, unknown>) => ({ id: "t", type: "text", ...over });
 

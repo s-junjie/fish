@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
 import type { DesignDocument, DesignElement } from "../src/core/dsl/types";
+import { computePathBounds, parsePathData } from "../src/core/geometry/path-data";
 
 /**
  * The CSS properties an author writes that the DSL has a field for, but which
@@ -49,6 +50,17 @@ describe("CSS `transform`, `rotate` and `scale`", () => {
     });
   });
 
+  it("reads the perspective() distance, which the field already had", () => {
+    // The distance is a field, but the FUNCTION form sat in the "no field" list
+    // for longer than the field existed — a card that set its depth inside
+    // `transform` fell back to the engine's 800.
+    expect(normalize({ transform: "perspective(600px) rotateX(20deg)" }).el).toMatchObject({
+      rotateX: 20,
+      perspective: 600
+    });
+    expect(normalize({ perspective: 900, transform: "perspective(600px)" }).el.perspective).toBe(900);
+  });
+
   it("lets the DSL's own field win over the absorbed CSS", () => {
     expect(normalize({ rotation: 5, transform: "rotate(45deg)" }).el.rotation).toBe(5);
     // `flipX: false` is not stored (absent already means "not mirrored"), so the
@@ -56,10 +68,33 @@ describe("CSS `transform`, `rotate` and `scale`", () => {
     expect(normalize({ flipX: false, transform: "scaleX(-1)" }).el.flipX).not.toBe(true);
   });
 
+  it("reads a shear, one axis or both", () => {
+    expect(normalize({ transform: "skew(10deg)" }).el).toMatchObject({ skewX: 10 });
+    expect(normalize({ transform: "skew(10deg, 4deg)" }).el).toMatchObject({ skewX: 10, skewY: 4 });
+    expect(normalize({ transform: "skewX(10deg) skewY(-6deg)" }).el).toMatchObject({ skewX: 10, skewY: -6 });
+    expect(normalize({ skewX: 12 }).el).toMatchObject({ skewX: 12 });
+  });
+
   it("names the functions it cannot hold instead of dropping them", () => {
-    const { el, repairs } = normalize({ transform: "skew(10deg) scale(2)" });
+    const { el, repairs } = normalize({ transform: "translateX(4px) scale(2)" });
     expect(el.rotation).toBeUndefined();
-    expect(repairs.some((r) => r.message.includes("skew"))).toBe(true);
+    expect(repairs.some((r) => r.message.includes("translatex"))).toBe(true);
+  });
+
+  it("clamps a shear past the vertical axis", () => {
+    expect(normalize({ skewX: 120 }).el.skewX).toBe(89);
+    expect(normalize({ skewY: -120 }).el.skewY).toBe(-89);
+  });
+
+  it("refuses the shear pair that collapses the box to a line", () => {
+    const { el, repairs } = normalize({ skewX: 45, skewY: 45 });
+    expect(el.skewX).toBe(45);
+    // `det = 1 − tan(a)·tan(b)` is zero here: the quad has no area, so nothing
+    // can be painted or inverse-mapped through it.
+    expect(el.skewY).toBeUndefined();
+    expect(repairs.some((r) => r.message.includes("collapses the box"))).toBe(true);
+    // A pair that is merely steep is still a box and is kept whole.
+    expect(normalize({ skewX: 45, skewY: 20 }).el).toMatchObject({ skewX: 45, skewY: 20 });
   });
 });
 
@@ -165,5 +200,56 @@ describe("CSS grid placement", () => {
   it("reports a value that is not a line range", () => {
     const { repairs } = normalize({ "grid-column": "left" }, "frame");
     expect(repairs.some((r) => r.path.endsWith("/grid-column"))).toBe(true);
+  });
+});
+
+describe("a path's `viewBox`", () => {
+  const boundsOf = (d: unknown) => {
+    const parsed = parsePathData(String(d));
+    if (!parsed) return undefined;
+    return computePathBounds(parsed);
+  };
+
+  it("scales the geometry into the box the element declares", () => {
+    const { el } = normalize({ type: "path", width: 48, height: 48, viewBox: "0 0 24 24", d: "M0 0 H24 V24 H0 Z" }, "path");
+    expect(boundsOf(prop(el, "d"))).toMatchObject({ minX: 0, minY: 0, maxX: 48, maxY: 48 });
+  });
+
+  it("keeps the viewBox's own extent when the box is not declared", () => {
+    const { el } = normalize({ type: "path", width: undefined, height: undefined, viewBox: "0 0 24 24", d: "M0 0 H24 V24 H0 Z" }, "path");
+    expect(boundsOf(prop(el, "d"))).toMatchObject({ maxX: 24, maxY: 24 });
+  });
+
+  it("subtracts the viewBox's origin", () => {
+    const { el } = normalize({ type: "path", width: 40, height: 40, viewBox: "10 10 20 20", d: "M10 10 H30 V30 H10 Z" }, "path");
+    expect(boundsOf(prop(el, "d"))).toMatchObject({ minX: 0, minY: 0, maxX: 40, maxY: 40 });
+  });
+
+  it("reads a four-number array too", () => {
+    const { el } = normalize({ type: "path", width: 20, height: 20, viewBox: [0, 0, 10, 10], d: "M0 0 H10 V10 Z" }, "path");
+    expect(boundsOf(prop(el, "d"))).toMatchObject({ maxX: 20, maxY: 20 });
+  });
+
+  it("reports a malformed viewBox instead of guessing", () => {
+    const { el, repairs } = normalize({ type: "path", viewBox: "0 0 0 24", d: "M0 0 H24 V24 Z" }, "path");
+    expect(prop(el, "d")).toBe("M0 0 H24 V24 Z");
+    expect(repairs.some((r) => r.path.endsWith("/viewBox"))).toBe(true);
+  });
+});
+
+describe("`white-space: nowrap`", () => {
+  it("measures a text by its content", () => {
+    const { el } = normalize({ type: "text", content: "A long label", width: undefined, height: undefined, whiteSpace: "nowrap" }, "text");
+    expect(prop(el, "sizing")).toMatchObject({ width: "max-content" });
+  });
+
+  it("is read in the kebab spelling too", () => {
+    const { el } = normalize({ type: "text", content: "A long label", width: undefined, height: undefined, "white-space": "nowrap" }, "text");
+    expect(prop(el, "sizing")).toMatchObject({ width: "max-content" });
+  });
+
+  it("does not override a width the author pinned", () => {
+    const { el } = normalize({ type: "text", content: "A long label", width: 200, whiteSpace: "nowrap" }, "text");
+    expect(prop(el, "sizing")).toBeUndefined();
   });
 });

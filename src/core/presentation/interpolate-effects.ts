@@ -12,28 +12,10 @@ import {
   TearForm,
   TornFields
 } from "../dsl/types";
-import { hexToRgb, parseColorAlpha } from "../geometry/color-utils";
+import { lerpColor, transparentColor } from "./interpolate-color";
 
 const lerp = (a: number, b: number, p: number) => a + (b - a) * p;
 const round2 = (n: number): number => Math.round(n * 100) / 100;
-
-function lerpColor(c1: string, c2: string, p: number): string {
-  const p1 = parseColorAlpha(c1);
-  const p2 = parseColorAlpha(c2);
-  const rgb1 = hexToRgb(p1.hex6);
-  const rgb2 = hexToRgb(p2.hex6);
-  const r = Math.round(lerp(rgb1.r, rgb2.r, p));
-  const g = Math.round(lerp(rgb1.g, rgb2.g, p));
-  const b = Math.round(lerp(rgb1.b, rgb2.b, p));
-  const a = round2(lerp(p1.alphaPct / 100, p2.alphaPct / 100, p));
-  return `rgba(${r}, ${g}, ${b}, ${a})`;
-}
-
-function transparentColor(c: string): string {
-  const { hex6 } = parseColorAlpha(c);
-  const rgb = hexToRgb(hex6);
-  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`;
-}
 
 export function interpolateCornerRadius(
   from: CornerRadius | undefined,

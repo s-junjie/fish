@@ -98,8 +98,14 @@ describe("a mask paints the element's own fill stack", () => {
 
   it("places the mask content at the element's own origin and rotation", () => {
     const mask = render(rect({ rotation: 30, fills: [{ type: "solid", color: "#FFFFFF" }] }));
-
-    expect(stencil(mask).props.transform).toBe("translate(10, 20) rotate(30 100 75)");
+    // The stencil is the element's own matrix — pivot and translate included, in
+    // the order the renderer composes them — so the box's own centre (100, 75 in
+    // local coordinates) lands on its absolute pivot (110, 95) and the content
+    // turns 30° about exactly that point.
+    const [a, b, c, d, e, f] = (stencil(mask).props.transform as string).slice(7, -1).split(" ").map(Number);
+    expect(a * 100 + c * 75 + e).toBeCloseTo(110, 2);
+    expect(b * 100 + d * 75 + f).toBeCloseTo(95, 2);
+    expect((Math.atan2(b, a) * 180) / Math.PI).toBeCloseTo(30, 2);
   });
 
   it("falls back to the outline when nothing is painted", () => {
@@ -485,7 +491,7 @@ describe("maskInvert reads the luminance as its negative", () => {
 
     expect(group(mask).props.filter).toBe("url(#maskalpha_m)");
     expect(group(mask).props.transform).toBeUndefined();
-    expect(stencil(mask).props.transform).toBe("translate(10, 20) rotate(0 100 75)");
+    expect(stencil(mask).props.transform).toBe("matrix(1 0 0 1 10 20)");
   });
 
   it("keeps a blurred inverted mask on one matrix followed by the blur", () => {

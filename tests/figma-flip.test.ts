@@ -273,3 +273,47 @@ describe("a flip, which Figma writes only as a negative scale", () => {
     expect(byId(elements, "6_1").rotation).toBeCloseTo(45, 2);
   });
 });
+
+/**
+ * Figma has no skew control — no field on the node, nothing in the UI — so a
+ * shear only exists inside `relativeTransform`, which a plugin (or a shape
+ * pasted in from an SVG) can leave there. The matrix is then the only place it
+ * can be read from, and it is read only when the decomposition agrees with the
+ * rotation the element is already given.
+ */
+describe("a shear, which Figma has no field for", () => {
+  it("carries a skewX a plugin left in the matrix", async () => {
+    // x' = x + tan(10°)·y, written the way Figma writes rows.
+    const elements = await importNodes([
+      layer("7:1", "Lean", 0, 1, 1, {
+        relativeTransform: [
+          [1, 0.176327, 0],
+          [0, 1, 0],
+          [0, 0, 1]
+        ]
+      })
+    ]);
+    const el = byId(elements, "7_1");
+    expect(el.skewX).toBeCloseTo(10, 2);
+    expect(el.skewY).toBeUndefined();
+    expect(el.rotation ?? 0).toBe(0);
+  });
+
+  it("refuses one the rotation reading disagrees with, rather than doubling it", async () => {
+    // A standalone `skewY` reads as a turn PLUS a shear in these fields, and the
+    // element's rotation comes from `nodeRotationDeg` — applying both would draw
+    // a transform the node never had.
+    const elements = await importNodes([
+      layer("8:1", "Drop", 0, 1, 1, {
+        relativeTransform: [
+          [1, 0, 0],
+          [0.176327, 1, 0],
+          [0, 0, 1]
+        ]
+      })
+    ]);
+    const el = byId(elements, "8_1");
+    expect(el.skewX).toBeUndefined();
+    expect(el.skewY).toBeUndefined();
+  });
+});

@@ -1,12 +1,12 @@
 import { type DesignElement, type AutoLayout, type ElementSizing, type MaskMode, type SizeMode } from "../types";
-import { asNumber, asBoolean, clamp, camelCase, canonicalKey, isPlainObject, lengthUnit, pxLength, normalizeVisible, ElementType, NormalizationRepair, ELEMENT_TYPES, type RawComponentBoxes } from "./shared";
+import { asNumber, asBoolean, opacityValue, camelCase, canonicalKey, isPlainObject, lengthUnit, pxLength, normalizeVisible, ElementType, NormalizationRepair, ELEMENT_TYPES, type RawComponentBoxes } from "./shared";
 import { deepEqual } from "../../deep-equal";
 import { MASK_MODES } from "../schema-enums";
 import { normalizeEffects, shadowToEffect, normalizeBoxShadow } from "./effects";
 import { readBlendMode, reportRefusedBlendMode } from "./blend-mode";
 import { normalizeColorFilter, normalizeElementSizing, type SizingAxis } from "./text-sizing";
 import { normalizeMarginShape, readGridPlacement } from "./auto-layout";
-import { absorbTransform } from "./transform";
+import { absorbTransform, settleSkew } from "./transform";
 import { absorbWritingMode } from "./writing-mode";
 import { readFlatAutoLayout } from "./flat-layout";
 import { toCssLine } from "../layout-flat";
@@ -54,31 +54,37 @@ const ALIGN_SELF_VALUES: ReadonlySet<string> = new Set(["start", "center", "end"
  * saves. `tests/version-consistency.test.ts` holds the two together.
  */
 export const CANONICAL_KEYS: ReadonlySet<string> = new Set([
+  // ONE spelling per key. The other reaches this entry through
+  // `withAliasSpellings`, which skips any key this set already holds — so
+  // listing both does not add tolerance, it removes the copy and leaves every
+  // reader responsible for reading the pair.
   "id", "type", "name", "x", "y", "width", "height", "rotation", "flipX", "flipY", "opacity",
-  "rotateX", "rotateY", "perspective",
+  "rotateX", "rotateY", "perspective", "skewX", "skewY",
   // The CSS transform surface. `rotate` / `scale` are the standalone properties
-  // and `transform` is the list; all three fold onto the four geometry fields
-  // (`rotation`, `flipX`/`flipY`, `rotateX`/`rotateY`) that the renderer reads.
+  // and `transform` is the list; both fold onto the geometry fields the renderer
+  // reads (`rotation`, `flipX`/`flipY`, `rotateX`/`rotateY`, `skewX`/`skewY`).
+  // There is no standalone `skew` in CSS, so the shear reaches the fields only
+  // through the list.
   "transform", "rotate", "scale",
   // Vertical text is a turned line: the reader folds this onto `rotation` and
   // swaps the box's axes, so it is a spelling, not a stored field.
   "writing-mode", "text-orientation",
-  "visible", "visibility", "locked", "isMask", "maskMode", "mask-invert", "maskInvert", "effects", "filter", "adjust", "constraints", "metadata", "tokenBindings", "themeMode", "numberMode", "sizing",
+  "visible", "visibility", "locked", "isMask", "maskMode", "maskInvert", "effects", "filter", "adjust", "constraints", "metadata", "tokenBindings", "themeMode", "numberMode", "sizing",
   "position", "align-self", "margin", "grid-area", "grid-column", "grid-row",
   "content", "style", "text", "characters", "textColor", "assetId", "asset", "fit", "objectFit",
   // A text's own glyph outline. Carried so a mask has geometry to carry (see
   // `TextElement.outline`); absent it, a mask frame holding words masks by its
   // box, which is what Figma never means.
   "outline",
-  "focalPoint", "crop", "imageCrop", "borderRadius", "radius", "cornerRadius", "border-radius",
+  "focalPoint", "crop", "imageCrop", "borderRadius", "radius", "cornerRadius",
   // CSS names one corner per property; the DSL holds four, so these fold into
   // the corner object `stroke.ts` already reads rather than owning a field.
   "border-top-left-radius", "border-top-right-radius", "border-bottom-right-radius", "border-bottom-left-radius",
-  "fills", "backgroundColor", "background-color", "background", "color", "opacity", "alpha",
-  "d", "path", "pathData", "fillRule", "fill-rule", "border", "borderColor", "border-color", "borderWidth", "border-width",
+  "fills", "backgroundColor", "background", "color", "alpha",
+  "d", "path", "pathData", "viewBox", "whiteSpace", "fillRule", "border", "borderColor", "borderWidth",
   "border-top", "border-right", "border-bottom", "border-left",
-  "borderTopWidth", "border-top-width", "borderRightWidth", "border-right-width", "borderBottomWidth", "border-bottom-width", "borderLeftWidth", "border-left-width",
-  "borderStyle", "border-style", "strokeWidth",
+  "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth",
+  "borderStyle", "strokeWidth",
   // The stroke-row input spellings: a Figma per-side weight, a `sides` map or a
   // one-side selector folds into the `strokes[]` row it belongs to (`.sides` /
   // `.side`) and is never written back. A reader looks each up by the one
@@ -87,12 +93,12 @@ export const CANONICAL_KEYS: ReadonlySet<string> = new Set([
   "strokeSides", "borderSides", "strokeTopWeight", "strokeRightWeight", "strokeBottomWeight", "strokeLeftWeight", "strokeSide", "borderSide",
   "from", "to", "children",
   "arrow", "arrowhead",
-  "clipContent", "clipsContent", "clip", "overflow", "scrollOverflow", "scrollX", "scrollY", "scrollLeft", "scrollTop", "scrollBehavior", "overflowX", "overflowY", "boxSizing", "box-sizing", "flex", "flex-grow", "layoutGrow", "flexGrow", "padding",
+  "clipContent", "clipsContent", "clip", "overflow", "scrollOverflow", "scrollX", "scrollY", "scrollLeft", "scrollTop", "scrollBehavior", "overflowX", "overflowY", "boxSizing", "flex", "layoutGrow", "flexGrow", "padding",
   // The flat CSS auto-layout keys: this IS the stored vocabulary, not an alias.
   "display", "flex-direction", "justify-content", "align-items", "align-content", "flex-wrap",
   "row-gap", "column-gap", "grid-template-columns", "grid-template-rows", "grid-auto-flow",
   "masonry", "columns-mode", "column-width-min",
-  "minWidth", "maxWidth", "minHeight", "maxHeight", "min-width", "max-width", "min-height", "max-height", "boxShadow", "box-shadow",
+  "minWidth", "maxWidth", "minHeight", "maxHeight", "boxShadow",
   "backdrop-filter",
   "componentId", "overrides", "setId", "variantProperties", "variantGroupProperties",
   "fillStyleId", "strokeStyleId", "effectStyleId", "textStyleId", // Read by a per-type branch above, so the value always lands on the base
@@ -377,17 +383,24 @@ export function normalizeElement(
   if (rotateY !== undefined) base.rotateY = rotateY;
   const perspective = asNumber(rawAny.perspective);
   if (perspective !== undefined && perspective > 0) base.perspective = perspective;
+  const skewX = asNumber(rawAny.skewX);
+  if (skewX !== undefined) base.skewX = skewX;
+  const skewY = asNumber(rawAny.skewY);
+  if (skewY !== undefined) base.skewY = skewY;
 
-  // A CSS `transform` / `rotate` / `scale` states the same geometry these four
+  // A CSS `transform` / `rotate` / `scale` states the same geometry these
   // fields do, so it is folded onto them; a field written in the DSL's own
   // spelling wins over the one absorbed from CSS.
   absorbTransform(raw, base, path, repairs);
+  // The shear is the one pair: its two axes multiply into a determinant, so it
+  // is settled after both spellings have landed.
+  settleSkew(base, path, repairs);
   // Vertical text is not a field: it is the line turned a quarter turn, so it is
   // folded onto the geometry the transform pass just settled.
   absorbWritingMode(el, base, type, path, repairs);
 
-  const opacity = asNumber(el.opacity);
-  if (opacity !== undefined) base.opacity = clamp(opacity, 0, 1);
+  const opacity = opacityValue(el.opacity);
+  if (opacity !== undefined) base.opacity = opacity;
 
   // `alpha` is whitelisted here but read only on a paint object, never on the
   // element. An element-level `alpha: 0.5` looked authored and did nothing.
@@ -580,6 +593,7 @@ export function normalizeElement(
     ...flatSizing,
     ...(normalizeElementSizing(el.sizing, path, repairs) ?? {})
   };
+  const declaredWidthMode = sizing.width;
   applySizingDefaults(sizing, {
     type,
     ownLayout,
@@ -587,6 +601,22 @@ export function normalizeElement(
     authoredWidth: pxLength(el.width),
     authoredHeight: pxLength(el.height)
   });
+
+  // CSS's `white-space: nowrap` is a width statement here: a run that must not
+  // wrap is one measured by its content. An authored width still wins — in CSS
+  // that box simply overflows, and a box the author sized is the box they meant.
+  if (type === "text" && declaredWidthMode === undefined && pxLength(el.width) === undefined) {
+    const whiteSpace = el.whiteSpace ?? el["white-space"];
+    if (typeof whiteSpace === "string" && canonicalKey(whiteSpace) === "nowrap") {
+      sizing.width = "max-content";
+      repairs.push({
+        kind: "sizing",
+        path: `${path}/white-space`,
+        severity: "info",
+        message: `"white-space: nowrap" measured the text as max-content`
+      });
+    }
+  }
 
   // `flexGrow` is the canonical spelling; `layoutGrow` (Figma) and `flex` (CSS)
   // are read as aliases, keeping the first number of `flex: 2 1 0`. A positive

@@ -7,7 +7,7 @@ import {
   parseBoxShadows,
   parseCssColor,
   parseFilterValue,
-  rotationFromTransform,
+  affineFromTransform,
   sidewaysTextBox,
   unrotateBox
 } from "../src/core/import/css-values";
@@ -271,16 +271,31 @@ describe("parseFilterValue", () => {
   });
 });
 
-describe("rotationFromTransform", () => {
+describe("affineFromTransform", () => {
   it("recovers the angle from a pure rotation matrix", () => {
-    expect(rotationFromTransform("matrix(0.866025, 0.5, -0.5, 0.866025, 0, 0)")).toBeCloseTo(30, 2);
-    expect(rotationFromTransform("none")).toBeUndefined();
+    expect(affineFromTransform("matrix(0.866025, 0.5, -0.5, 0.866025, 0, 0)")?.rotation).toBeCloseTo(30, 2);
+    expect(affineFromTransform("none")).toBeUndefined();
   });
 
-  it("refuses a scale or a skew, which have no DSL spelling", () => {
-    expect(rotationFromTransform("matrix(1.2, 0, 0, 1.2, 0, 0)")).toBeUndefined();
-    expect(rotationFromTransform("matrix(1, 0.2, 0, 1, 0, 0)")).toBeUndefined();
-    expect(rotationFromTransform("matrix3d(1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1)")).toBeUndefined();
+  it("recovers a shear, on either axis or both", () => {
+    // `transform: skewX(-8deg)` computes to exactly this: a unit diagonal and
+    // the tangent in one off-diagonal cell.
+    expect(affineFromTransform("matrix(1, 0, -0.140541, 1, 0, 0)")).toMatchObject({ rotation: 0, skewX: -8 });
+    expect(affineFromTransform("matrix(1, 0.176327, 0, 1, 0, 0)")).toMatchObject({ rotation: 0, skewY: 10 });
+    expect(affineFromTransform("matrix(1, 0.176327, -0.140541, 1, 0, 0)")).toMatchObject({ skewX: -8, skewY: 10 });
+  });
+
+  it("recovers a shear under a rotation, on the axis the order allows", () => {
+    // `rotate(30deg) skewX(10deg)` — the turn comes off the first column.
+    const fields = affineFromTransform("matrix(0.866025, 0.5, -0.347284, 0.954189, 0, 0)");
+    expect(fields?.rotation).toBeCloseTo(30, 2);
+    expect(fields?.skewX).toBeCloseTo(10, 2);
+  });
+
+  it("refuses a scale and a mirror, which have their own fields or none", () => {
+    expect(affineFromTransform("matrix(1.2, 0, 0, 1.2, 0, 0)")).toBeUndefined();
+    expect(affineFromTransform("matrix(-1, 0, 0, 1, 0, 0)")).toBeUndefined();
+    expect(affineFromTransform("matrix3d(1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1)")).toBeUndefined();
   });
 
   it("recognises the default transform origin", () => {
@@ -301,6 +316,17 @@ describe("unrotateBox", () => {
 
   it("is the identity when nothing was rotated", () => {
     expect(unrotateBox({ x: 3, y: 4, width: 10, height: 20 }, 0)).toEqual({ x: 3, y: 4, width: 10, height: 20 });
+  });
+
+  it("subtracts the width a shear adds to the bound", () => {
+    // A 100×100 box leaning 10° measures 100 + 100·tan(10°) on screen. Reading
+    // that 118 back as the width would draw the layer 18 too wide ON TOP of the
+    // lean — the box has to lose exactly what the shear contributed.
+    const box = unrotateBox({ x: 0, y: 0, width: 117.633, height: 100 }, 0, 10, 0);
+    expect(box.width).toBeCloseTo(100, 2);
+    expect(box.height).toBeCloseTo(100, 2);
+    // The centre is the point a shear leaves alone, so the box stays centred.
+    expect(box.x + box.width / 2).toBeCloseTo(117.633 / 2, 4);
   });
 });
 

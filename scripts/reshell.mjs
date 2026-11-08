@@ -29,10 +29,13 @@ const PKG_VERSION = JSON.parse(readFileSync(new URL("../package.json", import.me
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 let shellPath = "dist/index.html";
+let targetVersion = process.env.FISH_APP_VERSION || PKG_VERSION;
 const targets = [];
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--shell") {
     shellPath = args[++i];
+  } else if (args[i] === "--version") {
+    targetVersion = args[++i];
   } else if (args[i] !== "--dry-run") {
     targets.push(args[i]);
   }
@@ -108,7 +111,7 @@ function reshell(file) {
   next = next.slice(0, bodyClose) + injected + "\n  " + next.slice(bodyClose);
   next = next.replace(
     /(<meta\s+name=["']fish:version["']\s+content=["'])[^"']*(['"][^>]*>)/i,
-    `$1${PKG_VERSION}$2`
+    `$1${targetVersion}$2`
   );
 
   // The document and its bitmaps are the user's work. A re-shell that moved

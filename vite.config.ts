@@ -15,6 +15,7 @@ import crypto from "node:crypto";
 const DEFAULT_COVER = buildDefaultCover();
 
 const pkg = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "package.json"), "utf-8"));
+const appVersion = process.env.FISH_APP_VERSION ?? pkg.version;
 
 // The update endpoint is two values and nothing else: where the manifest lives,
 // and the P-256 public key that signed it. Both come from the environment so a
@@ -22,8 +23,24 @@ const pkg = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "package.json
 // feature off, which is the honest state of a project that has not published one
 // yet. `FISH_UPDATE_PUBLIC_KEY` is a JWK as JSON; `scripts/write-release-manifest.mjs`
 // prints the matching public key for it.
-const updateManifestUrl = process.env.FISH_UPDATE_MANIFEST_URL ?? "";
-const updatePublicKey = process.env.FISH_UPDATE_PUBLIC_KEY ?? "";
+const defaultReleaseKeyPath = path.resolve(process.cwd(), "release/keys/update-public.json");
+const hasDefaultReleaseKey = !process.env.VITEST && fs.existsSync(defaultReleaseKeyPath);
+
+const updateManifestUrl =
+  process.env.FISH_UPDATE_MANIFEST_URL ??
+  (hasDefaultReleaseKey ? "https://dl.fish.themindstudio.cc/stable/manifest.json" : "");
+
+const updatePublicKey =
+  process.env.FISH_UPDATE_PUBLIC_KEY ??
+  (hasDefaultReleaseKey
+    ? (() => {
+        try {
+          return fs.readFileSync(defaultReleaseKeyPath, "utf-8").trim();
+        } catch {
+          return "";
+        }
+      })()
+    : "");
 
 /**
  * The plugin trust anchor: one P-256 public key, nothing else.
@@ -47,7 +64,7 @@ function pluginKeyFromEnv(): string {
   }
   const publicKey =
     parsed?.publicKey ??
-    crypto.createPublicKey({ key: parsed?.privateKey ?? (parsed as unknown as JsonWebKey), format: "jwk" }).export({ format: "jwk" });
+    crypto.createPublicKey({ key: (parsed?.privateKey ?? parsed) as any, format: "jwk" }).export({ format: "jwk" });
   return JSON.stringify(publicKey);
 }
 

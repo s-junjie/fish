@@ -185,6 +185,16 @@ export function readFlatAutoLayout(
   // answer the same way, because they are the same mistake: `display: "block"` +
   // `padding` used to drop the padding without a word and pass `check`.
   const display = displayModeOf(displayRaw);
+  if (display === "none") {
+    // CSS's `display: none` removes the box; here it only says "no auto-layout",
+    // and the element keeps painting. Left silent, the one spelling every author
+    // reaches for to hide something is the one that shows it.
+    repairs.push({
+      kind: "layout",
+      path: `${path}/display`,
+      message: `display "none" is free placement, not CSS hiding: the element stays visible. Write "visible: false" to hide it`
+    });
+  }
   if (display === undefined || NO_LAYOUT_DISPLAYS.has(display)) {
     for (const key of FLAT_LAYOUT_KEYS) {
       if (key === "display") continue;

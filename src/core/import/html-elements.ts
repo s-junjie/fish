@@ -35,6 +35,8 @@ function styleAttrs(style: VisualStyle): Record<string, unknown> {
     ...(style.opacity !== undefined ? { opacity: style.opacity } : {}),
     ...(style.blendMode ? { blendMode: style.blendMode } : {}),
     ...(style.rotation !== undefined ? { rotation: style.rotation } : {}),
+    ...(style.skewX !== undefined ? { skewX: style.skewX } : {}),
+    ...(style.skewY !== undefined ? { skewY: style.skewY } : {}),
     ...(style.visible === false ? { visible: false } : {}),
     ...(style.scrollOverflow ? { scrollOverflow: style.scrollOverflow } : {}),
     ...(style.tokenBindings ? { tokenBindings: style.tokenBindings } : {})
@@ -125,6 +127,8 @@ export function rectElement(el: Element, id: string, box: Rect, style: VisualSty
     ...(style.opacity !== undefined ? { opacity: style.opacity } : {}),
     ...(style.blendMode ? { blendMode: style.blendMode } : {}),
     ...(style.rotation !== undefined ? { rotation: style.rotation } : {}),
+    ...(style.skewX !== undefined ? { skewX: style.skewX } : {}),
+    ...(style.skewY !== undefined ? { skewY: style.skewY } : {}),
     ...(style.visible === false ? { visible: false } : {}),
     ...(style.tokenBindings ? { tokenBindings: style.tokenBindings } : {}),
     ...(link ? { link } : {})

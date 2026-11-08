@@ -1,7 +1,7 @@
 import type { GradientStop, ImageCrop, ImagePaint, Paint, PaintStack, PatternAlignment, PatternMotif, PatternPaint, PatternTileType } from "../types";
 import { canonicalGradientStops, firstStopTokenId, gradientIsFlat } from "../gradient-stops";
 import { clampCrop } from "../../geometry/image-crop";
-import { asNumber, clamp, canonicalKey, isPlainObject, FIT_ALIASES, NormalizationRepair } from "./shared";
+import { asNumber, clamp, opacityValue, canonicalKey, isPlainObject, FIT_ALIASES, NormalizationRepair } from "./shared";
 import { normalizeColorFilter } from "./text-sizing";
 import { readBlendMode, reportRefusedBlendMode } from "./blend-mode";
 import { paintFromBackgroundImage, backgroundLayers } from "../../import/css-values";
@@ -38,9 +38,7 @@ const PATTERN_MOTIF_ALIASES: Record<string, PatternMotif> = {
 
 /** Clamps a paint-layer opacity (accepted as `opacity` or `alpha`) to 0..1. */
 export function normalizePaintOpacity(raw: unknown): number | undefined {
-  const value = asNumber(raw);
-  if (value === undefined) return undefined;
-  return Math.min(1, Math.max(0, value));
+  return opacityValue(raw);
 }
 
 /** A ramp that collapses to a solid keeps the token it was following. */

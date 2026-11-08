@@ -1,7 +1,7 @@
 import type { CornerRadius, Stroke, StrokeSide, StrokeSideWeights } from "../types";
 import { DEFAULT_DASH } from "../types";
 import { topLayer } from "../paint-stack";
-import { asNumber, isPlainObject, lengthUnit, pxLength, NormalizationRepair } from "./shared";
+import { asNumber, canonicalKey, isPlainObject, lengthUnit, pxLength, NormalizationRepair } from "./shared";
 import { normalizePaint } from "./paint";
 
 const LINE_CAPS: readonly string[] = ["butt", "round", "square"];
@@ -11,6 +11,28 @@ const LINE_JOINS: readonly string[] = ["miter", "round", "bevel"];
 const BORDER_STYLES: readonly string[] = [
   "none", "hidden", "dotted", "dashed", "solid", "double", "groove", "ridge", "inset", "outset"
 ];
+
+/** The keywords a dash pattern cannot express, reported instead of flattened. */
+const DECORATIVE_BORDER_STYLES: readonly string[] = [
+  "dotted", "double", "groove", "ridge", "inset", "outset"
+];
+
+/** The element-level spellings that mean CSS's `border`, in either case. */
+const BORDER_SPELLINGS: ReadonlySet<string> = new Set([
+  "border", "border-color", "border-width", "border-style",
+  "border-top", "border-right", "border-bottom", "border-left",
+  "border-top-width", "border-right-width", "border-bottom-width", "border-left-width"
+]);
+
+/**
+ * Whether a stroke sits inside a closed box. `line` / `arrow` are open segments
+ * with no inside, and a `path` may be either, so those keep the renderer's
+ * `center` rather than being clipped to a contour nobody promised.
+ */
+const OPEN_STROKE_TYPES: ReadonlySet<string> = new Set(["path", "line", "arrow"]);
+
+const sitsInsideBox = (type: unknown): boolean =>
+  typeof type === "string" && type.trim() !== "" && !OPEN_STROKE_TYPES.has(type.trim().toLowerCase());
 
 /** Split a CSS value on whitespace that is not inside parentheses, so `rgb(1, 2, 3)` stays one token. */
 function splitCssTokens(input: string): string[] {
@@ -434,8 +456,30 @@ export function normalizeStroke(
   const styleRaw =
     (direct && typeof direct.style === "string" ? direct.style : undefined) || authoredStyle;
 
-  const style = styleRaw && styleRaw.toLowerCase() !== "solid" ? "dashed" : "solid";
-  const align = (direct && typeof direct.align === "string" && ["inside", "center", "outside"].includes(direct.align)) ? (direct.align as "inside" | "center" | "outside") : undefined;
+  const styleName = styleRaw?.trim().toLowerCase();
+  const style = styleName && styleName !== "solid" ? "dashed" : "solid";
+  // One dash pattern is the whole vocabulary, so these keywords become `dashed`.
+  // They used to do it in silence: the author asked for dots and got a border
+  // that merely looked different, with nothing in the report to say so.
+  if (styleName && DECORATIVE_BORDER_STYLES.includes(styleName) && path && repairs) {
+    repairs.push({
+      kind: "stroke",
+      path: `${path}/border-style`,
+      message: `border-style "${styleName}" has no DSL spelling; drawn as dashed`
+    });
+  }
+  const declaredAlign = direct && typeof direct.align === "string" && ["inside", "center", "outside"].includes(direct.align)
+    ? (direct.align as "inside" | "center" | "outside")
+    : undefined;
+  // CSS's border is painted INSIDE the box, and the HTML import has always said
+  // so — but one written by hand fell through to the renderer's `center`, so the
+  // same CSS drew two different boxes depending on the road in. An explicit
+  // `strokes[]` row keeps the renderer's default: that `align` is the dialect's
+  // own field, and `strokeWidth` is not a CSS border either.
+  const fromCssBorder = Object.keys(el).some((key) => BORDER_SPELLINGS.has(canonicalKey(key)));
+  const align =
+    declaredAlign ??
+    (direct === undefined && fromCssBorder && sitsInsideBox(el.type) ? "inside" : undefined);
   const enabled = direct && typeof direct.enabled === "boolean" ? direct.enabled : undefined;
   const opacity = direct && typeof direct.opacity === "number" ? direct.opacity : undefined;
   const paint =

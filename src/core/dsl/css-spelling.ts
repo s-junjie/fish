@@ -30,6 +30,8 @@ export const CSS_KEY_MAP: Readonly<Record<string, string>> = {
   flipY: "scale",
   rotateX: "transform",
   rotateY: "transform",
+  skewX: "transform",
+  skewY: "transform",
   maskMode: "mask-mode",
   maskInvert: "mask-invert",
   minWidth: "min-width",
@@ -138,7 +140,7 @@ const grouped = (keys: string[], why: string): Record<string, string> =>
 export const NO_CSS_EQUIVALENT: Readonly<Record<string, string>> = {
   ...grouped(
     [
-      "clipsContent", "layoutGrow", "pathData", "textColor", "linkUrl",
+      "clipsContent", "layoutGrow", "pathData", "viewBox", "whiteSpace", "textColor", "linkUrl",
       "focalPoint", "imageCrop", "backgroundColor", "borderColor", "borderWidth",
       "borderStyle", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth",
       "boxShadow", "objectFit", "cornerRadius", "strokeWidth",
@@ -194,7 +196,7 @@ function flattenStyle(style: Record<string, unknown>): Record<string, unknown> {
 
 /** One element, spelled for the file. Recurses into `children`. */
 function spellElement(el: Record<string, unknown>): Record<string, unknown> {
-  const { rotation, flipX, flipY, rotateX, rotateY, borderRadius, style, sizing, "grid-area": gridArea, clipContent, scrollOverflow, scrollX, scrollY, ...rest } = el;
+  const { rotation, flipX, flipY, rotateX, rotateY, skewX, skewY, borderRadius, style, sizing, "grid-area": gridArea, clipContent, scrollOverflow, scrollX, scrollY, ...rest } = el;
   const out: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(rest)) {
@@ -206,12 +208,21 @@ function spellElement(el: Record<string, unknown>): Record<string, unknown> {
     out[cssKey] = CSS_VALUES[key]?.(value) ?? value;
   }
 
+  // A scroll container is a clipped box plus the axes that scroll, which is how
+  // CSS says it: the shorthand carries the clip and each longhand turns one axis
+  // into a scroller. `overflow: "scroll-x"` was this file inventing a value CSS
+  // does not have, so an author reading it back learned a spelling nothing else
+  // accepts. The reader still takes it for documents already written that way.
   if (scrollOverflow === "both") {
-    out.overflow = "scroll";
+    out.overflow = "hidden";
+    out["overflow-x"] = "scroll";
+    out["overflow-y"] = "scroll";
   } else if (scrollOverflow === "vertical") {
-    out.overflow = "scroll-y";
+    out.overflow = "hidden";
+    out["overflow-y"] = "scroll";
   } else if (scrollOverflow === "horizontal") {
-    out.overflow = "scroll-x";
+    out.overflow = "hidden";
+    out["overflow-x"] = "scroll";
   } else if (clipContent !== undefined) {
     out.overflow = clipContent === true ? "hidden" : "visible";
   }
@@ -249,10 +260,12 @@ function spellElement(el: Record<string, unknown>): Record<string, unknown> {
   const sx = flipX === true ? -1 : 1;
   const sy = flipY === true ? -1 : 1;
   if (sx === -1 || sy === -1) out.scale = `${sx} ${sy}`;
-  if (rotateX !== undefined || rotateY !== undefined) {
+  if (rotateX !== undefined || rotateY !== undefined || skewX !== undefined || skewY !== undefined) {
     out.transform = [
       rotateX !== undefined ? `rotateX(${rotateX}deg)` : "",
-      rotateY !== undefined ? `rotateY(${rotateY}deg)` : ""
+      rotateY !== undefined ? `rotateY(${rotateY}deg)` : "",
+      skewX !== undefined ? `skewX(${skewX}deg)` : "",
+      skewY !== undefined ? `skewY(${skewY}deg)` : ""
     ]
       .filter(Boolean)
       .join(" ");

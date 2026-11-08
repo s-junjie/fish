@@ -105,7 +105,9 @@ describe("frame scroll capabilities", () => {
       const doc = { pages: [{ id: "p1", children: [frame] }] };
       const spelledDoc = applyCssSpelling(doc as any) as any;
       const spelled = spelledDoc.pages[0].children[0];
-      expect(spelled.overflow).toBe("scroll-y");
+      expect(spelled.overflow).toBe("hidden");
+      expect(spelled["overflow-y"]).toBe("scroll");
+      expect(spelled["overflow-x"]).toBeUndefined();
       expect(spelled["scroll-y"]).toBe("150px");
       expect(spelled["scroll-x"]).toBeUndefined();
 

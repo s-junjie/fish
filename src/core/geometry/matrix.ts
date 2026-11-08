@@ -72,6 +72,26 @@ export function scale(sx: number, sy: number): Matrix2D {
   return { a: sx, b: 0, c: 0, d: sy, e: 0, f: 0 };
 }
 
+/**
+ * A shear about the origin, in degrees per axis.
+ *
+ * Both axes meet in one matrix because that is what CSS `skew(ax, ay)` is: its
+ * off-diagonal terms are `tan(ax)` and `tan(ay)` and nothing else. Composing
+ * `skewX(a) skewY(b)` as two matrices adds a `tan(a)·tan(b)` term, so the same
+ * two numbers would draw a different quad depending on which form was used.
+ */
+export function skew(skewXDeg: number, skewYDeg: number): Matrix2D {
+  if (!skewXDeg && !skewYDeg) return identityMatrix();
+  return {
+    a: 1,
+    b: Math.tan((skewYDeg * Math.PI) / 180),
+    c: Math.tan((skewXDeg * Math.PI) / 180),
+    d: 1,
+    e: 0,
+    f: 0
+  };
+}
+
 /** `M⁻¹`. Returns `null` for a degenerate (non-invertible) matrix. */
 export function invert(m: Matrix2D): Matrix2D | null {
   const det = m.a * m.d - m.b * m.c;

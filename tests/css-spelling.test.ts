@@ -69,6 +69,7 @@ describe("the exported dialect is CSS", () => {
           flipX: true,
           borderRadius: [8, 8, 0, 0],
           rotateX: 20,
+          skewY: -8,
           children: []
         },
         {
@@ -93,9 +94,10 @@ describe("the exported dialect is CSS", () => {
 
     expect(rect.rotate).toBe("45deg");
     expect(rect.scale).toBe("-1 1");
-    expect(rect.transform).toBe("rotateX(20deg)");
+    expect(rect.transform).toBe("rotateX(20deg) skewY(-8deg)");
     expect(rect["border-radius"]).toBe("8px 8px 0 0");
     expect(rect).not.toHaveProperty("rotation");
+    expect(rect).not.toHaveProperty("skewY");
 
     expect(text["font-size"]).toBe("16px");
     expect(text["line-height"]).toBe(1.4);
@@ -318,5 +320,23 @@ describe("the exported dialect is CSS", () => {
     const spelled = applyCssSpelling(doc as unknown as Record<string, unknown>);
     const back = normalizeDesignDocument(spelled).document;
     expect(back.pages[0].children).toEqual(doc.pages[0].children);
+  });
+
+  it("round-trips the transform spellings it writes with no repairs", () => {
+    const doc = normalizeDesignDocument({
+      version: LATEST_DOCUMENT_VERSION,
+      name: "Transforms",
+      canvas,
+      elements: [
+        { id: "r", type: "rect", width: 10, height: 10, rotation: 45, flipX: true, rotateX: 20 }
+      ]
+    }).document;
+    const spelled = applyCssSpelling(doc as unknown as Record<string, unknown>);
+    const back = normalizeDesignDocument(spelled);
+
+    // `rotate` / `scale` / `transform` are this file's own output, so reading
+    // them back is not a repair — an info here fired once per element per load.
+    expect(back.repairs).toEqual([]);
+    expect(back.document.pages[0].children[0]).toMatchObject({ rotation: 45, flipX: true, rotateX: 20 });
   });
 });

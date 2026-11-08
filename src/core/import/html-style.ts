@@ -23,7 +23,7 @@ import {
   parseCssColor,
   parseFilterValue,
   px,
-  rotationFromTransform,
+  affineFromTransform,
   unrotateBox
 } from "./css-values";
 
@@ -70,6 +70,10 @@ export interface VisualStyle {
   clipContent?: boolean;
   scrollOverflow?: ScrollOverflow;
   rotation?: number;
+  /** Shear on x by y, degrees — a `skewX()` / `skew()` the page drew with. */
+  skewX?: number;
+  /** Shear on y by x, degrees. */
+  skewY?: number;
   visible?: boolean;
   border: BorderWidths;
   /**
@@ -502,16 +506,23 @@ export function visualStyleOf(
      larger than it is, so comparing `transform-origin` against THAT box found the
      centre was off and reported every rotation as lost. Undoing the angle on the
      bound recovers the layout box, which is what `transform-origin` is half of. */
-  const matrixAngle = cs.transform && cs.transform !== "none" ? rotationFromTransform(cs.transform) : undefined;
+  const affine = cs.transform && cs.transform !== "none" ? affineFromTransform(cs.transform) : undefined;
   const spin = standaloneRotation(cs);
 
   let rotation: number | undefined;
+  let skewX: number | undefined;
+  let skewY: number | undefined;
   if (cs.transform && cs.transform !== "none") {
     // A pure translation is already inside the box the browser measured, so the
     // DSL reproduces it by drawing the element at that origin — reporting it
     // would name a gap that does not exist.
-    if (matrixAngle !== undefined) rotation = matrixAngle;
-    else if (!isPureTranslation(cs.transform)) sink("transform", cs.transform);
+    if (affine && (affine.rotation || affine.skewX || affine.skewY)) {
+      rotation = affine.rotation;
+      skewX = affine.skewX;
+      skewY = affine.skewY;
+    } else if (!affine && !isPureTranslation(cs.transform)) {
+      sink("transform", cs.transform);
+    }
   }
   if (spin !== undefined) {
     rotation = (rotation ?? 0) + spin;
@@ -594,6 +605,8 @@ export function visualStyleOf(
     if (clip.scrollOverflow) style.scrollOverflow = clip.scrollOverflow;
   }
   if (rotation !== undefined && Math.abs(rotation) > 1e-6) style.rotation = round2(rotation);
+  if (skewX !== undefined && Math.abs(skewX) > 1e-6) style.skewX = round2(skewX);
+  if (skewY !== undefined && Math.abs(skewY) > 1e-6) style.skewY = round2(skewY);
   if (cs.visibility === "hidden" || cs.visibility === "collapse") style.visible = false;
   return style;
 }

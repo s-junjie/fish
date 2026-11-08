@@ -111,7 +111,7 @@ Choose by scope: surgical tweaks → `patch`; section redesign → `replace`; gr
 ### Reuse before drawing
 
 - A subtree that appears more than once is a `component` master plus `instance`s, not two frames. This covers buttons, cards, nav items, list rows and badges.
-- The master holds structure and defaults; each instance carries only sparse overrides for what differs (content, image, size).
+- The master holds structure and defaults; an instance places it with its own position and transforms (`rotate`, `scale`), carrying sparse `overrides[]` only for what differs inside the master (content, image, fill).
 - Use `make-component` to promote and `instantiate` to place. Do not copy the master's JSON into a second frame.
 
 ### Theme modes are token configuration

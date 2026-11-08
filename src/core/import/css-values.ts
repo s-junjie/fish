@@ -1,4 +1,5 @@
 import { composeColorAlpha, parseColorAlpha } from "../geometry/color-utils";
+import { readAffine, type AffineFields } from "../geometry/affine";
 import { parseCssWideColor } from "../geometry/css-color-space";
 import { linearGradientLineLength } from "../geometry/gradient-utils";
 import type { ColorFilter, GradientStop, Paint } from "../dsl/types";
@@ -559,27 +560,23 @@ export function parseFilterValue(raw: string | undefined): ParsedFilter {
 // ---------------------------------------------------------------------------
 
 /**
- * The rotation a `transform` carries, or nothing when the matrix is not a pure
- * rotation.
+ * The rotation and shear a `transform` carries, or nothing when the matrix is
+ * something the DSL cannot hold.
  *
- * Computed `transform` is always a matrix, so the angle is recovered from
- * `atan2(b, a)` — but only once the matrix is known to be a rotation. A scale
- * or a skew lands in the same six numbers and has no DSL spelling at all, and
- * reading its `atan2` would invent a rotation the page never had.
+ * Computed `transform` is always a matrix, so the fields are recovered from its
+ * numbers — but only once the matrix is known to be a turn and a shear. A scale
+ * lands in the same six numbers and has no DSL spelling at all, and reading it
+ * as a rotation would invent one the page never had.
  */
-export function rotationFromTransform(raw: string): number | undefined {
+export function affineFromTransform(raw: string): AffineFields | undefined {
   const value = raw.trim();
   if (!value || value === "none") return undefined;
   const match = /^matrix\(([^)]+)\)$/.exec(value);
   if (!match) return undefined;
   const parts = match[1].split(",").map((s) => parseFloat(s.trim()));
   if (parts.length !== 6 || parts.some((n) => !Number.isFinite(n))) return undefined;
-  const [a, b, c, d] = parts;
-  if (Math.abs(Math.hypot(a, b) - 1) > 1e-3) return undefined;
-  if (Math.abs(Math.hypot(c, d) - 1) > 1e-3) return undefined;
-  if (Math.abs(a * c + b * d) > 1e-3) return undefined;
-  const deg = (Math.atan2(b, a) * 180) / Math.PI;
-  return Math.abs(deg) < 1e-3 ? undefined : Math.round(deg * 1000) / 1000;
+  const [a, b, c, d, e, f] = parts;
+  return readAffine({ a, b, c, d, e, f });
 }
 
 /**
@@ -628,25 +625,38 @@ export function isPureTranslation(raw: string): boolean {
 }
 
 /**
- * A box that was measured on screen, pulled back out of a rotation.
+ * A box that was measured on screen, pulled back out of a rotation and a shear.
  *
- * `getBoundingClientRect()` reports the AXIS-ALIGNED box, so a rotated element
- * comes back larger than it is and its siblings come back skewed. The centre is
- * rotation-invariant, so the true size is recovered by solving
- * `W = w|cos| + h|sin|`, `H = w|sin| + h|cos|` and the origin follows from it.
+ * `getBoundingClientRect()` reports the AXIS-ALIGNED box, so a turned element
+ * comes back larger than it is. The centre is the one point neither a turn nor
+ * a shear moves, so the true size is recovered by solving the two half-extents
+ * of the drawn quad — `W = w·|cos − sin·tanY| + h·|cos·tanX − sin|` and the same
+ * on the other axis — and the origin follows from the centre.
+ *
+ * The shear terms are what a `skewX` adds to that bound: a 100×100 box leaning
+ * 10° measures 118 wide, and reading the 118 back as its width would draw it 18
+ * too wide on top of the lean.
  */
 export function unrotateBox(
   rect: { x: number; y: number; width: number; height: number },
-  degrees: number
+  degrees: number,
+  skewX = 0,
+  skewY = 0
 ): { x: number; y: number; width: number; height: number } {
-  if (!degrees) return rect;
+  if (!degrees && !skewX && !skewY) return rect;
   const rad = (degrees * Math.PI) / 180;
-  const cos = Math.abs(Math.cos(rad));
-  const sin = Math.abs(Math.sin(rad));
-  const det = cos * cos - sin * sin;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const tx = Math.tan((skewX * Math.PI) / 180);
+  const ty = Math.tan((skewY * Math.PI) / 180);
+  const a = Math.abs(cos - sin * ty);
+  const b = Math.abs(cos * tx - sin);
+  const c = Math.abs(sin + cos * ty);
+  const d = Math.abs(sin * tx + cos);
+  const det = a * d - b * c;
   if (Math.abs(det) < 1e-6) return rect;
-  const width = Math.max(0, (rect.width * cos - rect.height * sin) / det);
-  const height = Math.max(0, (rect.height * cos - rect.width * sin) / det);
+  const width = Math.max(0, (rect.width * d - rect.height * b) / det);
+  const height = Math.max(0, (a * rect.height - c * rect.width) / det);
   const cx = rect.x + rect.width / 2;
   const cy = rect.y + rect.height / 2;
   return { x: cx - width / 2, y: cy - height / 2, width, height };

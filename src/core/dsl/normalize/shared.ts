@@ -324,6 +324,23 @@ export function normalizeVisible(
 export const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
 /**
+ * A 0..1 opacity from a number or CSS's percentage.
+ *
+ * `asNumber` is unit-blind by design, so `"50%"` reached the clamp as 50 and
+ * came out fully opaque — a layer asked to be half transparent was drawn solid,
+ * and nothing reported it. The percentage is the one unit CSS writes this
+ * property in, so it is the one unit that has to be read here.
+ */
+export const opacityValue = (v: unknown): number | undefined => {
+  if (typeof v === "string") {
+    const percent = /^([+-]?\d*\.?\d+)\s*%$/.exec(v.trim());
+    if (percent) return clamp(Number(percent[1]) / 100, 0, 1);
+  }
+  const n = asNumber(v);
+  return n === undefined ? undefined : clamp(n, 0, 1);
+};
+
+/**
  * `Hero Image` / `hero_image` / `hero-image` / `heroImage` all collapse to
  * `hero-image`.
  *

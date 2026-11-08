@@ -9,12 +9,11 @@ import {
 import { getGradientStops, getShapeLocalPath, isGradientPaint } from "../../core/geometry/gradient-utils";
 import { rectToPathData } from "../../core/compile";
 import { paintLayerIndex, topPaint } from "../../core/dsl/paint-stack";
-import { elementPivot } from "../../core/geometry/transforms";
+import { elementPivot, elementTransformMatrix } from "../../core/geometry/transforms";
 import {
   identityMatrix,
   matrixToSvg,
   multiply,
-  rotationAroundDeg,
   translation,
   type Matrix2D
 } from "../../core/geometry/matrix";
@@ -142,21 +141,17 @@ interface MaskShape {
 }
 
 /**
- * `translate(el.x, el.y) rotate(rot, w/2, h/2)` as one matrix — the pair
- * `elementTransform` puts on a node's group and its inner translate, composed in
- * the order the renderer applies them.
+ * The transform the `<mask>` body is drawn under: `translate(el.x, el.y)` and
+ * the element's own turn, as one matrix in the order the renderer applies them.
  *
- * The rotation is about the element's own centre, which is the pivot relative to
- * its origin once the translate has run. Composing the other way round — the
- * translate outside a rotation about the ABSOLUTE pivot — displaces a rotated
- * child by its own `x`/`y`, which is what a mask frame of rotated glyphs used to
- * draw: the mask came out offset from the artwork it was masking.
+ * Derived from `elementTransformMatrix` rather than re-spelled — the hand-written
+ * pair knew `rotation` and dropped every other field, so a mirrored or sheared
+ * layer's mask stayed square. `T(x, y)` is the difference between turning about
+ * the pivot measured from the canvas and from the element's own origin.
  */
 function matOf(el: DesignElement): Matrix2D {
   const pivot = elementPivot(el);
-  const translate = translation(el.x, el.y);
-  const rot = el.rotation || 0;
-  return rot ? multiply(translate, rotationAroundDeg(rot, pivot.x - el.x, pivot.y - el.y)) : translate;
+  return multiply(elementTransformMatrix(el, pivot.x, pivot.y), translation(el.x, el.y));
 }
 
 /** An instance's silhouette is its RESOLVED box — it has no local path of its
@@ -336,6 +331,13 @@ function maskRegion(
   const w = Math.max(64, box ? box.width : el.width || 64);
   const h = Math.max(64, box ? box.height : el.height || 64);
   const rotPad = el.rotation ? Math.ceil(Math.hypot(w, h) * 0.5) : 0;
+  // A shear reaches outside the box the way the turn does: `skewX` slides each
+  // row by `y·tan`, so the far edge lands `h·tan` past where the box ends. The
+  // region clips, so a pad that is too small cuts the stencil in half.
+  const shearPad = Math.ceil(
+    Math.abs(h * Math.tan(((el.skewX || 0) * Math.PI) / 180)) +
+      Math.abs(w * Math.tan(((el.skewY || 0) * Math.PI) / 180))
+  );
   // Blur and rotation are what the stencil needs, plus 16px of anti-aliasing
   // slack for a silhouette clipped AT the region, and the reach back to the
   // parent's origin for content built from local coordinates.
@@ -344,7 +346,7 @@ function maskRegion(
   // zero wherever the layer paints nothing, so the inversion cannot reveal
   // anything outside the region — only the brightness inside it is read
   // backwards.
-  const pad = Math.ceil(blur * 2) + rotPad + 16;
+  const pad = Math.ceil(blur * 2) + rotPad + shearPad + 16;
   const minX = Math.floor(Math.min(0, el.x) - pad);
   const minY = Math.floor(Math.min(0, el.y) - pad);
   const maxX = Math.ceil(Math.max(w, el.x + w) + pad);
@@ -357,9 +359,6 @@ export function maskLayerDef(el: DesignElement, opts: MaskDefOptions): preact.VN
   const inverted = isInverted(el);
   const blur = maskLayerBlur(el, opts.box);
   const region = maskRegion(el, opts.box);
-  // The stencil turns on the same pivot the artwork does, or a rotated mask
-  // stops covering the layer it was masking.
-  const pivot = elementPivot(el);
   const coverage = maskCoveragePaint(el, opts.fills, opts.box);
   // A folded gradient already carries its coverage in RGB, so the alpha adapter
   // would overwrite it with white — see `maskCoveragePaint`.
@@ -383,7 +382,7 @@ export function maskLayerDef(el: DesignElement, opts: MaskDefOptions): preact.VN
           inverted first and scaled second, which is what `opacity` has always
           meant on a mask. */}
       <g opacity={opacity < 1 ? opacity : undefined} filter={filtered ? `url(#maskalpha_${el.id})` : undefined}>
-        <g transform={`translate(${el.x}, ${el.y}) rotate(${el.rotation || 0} ${pivot.x - el.x} ${pivot.y - el.y})`}>
+        <g transform={matrixToSvg(matOf(el))}>
           {maskContent(el, opts, coverage)}
         </g>
       </g>

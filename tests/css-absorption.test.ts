@@ -608,3 +608,20 @@ describe("authored CSS — the keys that had no element-level spelling", () => {
     expect(out.repairs.some((r) => /focalPoint needs numeric x\/y/.test(r.message))).toBe(true);
   });
 });
+
+describe("opacity reads CSS's percentage", () => {
+  it("takes \"50%\" as half on the element", () => {
+    expect(only(normalizeDesignDocument(frameDoc({ opacity: "50%" }) as any).document).opacity).toBe(0.5);
+  });
+
+  it("takes it on a paint layer, where the same word means the same thing", () => {
+    const out = normalizeDesignDocument(
+      frameDoc({ fills: [{ type: "solid", color: "#000", opacity: "40%" }] }) as any
+    );
+    expect(only(out.document).fills?.[0]?.opacity).toBe(0.4);
+  });
+
+  it("still clamps a number that is out of range", () => {
+    expect(only(normalizeDesignDocument(frameDoc({ opacity: 3 }) as any).document).opacity).toBe(1);
+  });
+});

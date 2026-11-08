@@ -15,6 +15,7 @@ import {
 import { AlignmentType } from "../../core/interactions/alignment";
 import { t } from "../../i18n";
 import { Section } from "./SectionHeader";
+import { SUB_LABEL_CLASS } from "../label-tier";
 // Lucide's two flip families name the axis the other way round — the `-2` set
 // names the centreline the triangles straddle, the square set names the axis it
 // mirrors across. These buttons keep the square set's orientation, so flipX
@@ -111,6 +112,8 @@ export function TransformSection({
   const tiltX = resolveAcross(selectedElements, (el) => el.rotateX || 0);
   const tiltY = resolveAcross(selectedElements, (el) => el.rotateY || 0);
   const perspective = resolveAcross(selectedElements, (el) => el.perspective || 800);
+  const skewX = resolveAcross(selectedElements, (el) => el.skewX || 0);
+  const skewY = resolveAcross(selectedElements, (el) => el.skewY || 0);
 
   return (
     <>
@@ -312,7 +315,12 @@ export function TransformSection({
             field above, and the viewing distance rides beside them because
             tilting without it is an orthographic squash. The projection is paint-side only: the resize
             and rotate gestures still read the flat box, so this row stays a
-            numbers row and grows no handles of its own. */}
+            numbers row and grows no handles of its own.
+
+            Captioned like the shear below it: two adjacent rows of `X°`/`Y°`
+            with only one of them named is a panel that does not say which is
+            which, and the sub-label tier is exactly what names a group. */}
+        <div className={`${SUB_LABEL_CLASS} mb-1.5`}>{t("properties.tilt")}</div>
         <div className={ROW_TIGHT_CLASS}>
           <div className="grid grid-cols-3 gap-1 flex-1">
             <ScrubInput
@@ -353,6 +361,45 @@ export function TransformSection({
               onDragStart={onDragStart}
               onDragEnd={onDragEnd}
               onChange={(v) => onMutate((el) => ({ ...el, perspective: v }))}
+            />
+          </div>
+        </div>
+
+        {/* Shear: two numbers, no handles — the resize and rotate gestures keep
+            reading the box they always read, while `elementTransformMatrix`
+            carries the shear for every reader that maps a point. */}
+        <div className={`${SUB_LABEL_CLASS} mb-1.5`}>{t("properties.skew")}</div>
+        <div className={ROW_TIGHT_CLASS}>
+          {/* Two fields, two columns: the shear is a pair and the row is
+              theirs. It leaves the tilt row's third column empty by
+              comparison, which is the honest shape — an empty third well would
+              read as a field that failed to load. */}
+          <div className="grid grid-cols-2 gap-1 flex-1">
+            <ScrubInput
+              key={singleSelected ? `${singleSelected.id}_skewX` : "multi_skewX"}
+              label="X°"
+              value={skewX.mixed ? undefined : skewX.value}
+              mixed={skewX.mixed}
+              min={-89}
+              max={89}
+              disabled={locked}
+              title={locked ? lockedHint : t("properties.skewX")}
+              onDragStart={onDragStart}
+              onDragEnd={onDragEnd}
+              onChange={(v) => onMutate((el) => ({ ...el, skewX: v }))}
+            />
+            <ScrubInput
+              key={singleSelected ? `${singleSelected.id}_skewY` : "multi_skewY"}
+              label="Y°"
+              value={skewY.mixed ? undefined : skewY.value}
+              mixed={skewY.mixed}
+              min={-89}
+              max={89}
+              disabled={locked}
+              title={locked ? lockedHint : t("properties.skewY")}
+              onDragStart={onDragStart}
+              onDragEnd={onDragEnd}
+              onChange={(v) => onMutate((el) => ({ ...el, skewY: v }))}
             />
           </div>
         </div>

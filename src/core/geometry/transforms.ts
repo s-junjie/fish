@@ -9,7 +9,18 @@
  */
 
 import type { Matrix2D } from './matrix';
-import { identityMatrix, multiply, rotationAroundDeg, rotationDeg, scale, translation } from './matrix';
+import {
+  identityMatrix,
+  invert,
+  matrixToSvg,
+  multiply,
+  rotationAroundDeg,
+  rotationDeg,
+  scale,
+  skew,
+  transformPoint,
+  translation
+} from './matrix';
 import type { Rect } from './bounds';
 import { isLineElement } from './element-bounds';
 
@@ -23,6 +34,8 @@ export interface TransformableBox {
   rotation?: number;
   flipX?: boolean;
   flipY?: boolean;
+  skewX?: number;
+  skewY?: number;
   rotateX?: number;
   rotateY?: number;
   perspective?: number;
@@ -75,7 +88,13 @@ export function elementTransform(el: TransformableBox, cx: number, cy: number): 
   const rot = el.rotation || 0;
   const flipX = !!el.flipX;
   const flipY = !!el.flipY;
-  if (!rot && !flipX && !flipY) return undefined;
+  const skewX = el.skewX || 0;
+  const skewY = el.skewY || 0;
+  if (!rot && !flipX && !flipY && !skewX && !skewY) return undefined;
+  // `skewX(a) skewY(b)` is not the CSS `skew(a, b)` these two fields mean — the
+  // composed matrix carries a term nobody wrote. Emitting the matrix leaves one
+  // writer for the shear; a box without one keeps its readable string.
+  if (skewX || skewY) return matrixToSvg(elementTransformMatrix(el, cx, cy));
   if (!flipX && !flipY) return `rotate(${rot} ${cx} ${cy})`;
   // A mirror about the box centre, then the rotation inside it — the order
   // Figma's own matrix composes them in, so a flipped-and-turned layer turns
@@ -102,13 +121,17 @@ export function elementTransformMatrix(el: TransformableBox, cx: number, cy: num
   const rot = el.rotation || 0;
   const flipX = !!el.flipX;
   const flipY = !!el.flipY;
-  if (!rot && !flipX && !flipY) return identityMatrix();
-  if (!flipX && !flipY) return rotationAroundDeg(rot, cx, cy);
-  const mirrorThenTurn = multiply(
-    translation(cx, cy),
-    multiply(rot ? rotationDeg(rot) : identityMatrix(), scale(flipX ? -1 : 1, flipY ? -1 : 1))
+  const skewX = el.skewX || 0;
+  const skewY = el.skewY || 0;
+  if (!rot && !flipX && !flipY && !skewX && !skewY) return identityMatrix();
+  if (!flipX && !flipY && !skewX && !skewY) return rotationAroundDeg(rot, cx, cy);
+  // Mirror, then shear, then turn — CSS's `rotate() skew() scale()` order, and
+  // the only one under which the slant belongs to the box rather than the canvas.
+  const linear = multiply(
+    rot ? rotationDeg(rot) : identityMatrix(),
+    multiply(skew(skewX, skewY), scale(flipX ? -1 : 1, flipY ? -1 : 1))
   );
-  return multiply(mirrorThenTurn, translation(-cx, -cy));
+  return multiply(translation(cx, cy), multiply(linear, translation(-cx, -cy)));
 }
 
 /**
@@ -141,8 +164,9 @@ export function elementTransform3d(el: TransformableBox): string | undefined {
  * A world point, expressed in the element's own unrotated box.
  *
  * The gesture half of `elementTransform`: a pointer lands in canvas space and
- * every write-back is in local space, so a rotated element has to be turned
- * back before anything is derived from it.
+ * every write-back is in local space. It inverts the SAME matrix the renderer
+ * draws with — a hand-written inverse is a second answer to the composition
+ * order, and it was right only while rotation and flips were all that was in it.
  */
 export function toElementLocal(
   px: number,
@@ -151,15 +175,11 @@ export function toElementLocal(
   cx: number,
   cy: number
 ): { x: number; y: number } {
-  const rot = el.rotation || 0;
-  const rad = (rot * Math.PI) / 180;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-  const sx = el.flipX ? -1 : 1;
-  const sy = el.flipY ? -1 : 1;
-  const dx = (px - cx) * sx;
-  const dy = (py - cy) * sy;
-  return { x: cos * dx + sin * dy + cx, y: -sin * dx + cos * dy + cy };
+  const inverse = invert(elementTransformMatrix(el, cx, cy));
+  // A singular box has no local point to hand back — the pointer's own position
+  // is the only answer that is not invented.
+  if (!inverse) return { x: px, y: py };
+  return transformPoint(inverse, { x: px, y: py });
 }
 
 /**

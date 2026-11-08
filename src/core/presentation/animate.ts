@@ -1,10 +1,117 @@
 import { ContainerElement, CornerRadius, DesignElement, SlideDirection, SlideTransition } from "../dsl/types";
 import { MorphMatch, MorphPair, MorphSolo } from "./morph";
 import { interpolateCornerRadius, interpolateEffects } from "./interpolate-effects";
+import { appearanceFrame } from "./interpolate-appearance";
 
 const lerp = (a: number, b: number, p: number) => a + (b - a) * p;
 
 const ORIGIN = { x: 0, y: 0 };
+
+/** The renderer's own default viewing distance, so an absent one is not zero. */
+const DEFAULT_PERSPECTIVE = 800;
+
+/**
+ * What a morph carries across, one line per field. This table IS the answer to
+ * "why is my new field not animating": nothing travels unless it is written
+ * here, and a blind diff of two elements cannot replace it.
+ *
+ * `absent` is the value a slide means by leaving the key out, and it is a
+ * per-field fact no generic walk can guess — a missing `sweep` is a full turn,
+ * a missing `perspective` is 800, a missing `skewX` is 0. A field with no
+ * `absent` has no meaningful "nothing" (a rect has no vertex count), so it only
+ * travels when both halves are the kind of layer that has one.
+ *
+ * `whole` is a count, not a length: a polygon cannot have 5.5 vertices.
+ * `"flip"` is a mirror, which has no halfway at all.
+ *
+ * `tests/presentation-slide.test.ts` grades this table against the schema, so a
+ * field added to the DSL is red until it is classified here.
+ */
+type Carry = { kind: "number"; whole?: boolean; absent?: number } | { kind: "flip" };
+
+const CARRIED: Readonly<Record<string, Carry>> = {
+  rotation: { kind: "number", absent: 0 },
+  rotateX: { kind: "number", absent: 0 },
+  rotateY: { kind: "number", absent: 0 },
+  skewX: { kind: "number", absent: 0 },
+  skewY: { kind: "number", absent: 0 },
+  perspective: { kind: "number", absent: DEFAULT_PERSPECTIVE },
+  cornerSmoothing: { kind: "number", absent: 0 },
+  sweep: { kind: "number", absent: 360 },
+  startAngle: { kind: "number", absent: 0 },
+  innerRadius: { kind: "number", absent: 0 },
+  gap: { kind: "number", absent: 0 },
+  sides: { kind: "number", whole: true },
+  points: { kind: "number", whole: true },
+  dx: { kind: "number" },
+  dy: { kind: "number" },
+  flipX: { kind: "flip" },
+  flipY: { kind: "flip" }
+};
+
+/** The fields this table carries, for the test that grades it. */
+export const CARRIED_FIELDS: readonly string[] = Object.keys(CARRIED);
+
+/**
+ * Every field a morph deliberately leaves alone, and why. Not a second list to
+ * keep in step: the test fails on a numeric schema key that appears in neither
+ * this map nor the table above, so the answer has to be written down once.
+ */
+export const NOT_CARRIED: Readonly<Record<string, string>> = {
+  x: "the pair's from-box",
+  y: "the pair's from-box",
+  width: "the pair's from-box",
+  height: "the pair's from-box",
+  opacity: "the pair's resolved alpha",
+  alpha: "a paint alias, not an element field",
+  flexGrow: "a layout input, laid out fresh every frame",
+  layoutGrow: "a layout input, laid out fresh every frame"
+};
+
+function scalarFrame(from: DesignElement, to: DesignElement, p: number): Record<string, unknown> {
+  const a = from as unknown as Record<string, unknown>;
+  const b = to as unknown as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [field, spec] of Object.entries(CARRIED)) {
+    if (spec.kind === "flip") {
+      const was = a[field] === true;
+      const is = b[field] === true;
+      // A mirror is not a length — there is no frame where a layer faces both
+      // ways — so it switches at the midpoint, where the eye reads it as the
+      // layer turning over rather than as a pop on the first frame.
+      if (was !== is) out[field] = p < 0.5 ? was : is;
+      continue;
+    }
+    const av = typeof a[field] === "number" ? (a[field] as number) : undefined;
+    const bv = typeof b[field] === "number" ? (b[field] as number) : undefined;
+    if (av === undefined && bv === undefined) continue;
+    if (spec.absent === undefined && (av === undefined || bv === undefined)) continue;
+    const n = lerp(av ?? spec.absent!, bv ?? spec.absent!, p);
+    out[field] = spec.whole ? Math.round(n) : n;
+  }
+  return out;
+}
+
+/**
+ * The corners, under whichever name the layer spells them.
+ *
+ * Shapes and containers carry `borderRadius`, polygon and star carry a px
+ * `cornerRadius` — and only the second was interpolated, so a rect's rounding
+ * popped on the first frame of every morph while a star's corner glided.
+ */
+function cornerFrame(from: DesignElement | undefined, to: DesignElement, p: number) {
+  type Rounded = { borderRadius?: CornerRadius; cornerRadius?: CornerRadius };
+  const a = from as Rounded | undefined;
+  const b = to as Rounded;
+  const out: Rounded = {};
+  if (a?.borderRadius !== undefined || b.borderRadius !== undefined) {
+    out.borderRadius = interpolateCornerRadius(a?.borderRadius, b.borderRadius, p);
+  }
+  if (a?.cornerRadius !== undefined || b.cornerRadius !== undefined) {
+    out.cornerRadius = interpolateCornerRadius(a?.cornerRadius, b.cornerRadius, p);
+  }
+  return out;
+}
 
 /**
  * Where the incoming slide's whole surface sits at progress `p`.
@@ -201,16 +308,8 @@ export function morphSlide(
         // same on both slides has to land as the layer the author drew, not as
         // one carrying a redundant `opacity: 1`.
         const opacity = pair.fromOpacity === pair.toOpacity ? null : lerp(pair.fromOpacity, pair.toOpacity, p);
-        const fromEl = pair.fromEl;
-        const effects = interpolateEffects(fromEl?.effects, el.effects, p);
-        const fromCr = (fromEl as { cornerRadius?: CornerRadius } | undefined)?.cornerRadius;
-        const toCr = (el as { cornerRadius?: CornerRadius }).cornerRadius;
-        const cornerRadius =
-          fromCr !== undefined || toCr !== undefined ? interpolateCornerRadius(fromCr, toCr, p) : undefined;
-        const rotation =
-          fromEl?.rotation !== undefined || el.rotation !== undefined
-            ? lerp(fromEl?.rotation ?? 0, el.rotation ?? 0, p)
-            : undefined;
+        const fromEl = pair.fromEl ?? el;
+        const effects = interpolateEffects(fromEl.effects, el.effects, p);
 
         return {
           ...el,
@@ -220,8 +319,14 @@ export function morphSlide(
           height: lerp(pair.from.height, el.height, p),
           ...(opacity === null ? null : { opacity }),
           ...(effects !== undefined ? { effects } : null),
-          ...(cornerRadius !== undefined ? { cornerRadius } : null),
-          ...(rotation !== undefined ? { rotation } : null),
+          ...cornerFrame(fromEl, el, p),
+          ...scalarFrame(fromEl, el, p),
+          ...appearanceFrame(fromEl, el, p),
+          // A pair that is one line on both slides paints one line all the way:
+          // the box and the run are interpolated on different paths, so the
+          // browser can break the paragraph at a width neither slide breaks at,
+          // and the count flickers. See `MorphPair.oneLine`.
+          ...(pair.oneLine ? { noSoftWrap: true } : null),
           ...(children ? { children: walk(children, el.id, { x, y }) } : null)
         } as DesignElement;
       }
@@ -248,20 +353,13 @@ export function morphSlide(
 
   const targetChildren = (target as ContainerElement).children ?? [];
   const targetEffects = interpolateEffects(previous.effects, target.effects, p);
-  const prevCr = (previous as { cornerRadius?: CornerRadius }).cornerRadius;
-  const targetCr = (target as { cornerRadius?: CornerRadius }).cornerRadius;
-  const cornerRadius =
-    prevCr !== undefined || targetCr !== undefined ? interpolateCornerRadius(prevCr, targetCr, p) : undefined;
-  const rotation =
-    previous.rotation !== undefined || target.rotation !== undefined
-      ? lerp(previous.rotation ?? 0, target.rotation ?? 0, p)
-      : undefined;
 
   return {
     ...target,
     ...(targetEffects !== undefined ? { effects: targetEffects } : null),
-    ...(cornerRadius !== undefined ? { cornerRadius } : null),
-    ...(rotation !== undefined ? { rotation } : null),
+    ...cornerFrame(previous, target, p),
+    ...scalarFrame(previous, target, p),
+    ...appearanceFrame(previous, target, p),
     children: walk(targetChildren, null, ORIGIN)
   } as DesignElement;
 }

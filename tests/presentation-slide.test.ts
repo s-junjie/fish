@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { getActivePage } from "../src/core/dsl/types";
 import { matchSlides } from "../src/core/presentation/morph";
-import { morphSlide, slidePaint, enterShift, leaveShift } from "../src/core/presentation/animate";
+import { morphSlide, slidePaint, enterShift, leaveShift, CARRIED_FIELDS, NOT_CARRIED } from "../src/core/presentation/animate";
 import { createSlideClock, easeAt, resolveSlide, resolveStep, reverseDirection, DEFAULT_SLIDE_MS } from "../src/core/presentation/slide";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
+import schema from "../src/core/dsl/fish.schema.json";
 import { LATEST_DOCUMENT_VERSION } from "../src/core/dsl/version";
 import type { DesignElement } from "../src/core/dsl/types";
 
@@ -477,10 +478,10 @@ describe("morphSlide", () => {
     expect(midTear.fiber).toBeCloseTo(0.2);
   });
 
-  it("interpolates drop-shadow and cornerRadius/rotation", () => {
+  it("interpolates drop-shadow and corner rounding", () => {
     const from = frame("a", [
       el("box", {
-        cornerRadius: 4,
+        borderRadius: 4,
         rotation: 0,
         effects: [
           {
@@ -496,7 +497,7 @@ describe("morphSlide", () => {
     const to = frame("b", [
       el("box2", {
         name: "box",
-        cornerRadius: 16,
+        borderRadius: 16,
         rotation: 90,
         effects: [
           {
@@ -510,7 +511,10 @@ describe("morphSlide", () => {
       })
     ]);
     const mid = (morphSlide(from, to, matchSlides(from, to), 0.5) as { children: DesignElement[] }).children[0];
-    expect((mid as any).cornerRadius).toBeCloseTo(10);
+    // A rect stores its corners as `borderRadius`; `cornerRadius` is the polygon
+    // and star spelling of a px radius, and interpolating only that one left
+    // every rect's rounding snapping on the first frame.
+    expect((mid as any).borderRadius).toBeCloseTo(10);
     expect(mid.rotation).toBeCloseTo(45);
     const shadow = mid.effects?.find((e) => e.type === "drop-shadow") as any;
     expect(shadow.offset.x).toBeCloseTo(5);
@@ -519,28 +523,28 @@ describe("morphSlide", () => {
     expect(shadow.spread).toBeCloseTo(2);
   });
 
-  it("interpolates effects, cornerRadius and rotation on the root slide frame itself", () => {
+  it("interpolates effects, corner rounding and rotation on the root slide frame itself", () => {
     const from = {
       ...frame("frameA", []),
-      cornerRadius: 0,
+      borderRadius: 0,
       rotation: 0
     };
     const to = {
       ...frame("frameB", []),
-      cornerRadius: 32,
+      borderRadius: 32,
       rotation: 90,
       effects: [{ type: "layer-blur", blur: 40 }]
     };
 
     const mid = morphSlide(from as any, to as any, matchSlides(from as any, to as any), 0.5);
-    expect((mid as any).cornerRadius).toBeCloseTo(16);
+    expect((mid as any).borderRadius).toBeCloseTo(16);
     expect(mid.rotation).toBeCloseTo(45);
     const blur = (mid.effects?.find((e) => e.type === "layer-blur") as { blur: number });
     expect(blur.blur).toBeCloseTo(20);
 
     // Reverse direction (B -> A)
     const rev = morphSlide(to as any, from as any, matchSlides(to as any, from as any), 0.5);
-    expect((rev as any).cornerRadius).toBeCloseTo(16);
+    expect((rev as any).borderRadius).toBeCloseTo(16);
     expect(rev.rotation).toBeCloseTo(45);
     const revBlur = (rev.effects?.find((e) => e.type === "layer-blur") as { blur: number });
     expect(revBlur.blur).toBeCloseTo(20);
@@ -577,6 +581,199 @@ describe("morphSlide", () => {
     expect(revMid.x).toBe(100);
     expect(revMid.y).toBe(100);
     expect((revMid.effects?.find((e) => e.type === "layer-blur") as { blur: number }).blur).toBeCloseTo(15);
+  });
+
+  it("carries a shear and a perspective tilt", () => {
+    const from = frame("a", [el("card", { skewX: 0, rotateX: 0, rotateY: -10 })]);
+    const to = frame("b", [el("card2", { name: "card", skewX: 30, rotateX: 45, rotateY: 10 })]);
+    const mid = (morphSlide(from, to, matchSlides(from, to), 0.5) as { children: DesignElement[] }).children[0];
+    expect(mid.skewX).toBeCloseTo(15);
+    expect(mid.rotateX).toBeCloseTo(22.5);
+    expect(mid.rotateY).toBeCloseTo(0);
+  });
+
+  it("reads an absent perspective distance as the engine's own 800", () => {
+    const from = frame("a", [el("card")]);
+    const to = frame("b", [el("card2", { name: "card", perspective: 400 })]);
+    const at = (p: number) =>
+      (morphSlide(from, to, matchSlides(from, to), p) as { children: DesignElement[] }).children[0];
+    expect(at(0).perspective).toBeCloseTo(800);
+    expect(at(0.5).perspective).toBeCloseTo(600);
+  });
+
+  it("does not invent a field neither half writes", () => {
+    const from = frame("a", [el("card")]);
+    const to = frame("b", [el("card2", { name: "card" })]);
+    const mid = (morphSlide(from, to, matchSlides(from, to), 0.5) as { children: DesignElement[] }).children[0];
+    for (const field of ["skewX", "skewY", "rotateX", "rotateY", "perspective", "sweep", "sides", "cornerRadius", "flipX"]) {
+      expect(mid).not.toHaveProperty(field);
+    }
+  });
+
+  it("mirrors a layer at the midpoint, since a reflection has no halfway", () => {
+    const from = frame("a", [el("card", { flipX: true })]);
+    const to = frame("b", [el("card2", { name: "card" })]);
+    const at = (p: number) =>
+      (morphSlide(from, to, matchSlides(from, to), p) as { children: DesignElement[] }).children[0];
+    expect(at(0.25).flipX).toBe(true);
+    expect(at(0.75).flipX).toBe(false);
+  });
+
+  it("sweeps a pie from a full turn, not from nothing", () => {
+    // `sweep` absent means 360°, so a circle becoming a quarter closes — it does
+    // not open from a zero-width wedge, which is what reading the absence as 0
+    // would draw.
+    const from = frame("a", [el("pie", { type: "ellipse" } as Partial<DesignElement>)]);
+    const to = frame("b", [el("pie2", { name: "pie", type: "ellipse", sweep: 90 } as Partial<DesignElement>)]);
+    const at = (p: number) =>
+      (morphSlide(from, to, matchSlides(from, to), p) as { children: DesignElement[] }).children[0];
+    expect((at(0) as any).sweep).toBeCloseTo(360);
+    expect((at(0.5) as any).sweep).toBeCloseTo(225);
+  });
+
+  it("sweeps a pie, parts it, and counts a polygon's vertices", () => {
+    const from = frame("a", [el("pie", { type: "ellipse", sweep: 0, gap: 0 } as Partial<DesignElement>)]);
+    const to = frame("b", [el("pie2", { name: "pie", type: "ellipse", sweep: 90, gap: 8 } as Partial<DesignElement>)]);
+    const mid = (morphSlide(from, to, matchSlides(from, to), 0.5) as { children: DesignElement[] }).children[0];
+    expect((mid as any).sweep).toBeCloseTo(45);
+    expect((mid as any).gap).toBeCloseTo(4);
+
+    const tri = frame("c", [el("poly", { type: "polygon", sides: 3 } as Partial<DesignElement>)]);
+    const oct = frame("d", [el("poly2", { name: "poly", type: "polygon", sides: 8 } as Partial<DesignElement>)]);
+    const half = (morphSlide(tri, oct, matchSlides(tri, oct), 0.5) as { children: DesignElement[] }).children[0];
+    expect((half as any).sides).toBe(6);
+  });
+
+  it("moves a line's own endpoints, not only its box", () => {
+    const from = frame("a", [el("wire", { type: "line", dx: 0, dy: 0 } as Partial<DesignElement>)]);
+    const to = frame("b", [el("wire2", { name: "wire", type: "line", dx: 80, dy: 40 } as Partial<DesignElement>)]);
+    const mid = (morphSlide(from, to, matchSlides(from, to), 0.5) as { children: DesignElement[] }).children[0];
+    expect((mid as any).dx).toBeCloseTo(40);
+    expect((mid as any).dy).toBeCloseTo(20);
+  });
+});
+
+/**
+ * The wrap is a discrete fact, so it may not change mid-flight: the box
+ * interpolates while the run is the incoming one from frame one, and wherever
+ * those two disagree the browser finds a break neither slide has.
+ */
+describe("a one-line pair holds its line", () => {
+  const text = (id: string, name: string, extra: Partial<DesignElement> = {}): DesignElement =>
+    el(id, {
+      type: "text",
+      name,
+      width: 100,
+      height: 24,
+      content: "Hello",
+      style: { fontFamily: "Inter", fontSize: 16 },
+      ...extra
+    } as Partial<DesignElement>);
+
+  const pair = (fromWidth: number, toWidth: number) => {
+    const from = frame("a", [text("t", "Title", { width: fromWidth })]);
+    const to = frame("b", [text("t2", "Title", { x: 40, width: toWidth })]);
+    return { from, to, match: matchSlides(from, to) };
+  };
+
+  it("paints one line all the way across, and nothing at rest", () => {
+    const { from, to, match } = pair(100, 100);
+    expect(match.pairs[0].oneLine).toBe(true);
+    for (const p of [0, 0.25, 0.5, 0.75, 0.99]) {
+      const drawn = (morphSlide(from, to, match, p) as { children: DesignElement[] }).children[0];
+      expect((drawn as { noSoftWrap?: boolean }).noSoftWrap, `at p=${p}`).toBe(true);
+    }
+    // The settled slide is the document's own element: a paint flag the author
+    // never wrote must not survive the last frame.
+    expect(morphSlide(from, to, match, 1)).toBe(to);
+  });
+
+  it("leaves a pair alone when one half wraps in its own box", () => {
+    // 48px of glyphs in a 20px box: three lines on the outgoing slide, so the
+    // flight has a real reflow to play and no truthful line count to hold.
+    const { from, to, match } = pair(20, 100);
+    expect(match.pairs[0].oneLine).toBe(false);
+    const drawn = (morphSlide(from, to, match, 0.5) as { children: DesignElement[] }).children[0];
+    expect("noSoftWrap" in drawn).toBe(false);
+  });
+
+  it("never claims it for a shape, or for a run that has no box to wrap in", () => {
+    expect(matchSlides(frame("a", [el("r")]), frame("b", [el("r2", { name: "r" })])).pairs[0].oneLine).toBe(false);
+
+    const onPath = (id: string) =>
+      text(id, "Cap", { onPath: { pathId: "curve", startOffset: 0 } } as Partial<DesignElement>);
+    expect(matchSlides(frame("a", [onPath("t")]), frame("b", [onPath("t2")])).pairs[0].oneLine).toBe(false);
+  });
+});
+
+/**
+ * A hand-transcribed list cannot report a gap in the set it was given. This
+ * grades the morph's own table against the schema — the one surface that knows
+ * every element key — so a field added to the DSL is red until someone decides
+ * whether a transition carries it.
+ */
+describe("morph carries every scalar", () => {
+  const properties = schema.definitions.DesignElement.properties as unknown as Record<
+    string,
+    { type?: string }
+  >;
+  const numericKeys = Object.entries(properties)
+    .filter(([key, spec]) => !key.includes("-") && spec.type === "number")
+    .map(([key]) => key);
+
+  /** Numeric at runtime, loosely typed in the schema because the key is shared. */
+  const LOOSE: Record<string, string> = {
+    gap: "oneOf — the ellipse's wedge gap and a layout gap shorthand share the key"
+  };
+
+  it("classifies every element key, in both directions", () => {
+    // The corners are the one structured value: they go through their own
+    // interpolator, because a rounding is a number or a four-tuple and a generic
+    // lerp would flatten one into the other.
+    const carried = new Set<string>([...CARRIED_FIELDS, "borderRadius", "cornerRadius"]);
+    for (const key of numericKeys) {
+      expect(
+        carried.has(key) || NOT_CARRIED[key] !== undefined,
+        `"${key}" is neither carried nor explained`
+      ).toBe(true);
+    }
+    for (const key of CARRIED_FIELDS) {
+      const spec = properties[key];
+      expect(spec, `"${key}" is not an element field`).toBeDefined();
+      if (LOOSE[key] === undefined) {
+        expect(["number", "boolean"], `"${key}" is not a value a morph can carry`).toContain(spec.type);
+      }
+    }
+    for (const key of Object.keys(NOT_CARRIED)) {
+      expect(properties[key], `"${key}" is not an element field`).toBeDefined();
+    }
+    for (const key of Object.keys(LOOSE)) {
+      expect(CARRIED_FIELDS, `"${key}" is explained but not carried`).toContain(key);
+    }
+  });
+
+  /**
+   * The structured half — the stacks and lists a layer carries. Same rule: a new
+   * one is red until someone says where it is handled, because "the fill faded
+   * but the stroke popped" is exactly the defect this file exists to catch.
+   */
+  const STRUCTURED: Record<string, string> = {
+    fills: "interpolate-appearance",
+    strokes: "interpolate-appearance",
+    effects: "interpolate-effects",
+    children: "walked by morphSlide itself",
+    overrides: "instance overrides — ids and values, not appearance",
+    spans: "interpolate-appearance — the runs' size, tracking and colour"
+  };
+
+  it("classifies every structured element key too", () => {
+    for (const [key, spec] of Object.entries(properties)) {
+      if (spec.type !== "array" || key.includes("-")) continue;
+      expect(STRUCTURED[key], `"${key}" is a list the morph does not account for`).toBeDefined();
+    }
+    for (const key of Object.keys(STRUCTURED)) {
+      expect(properties[key], `"${key}" is not an element field`).toBeDefined();
+    }
   });
 });
 
