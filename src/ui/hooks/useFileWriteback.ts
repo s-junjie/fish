@@ -12,6 +12,7 @@ import { createRecoveryStore, computeContentHash } from "../../core/persistence/
 import { createAssetStore } from "../../core/persistence/assets";
 import { shouldWarnBeforeUnload } from "../../core/persistence/unload-guard";
 import { createTimelineStore } from "../../core/persistence/timeline";
+import { FILE_CHANGED_REASON, setFileStamp, rememberFileStamp } from "../../core/persistence/file-stamp";
 import {
   loadHandle,
   persistHandle,
@@ -34,6 +35,7 @@ import {
 import {
   documentFromHtml,
   getFileId,
+  FILE_ID_META_RE,
   getLoadFailure,
   getOpenedFileHash,
   openedFileName,
@@ -147,6 +149,9 @@ export function useFileWriteback(
   const controllerRef = useRef<AutosaveController | null>(null);
   const tabRef = useRef<TabCoordinator | null>(null);
   const [otherTabActive, setOtherTabActive] = useState(false);
+  // Something other than this app changed the file on disk. Write-back is off
+  // until the user picks a side, so this outlives the notice that reports it.
+  const [fileConflict, setFileConflict] = useState(false);
   // What the file is known to hold, as the document OBJECT that was written.
   //
   // A reference, not a hash: the comparison this feeds runs inside
@@ -297,6 +302,12 @@ export function useFileWriteback(
           // The document that reached the file, which is not necessarily the
           // one on screen now: the user can type during a write.
           lastSavedDocRef.current = latestBaseline(status.doc);
+        } else if (status.kind === "file-conflict") {
+          // The controller has stopped writing. This stops the tab coordinator
+          // from re-arming it, which would otherwise retry the same write the
+          // moment another tab hands the file back.
+          writebackWantedRef.current = false;
+          setFileConflict(true);
         }
       },
       onTimeline: setVersions
@@ -584,6 +595,12 @@ export function useFileWriteback(
         // way to learn, and on the download path the only file the work now has.
         applyDocumentTitle(res.filename, store.getDoc().name);
         flashSaveStatus(t("app.saved"));
+      } else if (res.error === FILE_CHANGED_REASON) {
+        // ⌘S is the user's own call, but it is still a write over someone
+        // else's change: the honest answer is the same two the banner offers,
+        // not "Save failed" — which reads as a bug rather than a decision.
+        clearSaveStatus();
+        setFileConflict(true);
       } else {
         console.error("FISH: save failed:", res.error ?? "unknown");
         flashSaveStatus(t("app.saveFailed"), "error");
@@ -596,7 +613,86 @@ export function useFileWriteback(
       console.error("FISH: save threw:", err);
       flashSaveStatus(t("app.saveFailed"), "error");
     }
-  }, [activateAutosave, showActivateAutosave, store, fileDoc, flashSaveStatus, latestBaseline]);
+  }, [activateAutosave, showActivateAutosave, store, fileDoc, flashSaveStatus, clearSaveStatus, latestBaseline]);
+
+  /**
+   * Take the file's version, replacing this tab's edits — one undo step, and the
+   * edits are put into version history before they are replaced.
+   *
+   * The other half of the conflict. The file is the source of truth for everyone
+   * else looking at it, so arriving at what it actually holds has to be possible
+   * without reloading the tab and losing the recovery snapshot with it.
+   */
+  const loadFromDisk = useCallback(async () => {
+    const handle = getFileHandle();
+    if (!handle) return;
+    try {
+      const file = await (handle as { getFile: () => Promise<File> }).getFile();
+      const text = await file.text();
+      const doc = documentFromHtml(text);
+      if (!doc) {
+        // Unreadable is not a version to load. Refusing leaves the conflict
+        // standing; replacing the canvas with an empty document and calling
+        // that "the file's version" would be the worse answer by a distance.
+        flashSaveStatus(t("autosave.loadFromDiskUnreadable"), "error");
+        return;
+      }
+      // The writer may have replaced the whole container, `fish:fileId` stamp
+      // included, and every stored handle and recovery row is keyed by that id.
+      const writtenId = FILE_ID_META_RE.exec(text)?.[1];
+      if (writtenId) adoptFileId(writtenId);
+      // Set before the commit, which posts a change every flush reacts to: the
+      // stamp describes the file that was just read, and it must already be the
+      // baseline by the time anything can write.
+      setFileStamp(file.lastModified);
+      // Before the commit that overwrites the live document: this is what makes
+      // "my edits" a version the user can return to instead of a thing they lost.
+      await controllerRef.current?.commitVersion({
+        label: t("autosave.beforeLoadFromDisk"),
+        kind: "pre-restore"
+      });
+      setFileConflict(false);
+      setPendingRecovery(null);
+      setPreviewingId(null);
+      store.setViewDoc(null);
+      store.setReadOnly(null);
+      store.commit(doc);
+      const hash = payloadHashFromHtml(text);
+      setOpenedFileHash(hash);
+      await controllerRef.current?.noteFileSaved(store.getDoc(), hash);
+      // On screen and on disk are the same bytes again — the stamp set above is
+      // what makes the next flush write rather than report one more conflict.
+      lastSavedDocRef.current = latestBaseline(store.getDoc());
+      void persistHandle(getFileId()).catch(() => undefined);
+      writebackWantedRef.current = false;
+      if (tabRef.current?.isSuperseded()) writebackWantedRef.current = true;
+      else controllerRef.current?.setWritebackEnabled(true, { flush: false });
+      flashSaveStatus(t("autosave.loadedFromDisk"));
+    } catch (err) {
+      console.error("FISH: load from disk failed:", err);
+      flashSaveStatus(t("autosave.loadFromDiskUnreadable"), "error");
+    }
+  }, [store, flashSaveStatus, latestBaseline]);
+
+  /** Overwrite the file with this tab's version, once, on purpose. */
+  const keepMine = useCallback(async () => {
+    const doc = fileDoc();
+    // Captured before the write, like every other save: an edit made while the
+    // write is in flight must leave the unload guard saying "unsaved".
+    const source = store.getDoc();
+    const res = await writeBackFile(doc, { force: true });
+    if (!res.ok) {
+      setAutosaveStatus({ kind: "file-unavailable", reason: res.reason ?? "write-failed" });
+      return;
+    }
+    await controllerRef.current?.noteFileSaved(source, res.payloadHash);
+    lastSavedDocRef.current = latestBaseline(source);
+    setFileConflict(false);
+    writebackWantedRef.current = false;
+    if (tabRef.current?.isSuperseded()) writebackWantedRef.current = true;
+    else controllerRef.current?.setWritebackEnabled(true, { flush: false });
+    flashSaveStatus(t("app.saved"));
+  }, [store, fileDoc, flashSaveStatus, latestBaseline]);
 
   const triggerSaveAs = useCallback(async () => {
     flashSaveStatus(t("app.saving"), "busy");
@@ -612,6 +708,10 @@ export function useFileWriteback(
         if (res.handle) {
           setFileHandle(res.handle);
           if (res.fileId) adoptFileId(res.fileId);
+          // The baseline belongs to the file, and this tab now belongs to
+          // another one: keeping the old stamp would read the new file's own
+          // mtime as somebody else's edit on the very next flush.
+          await rememberFileStamp(res.handle);
           // This tab now edits the new file: the identity check must hold picks
           // against its name and bytes, the tab coordinator must guard its
           // channel, and the handle belongs under its id.
@@ -766,6 +866,9 @@ export function useFileWriteback(
     openedName,
     openedDocName,
     otherTabActive,
+    fileConflict,
+    loadFromDisk,
+    keepMine,
     writebackTarget,
     loadFailed,
     pickMismatch,

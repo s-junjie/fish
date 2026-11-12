@@ -4,6 +4,7 @@ import { IdbBackend, MemoryBackend, hasIndexedDb } from "./backend";
 import { getFileHandle, setFileHandle, clearFileHandle } from "./file-handle";
 import { openedFileName, pickerStartIn, getFileName } from "./file-paths";
 import { getFileId, adoptFileId, FILE_ID_META_RE } from "./file-identity";
+import { FILE_CHANGED_REASON, fileStamp, rememberFileStamp } from "./file-stamp";
 import { reconcileCommentsWithFile, clearDeletedCommentIds } from "../comments/comments-bridge";
 import { serializeSelf, payloadHashFromHtml, setPristineHtml } from "./container";
 import { documentTitleFor } from "../document-title";
@@ -49,17 +50,18 @@ let lastBackup: { fileId: string; text: string } | null = null;
  */
 async function backupBeforeWrite(
   handle: unknown
-): Promise<{ ok: true; text?: string } | { ok: false; reason: string }> {
+): Promise<{ ok: true; text?: string; mtime?: number } | { ok: false; reason: string }> {
   try {
-    const getFile = (handle as { getFile?: () => Promise<{ text: () => Promise<string> }> } | null)?.getFile;
+    const getFile = (handle as { getFile?: () => Promise<{ text: () => Promise<string>; lastModified?: number }> } | null)?.getFile;
     if (typeof getFile !== "function") return { ok: false, reason: "no-getFile" };
-    const text = await (await getFile.call(handle)).text();
+    const file = await getFile.call(handle);
+    const text = await file.text();
     // An empty file has no work to lose, so there is nothing to back up. Refusing
     // here made the first write into a freshly created file impossible.
-    if (!text) return { ok: true, text };
+    if (!text) return { ok: true, text, mtime: file.lastModified };
     const fileId = getFileId();
     if (lastBackup && lastBackup.fileId === fileId && lastBackup.text === text) {
-      return { ok: true, text };
+      return { ok: true, text, mtime: file.lastModified };
     }
     await backupBackend.put("backups", {
       key: fileId,
@@ -67,7 +69,7 @@ async function backupBeforeWrite(
       at: new Date().toISOString()
     });
     lastBackup = { fileId, text };
-    return { ok: true, text };
+    return { ok: true, text, mtime: file.lastModified };
   } catch (e) {
     return { ok: false, reason: e instanceof Error ? e.message : String(e) };
   }
@@ -117,11 +119,32 @@ export async function writeFileSafely(
   doc: DesignDocument,
   handle: unknown,
   templateHtml?: string,
-  opts: { requireBackup?: boolean } = {}
+  opts: { requireBackup?: boolean; requireUnchanged?: boolean } = {}
 ): Promise<WriteOutcome> {
   const backup = await backupBeforeWrite(handle);
   if (!backup.ok && opts.requireBackup) {
     return { ok: false, reason: `backup-unavailable:${backup.reason}` };
+  }
+  // Refuse to replace content that something else put there. The read that
+  // takes the pre-write backup already answers this — `lastModified` comes back
+  // on the same `File` — so the check costs a comparison, not a read.
+  //
+  // It lives here rather than in the three callers because all of them arrive
+  // here: auto-save, ⌘S and the in-place shell update. A guard installed in one
+  // of them is the same hole behind a different door.
+  //
+  // `requireUnchanged: false` is only for a write that is not aimed at the file
+  // this tab has been editing — a ⌘S that had to open `showSaveFilePicker`,
+  // which names a file this session has never read and therefore has no
+  // baseline for.
+  if (
+    opts.requireUnchanged !== false &&
+    backup.ok &&
+    backup.mtime !== undefined &&
+    fileStamp() !== undefined &&
+    backup.mtime !== fileStamp()
+  ) {
+    return { ok: false, reason: FILE_CHANGED_REASON };
   }
   // A fresh timestamp on a copy: `doc` is referenced by undo snapshots, so
   // writing it in place would silently rewrite history entries.
@@ -134,6 +157,10 @@ export async function writeFileSafely(
     ...(mergedComments ? { comments: mergedComments } : {})
   });
   await writeBytesAtomically(handle, fileContent);
+  // The file now holds these bytes, so its stamp is the new baseline: without
+  // this the next flush would compare against the pre-write value, decide the
+  // file had been changed by someone else, and refuse its own write.
+  await rememberFileStamp(handle);
   // An explicit template (an in-place shell update) replaced the container on
   // disk; promote it to the pristine template so any subsequent auto-save or
   // ⌘S before reload does not pour the document back into the old shell.
@@ -216,6 +243,10 @@ export async function saveInPlace(doc: DesignDocument): Promise<{
     openedFileName() || `${(doc.name || "untitled").toLowerCase().replace(/\s+/g, "-")}.fish.html`;
 
   let currentFileHandle = getFileHandle();
+  // Only a handle this tab already had can be checked against the stamp. Both
+  // branches that replace it below name a file this session has never read, so
+  // they clear the flag rather than compare against another file's baseline.
+  let requireUnchanged = !!currentFileHandle;
 
   if (typeof window !== "undefined" && "showSaveFilePicker" in window) {
     try {
@@ -237,6 +268,7 @@ export async function saveInPlace(doc: DesignDocument): Promise<{
         }
         if (perm !== "granted") {
           currentFileHandle = null;
+          requireUnchanged = false;
           setFileHandle(null);
         }
       }
@@ -255,13 +287,14 @@ export async function saveInPlace(doc: DesignDocument): Promise<{
           ]
         });
         setFileHandle(currentFileHandle);
+        requireUnchanged = false;
       }
 
       // Routed through the shared writer so the pre-write backup is taken here
       // too — this is the one path the auto-save layer does not control. The
       // user asked for this save, so a missing backup is reported rather than
       // treated as a reason to refuse.
-      const outcome = await writeFileSafely(doc, currentFileHandle, templateHtml);
+      const outcome = await writeFileSafely(doc, currentFileHandle, templateHtml, { requireUnchanged });
       if (!outcome.ok) {
         return { success: false, method: "fsa", filename, error: outcome.reason };
       }

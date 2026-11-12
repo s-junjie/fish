@@ -4,6 +4,7 @@ import { computeContentHash, resolveFork, type ForkResolution, type RecoveryReco
 import type { AssetStore } from "./assets";
 import { toSnapshotAssets, fromSnapshotAssets, hasMissingAssets, type SnapshotDoc } from "./assets";
 import { writeBackFile, saveDocAsNewFile, type WritebackPermission } from "./writeback";
+import { FILE_CHANGED_REASON } from "./file-stamp";
 import {
   applyRetention,
   estimateSize,
@@ -35,6 +36,12 @@ export type AutosaveStatus =
    */
   | { kind: "file-saved"; at: string; doc: DesignDocument }
   | { kind: "file-unavailable"; reason: string }
+  /**
+   * The file on disk was changed by something other than this app, and writing
+   * now would replace that change with ours. Write-back is off until the user
+   * says which version wins.
+   */
+  | { kind: "file-conflict" }
   | { kind: "error"; message: string };
 
 export interface VersionSummary {
@@ -374,6 +381,13 @@ export class AutosaveController {
         if (res.ok) {
           if (res.payloadHash) await this.anchorToFile(res.payloadHash);
           this.emit({ kind: "file-saved", at, doc });
+        } else if (res.reason === FILE_CHANGED_REASON) {
+          // Stand down for the rest of the session, not just this flush. The
+          // next one carries the same edits, so retrying would destroy the same
+          // foreign change one debounce later — and nothing is lost by stopping:
+          // the recovery snapshot above already holds this document.
+          this.writebackEnabled = false;
+          this.emit({ kind: "file-conflict" });
         } else {
           this.emit({ kind: "file-unavailable", reason: res.reason ?? "unknown" });
         }

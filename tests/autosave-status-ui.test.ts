@@ -31,6 +31,7 @@ describe("autosave status reaches the UI", () => {
       "file-writing",
       "file-saved",
       "file-unavailable",
+      "file-conflict",
       "error"
     ]);
   });

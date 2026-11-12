@@ -12,6 +12,7 @@ import {
 } from "../data-bridge";
 import { documentTitleFor } from "../document-title";
 import { writeBytesAtomically } from "./atomic-write";
+import { setFileStamp } from "./file-stamp";
 import { IdbBackend, MemoryBackend, hasIndexedDb } from "./backend";
 import { createHandleStore, type HandleStore, type FileSystemFileHandleLike } from "./handles";
 
@@ -126,11 +127,13 @@ export async function verifyPickedFile(
 ): Promise<{ ok: boolean; reason?: string }> {
   // Only reachable outside a browser (tests); a real page always has a baseline.
   if (!expectedHash) return { ok: true };
-  const getFile = (handle as { getFile?: () => Promise<{ text: () => Promise<string> }> }).getFile;
+  const getFile = (handle as { getFile?: () => Promise<{ text: () => Promise<string>; lastModified?: number }> }).getFile;
   if (typeof getFile !== "function") return { ok: false, reason: "cannot-read" };
   let text: string;
+  let read: { text: () => Promise<string>; lastModified?: number };
   try {
-    text = await (await getFile.call(handle)).text();
+    read = await getFile.call(handle);
+    text = await read.text();
   } catch {
     return { ok: false, reason: "cannot-read" };
   }
@@ -146,6 +149,11 @@ export async function verifyPickedFile(
   // Strict on purpose: a handle with no name at all cannot be shown to be this
   // file, and a real File System Access handle always carries one.
   if (expectedName && handle.name !== expectedName) return { ok: false, reason: "name-mismatch" };
+  // This read is also the moment the session learns what the file looks like
+  // now, so it is the baseline the next write compares against. Without it the
+  // first flush after a reload has nothing to compare, and a change made between
+  // opening the file and the first edit is overwritten unchecked.
+  setFileStamp(read.lastModified);
   return { ok: true };
 }
 
@@ -207,8 +215,15 @@ export interface WritebackResult {
  * Silently rewrite the open `.fish.html` in place via FSA. Requires an already
  * granted handle — unlike `saveInPlace` this never prompts, so it is safe to
  * call from the auto-save flush path.
+ *
+ * `force` is the user's "keep mine": one overwrite, on purpose, after the file
+ * was seen to hold someone else's changes. It is the caller's job to have
+ * offered the alternative first.
  */
-export async function writeBackFile(doc: DesignDocument): Promise<WritebackResult> {
+export async function writeBackFile(
+  doc: DesignDocument,
+  opts: { force?: boolean } = {}
+): Promise<WritebackResult> {
   const h = getFileHandle();
   if (!h || typeof h.createWritable !== "function") return { ok: false, reason: "no-handle" };
   const perm = await queryWritebackPermission();
@@ -219,7 +234,10 @@ export async function writeBackFile(doc: DesignDocument): Promise<WritebackResul
     // without the user ever pressing anything. The explicit ⌘S path does not
     // require it — that save is the user's own call, and it reports the missing
     // net instead of refusing.
-    const outcome = await writeFileSafely(doc, h, undefined, { requireBackup: true });
+    const outcome = await writeFileSafely(doc, h, undefined, {
+      requireBackup: true,
+      requireUnchanged: opts.force !== true
+    });
     if (!outcome.ok) return { ok: false, reason: outcome.reason };
     return { ok: true, payloadHash: outcome.payloadHash };
   } catch (e) {

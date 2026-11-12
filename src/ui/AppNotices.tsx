@@ -29,6 +29,14 @@ interface AppNoticesProps {
   busyMessage?: string | null;
   /** The panel being open IS history mode: this notice would be in its way. */
   historyOpen: boolean;
+  /**
+   * Something other than this app changed the file on disk, so write-back is
+   * stopped. Both answers are destructive in one direction — that is why it is
+   * a question rather than a toast.
+   */
+  fileConflict?: boolean;
+  onLoadFromDisk?: () => void;
+  onKeepMine?: () => void;
   /** Bitmaps an import could not read; the notice offers the folder that holds them. */
   pendingAssets?: PendingAssets | null;
   onAttachAssetFolder?: (files: FileList) => void;
@@ -52,6 +60,9 @@ export function AppNotices(props: AppNoticesProps) {
     onHintDismiss,
     busyMessage,
     historyOpen,
+    fileConflict,
+    onLoadFromDisk,
+    onKeepMine,
     pendingAssets,
     onAttachAssetFolder,
     onDismissAssetFolder,
@@ -64,6 +75,7 @@ export function AppNotices(props: AppNoticesProps) {
   if (
     (!pendingRecovery || historyOpen) &&
     !loadFailed &&
+    !(fileConflict && !historyOpen) &&
     !hintMessage &&
     !busyMessage &&
     !pendingAssets
@@ -108,6 +120,37 @@ export function AppNotices(props: AppNoticesProps) {
               }}
             >
               {t("autosave.recoveryDiscard")}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* The file on disk moved on without this tab. Auto-save has already
+          stopped writing, so this is not a warning about something that might
+          happen — it is the only place the two versions can be chosen between.
+          Held back while history mode is open for the same reason as recovery:
+          the panel makes the document read-only, and both answers here replace
+          it. The badge keeps saying "paused" until it is answered, so the
+          question survives the panel being open. */}
+      {fileConflict && !historyOpen && (
+        <div
+          data-file-conflict="true"
+          className="pointer-events-auto font-sans bg-surface border border-rule-strong text-ink text-ui px-3 py-1.5 rounded-dock flex items-center gap-3 animate-pop-in"
+        >
+          <div className={ROW_CLASS}>
+            <AlertTriangle size={14} className="text-measure-coral flex-none" />
+            <span>{t("autosave.fileChanged")}</span>
+          </div>
+          <div className={ROW_TIGHT_CLASS}>
+            {/* Primary on the file's version, not on the overwrite: loading is
+                the recoverable direction — one ⌘Z returns the edits, and they
+                were just written to version history. Overwriting the other
+                program's work is not undoable from this side. */}
+            <Button variant="primary" size="text" onClick={onLoadFromDisk}>
+              {t("autosave.fileChangedLoad")}
+            </Button>
+            <Button variant="ghost" size="text" onClick={onKeepMine}>
+              {t("autosave.fileChangedKeep")}
             </Button>
           </div>
         </div>

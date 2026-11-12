@@ -168,7 +168,11 @@ export function AutosaveBadge(props: AutosaveBadgeProps) {
   }, [canUseFilePicker, onImportJson]);
 
   // Derive visual state
-  const isConflict = otherTabActive;
+  // Two different holders of the file, one label: another tab, and a program
+  // outside this app. Both mean "this tab is not allowed to write", which is the
+  // only thing the badge is asked to say.
+  const fileConflict = autosaveStatus?.kind === "file-conflict";
+  const isConflict = otherTabActive || fileConflict;
   const isSaving = autosaveStatus?.kind === "file-writing" || autosaveStatus?.kind === "local-saving";
   const isFileSaved = autosaveStatus?.kind === "file-saved";
   const isLocalSaved = autosaveStatus?.kind === "local-saved";
@@ -200,7 +204,7 @@ export function AutosaveBadge(props: AutosaveBadgeProps) {
 
   if (isConflict) {
     labelText = t("autosave.statusPaused");
-    descText = t("autosave.popoverDescPaused");
+    descText = fileConflict ? t("autosave.popoverDescFileConflict") : t("autosave.popoverDescPaused");
     dotColor = "bg-measure-coral";
     statusKind = "error";
   } else if (isSaving) {
