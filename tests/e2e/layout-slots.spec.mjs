@@ -1,6 +1,7 @@
 import { chromium } from "playwright";
 import { pathToFileURL } from "url";
 import fs from "fs";
+import os from "os";
 import path from "path";
 
 // Two UI-level behaviours unit tests cannot reach:
@@ -245,8 +246,9 @@ check(
   JSON.stringify(freeRows)
 );
 
-fs.mkdirSync(".workbuddy-ai/artifacts", { recursive: true });
-await page.screenshot({ path: ".workbuddy-ai/artifacts/layout-p1p2.png" });
+const artifactDir = path.join(os.tmpdir(), "fish-e2e-artifacts");
+fs.mkdirSync(artifactDir, { recursive: true });
+await page.screenshot({ path: path.join(artifactDir, "layout-p1p2.png") });
 
 await browser.close();
 

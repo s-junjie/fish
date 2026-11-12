@@ -7,7 +7,7 @@
  */
 
 import { ColorToken, DesignDocument, DesignElement, DesignToken, GradientStop, Paint, Stroke } from "../dsl/types";
-import { getActivePage } from "../dsl/types";
+import { getActivePage, STYLE_BINDING_FIELDS } from "../dsl/types";
 import { createId } from "../id";
 import { parseColorAlpha } from "../geometry/color-utils";
 import { resolveColorTokenHex } from "./style-sync";
@@ -162,10 +162,9 @@ export function countStyleUses(doc: DesignDocument, styleId: string): number {
   let count = 0;
 
   const visit = (el: DesignElement): void => {
-    if (el.fillStyleId === styleId) count++;
-    if (el.strokeStyleId === styleId) count++;
-    if (el.effectStyleId === styleId) count++;
-    if (el.type === "text" && el.textStyleId === styleId) count++;
+    for (const field of STYLE_BINDING_FIELDS) {
+      if ((el as unknown as Record<string, unknown>)[field] === styleId) count++;
+    }
     if (el.type === "instance" && Array.isArray(el.overrides)) {
       for (const override of el.overrides) {
         if (

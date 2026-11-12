@@ -296,13 +296,17 @@ function applyToPaint(
     }
     edit().color = color;
     edit().tokenId = found.token.id;
-  }
-
-  const bound = lookupToken(entry.tokenId, ctx.table);
-  if (bound) {
-    const color = colorOf(bound, ctx);
-    edit().tokenId = bound.id;
-    if (color !== undefined) edit().color = color;
+  } else {
+    // Only a row that stated NO new reference is re-materialised from its own
+    // `tokenId`. Doing it unconditionally read the INPUT's id, so a row that
+    // rebinds — `{ tokenId: "tok_old", color: "$new" }` — was bound to the new
+    // token and had the old one written back a line later.
+    const bound = lookupToken(entry.tokenId, ctx.table);
+    if (bound) {
+      const color = colorOf(bound, ctx);
+      edit().tokenId = bound.id;
+      if (color !== undefined) edit().color = color;
+    }
   }
 
   const stops = entry.stops;
@@ -556,7 +560,11 @@ function applyToElement(
   // The documented spelling is `tokenId: "<id>"`, and an id is minted. Accepting
   // the NAME there too costs one lookup and makes the published dialect usable
   // by the author who cannot read an id out of the file.
-  const bindings = el.tokenBindings;
+  //
+  // Read from `out`, not from `el`: the number-slot pass above may have just
+  // bound a NEW token to one of these props, and replaying the input's binding
+  // would write the old id — and the old value — straight back over it.
+  const bindings = out.tokenBindings;
   if (isPlainObject(bindings)) {
     for (const [prop, bound] of Object.entries(bindings)) {
       const token = lookupToken(bound, mode.table);

@@ -15,6 +15,7 @@ import { renderStylePreview } from "./StylePreview";
 import { useStyleBindAction } from "../hooks/useStyleBindAction";
 import { PAINT_ROW_CLASS, PAINT_ROW_RULE_IDLE, PAINT_ROW_RULE_OPEN } from "./paint-row-style";
 import { Section } from "./SectionHeader";
+import { Button } from "../Button";
 import { LayoutGuidePopover } from "./LayoutGuidePopover";
 import { GUIDE_KIND_ICON } from "./layout-guide-fields";
 import { t } from "../../i18n";
@@ -127,24 +128,24 @@ export function LayoutGuideSection({
       title={t("layoutGuide.title")}
       className="space-y-1.5"
       trailing={
-        <div className="flex items-center gap-0.5">
+        <>
           {styleAction.trigger}
           {!boundStyle && (
-          <button
-            type="button"
-            data-layout-guide-add="true"
-            title={t("layoutGuide.add")}
-            aria-label={t("layoutGuide.add")}
-            onClick={() => {
-              write([...guides, newGuide()]);
-              setOpen(null);
-            }}
-            className="p-1 rounded-ctl text-ink-dim hover:text-ink hover:bg-raised transition-colors cursor-default"
-          >
-            <Plus size={13} />
-          </button>
+            <Button
+              size="icon"
+              type="button"
+              data-layout-guide-add="true"
+              title={t("layoutGuide.add")}
+              aria-label={t("layoutGuide.add")}
+              onClick={() => {
+                write([...guides, newGuide()]);
+                setOpen(null);
+              }}
+            >
+              <Plus size={13} />
+            </Button>
           )}
-        </div>
+        </>
       }
     >
       {boundStyle ? (

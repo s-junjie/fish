@@ -5,7 +5,8 @@ import {
   DesignElement,
   DesignStyle,
   DesignToken,
-  InstanceElement
+  InstanceElement,
+  STYLE_BINDING_FIELDS
 } from "../dsl/types";
 import { paintLayers } from "../dsl/image-fill";
 import { findMasterComponent } from "./component-inventory";
@@ -14,8 +15,6 @@ import { isContainer, flattenElements } from "../geometry/tree-ops";
 
 
 export const FISH_CLIPBOARD_TAG = "fish-clipboard@2";
-
-const STYLE_ID_KEYS = ["fillStyleId", "strokeStyleId", "effectStyleId", "textStyleId"] as const;
 
 /** Row spacing for parked masters; matches the gap `component-hoist` uses. */
 const MASTER_ROW_GAP = 40;
@@ -152,7 +151,7 @@ function collectReferencedStyles(
   const wanted = new Set<string>();
   for (const el of flattenElements([...elements])) {
     const bound = el as unknown as Record<string, unknown>;
-    for (const key of STYLE_ID_KEYS) {
+    for (const key of STYLE_BINDING_FIELDS) {
       const id = bound[key];
       if (typeof id === "string" && id) wanted.add(id);
     }

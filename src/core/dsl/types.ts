@@ -636,6 +636,28 @@ export interface LayoutGuideFields {
 }
 
 /**
+ * The element fields that name a `doc.styles[]` entry.
+ *
+ * One list because five readers walk it — the load-time dangling-reference
+ * check, the style delete's unbind, the usage count, and both halves of the
+ * cross-file clipboard — and a field any one of them forgets is a binding that
+ * survives the delete of its style, counts as zero uses, is not carried by a
+ * copy, or is reported as dangling on every load. `textStyleId` only ever
+ * appears on a text layer and `layoutGuideStyleId` only on a container; reading
+ * the key off the wrong type yields `undefined`, which is what keeps the list
+ * flat.
+ */
+export const STYLE_BINDING_FIELDS = [
+  "fillStyleId",
+  "strokeStyleId",
+  "effectStyleId",
+  "textStyleId",
+  "layoutGuideStyleId"
+] as const;
+
+export type StyleBindingField = (typeof STYLE_BINDING_FIELDS)[number];
+
+/**
  * Where a child sits in its grid parent, for the children auto-flow would put
  * somewhere else — CSS `grid-column` / `grid-row`.
  *

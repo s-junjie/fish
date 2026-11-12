@@ -292,6 +292,71 @@ describe("modes", () => {
   });
 });
 
+describe("a new value replaces the binding it supersedes", () => {
+  // The two tokens that make "the old binding" a different answer from the new
+  // one; with a single token per slot every one of these cases would pass by
+  // coincidence.
+  const OTHER = [
+    { id: "tok_tight", name: "space/tight", type: "number", value: 4, category: "spacing" },
+    { id: "tok_muted", name: "color/muted", type: "color", value: "#999999" }
+  ];
+  const withOther = { tokens: [...tokens, ...OTHER] };
+
+  it("rebinds a number slot with the NEW token, not the one it was already bound to", () => {
+    const { element } = only([frame({ gap: "$space/md", tokenBindings: { gap: "tok_tight" } })], withOther);
+    expect(element.gap).toBe(16);
+    expect(element.tokenBindings).toEqual({ gap: "tok_space" });
+  });
+
+  it("rebinds a paint with the NEW token, not the one its tokenId already names", () => {
+    const { element } = only(
+      [{ id: "e", type: "rect", fills: [{ type: "solid", color: "$color/ink", tokenId: "tok_muted" }] }],
+      withOther
+    );
+    expect(element.fills).toEqual([{ type: "solid", color: "#111111", tokenId: "tok_ink" }]);
+  });
+
+  it("keeps a tokenId that names its token by name, when no new reference is written", () => {
+    const { element } = only([
+      { id: "e", type: "rect", fills: [{ type: "solid", color: "#999999", tokenId: "color/muted" }] }
+    ], withOther);
+    expect(element.fills).toEqual([{ type: "solid", color: "#999999", tokenId: "tok_muted" }]);
+  });
+
+  const boundCard = () =>
+    normalizeDesignDocument(doc([frame({ borderRadius: 12, tokenBindings: { borderRadius: "tok_radius" } })])).document;
+
+  it("unsets the number token a literal patch overwrites", () => {
+    // Without the cleanup the merge writes 20, then the shorthand pass replays
+    // the binding and puts 12 back — a patch that reports success and paints
+    // the old value.
+    const result = applyOps(boundCard(), [{ op: "patch", targetId: "card", props: { "border-radius": 20 } }]);
+    expect(result.outcomes[0]).toMatchObject({ ok: true });
+    const card = getActivePage(result.doc).children[0] as Record<string, any>;
+    expect(card.borderRadius).toBe(20);
+    expect(card.tokenBindings).toBeUndefined();
+  });
+
+  it("rebinds rather than unsets when the patch names a token", () => {
+    const result = applyOps(boundCard(), [{ op: "patch", targetId: "card", props: { "border-radius": "$space/md" } }]);
+    const card = getActivePage(result.doc).children[0] as Record<string, any>;
+    expect(card.borderRadius).toBe(16);
+    expect(card.tokenBindings).toEqual({ borderRadius: "tok_space" });
+  });
+
+  it("clears the row's token when a literal border colour is patched", () => {
+    // A stroke row's colour has three sources — `color`, `paint`, and the token
+    // `tokenId` names — and `applyToPaint` re-materialises the last one after the
+    // merge. A patch that dropped only the first two painted the old colour.
+    const stroked = normalizeDesignDocument(doc([frame({ borderColor: "$color/ink" })])).document;
+    const result = applyOps(stroked, [{ op: "patch", targetId: "card", props: { "border-color": "#ff0000" } }]);
+    expect(result.outcomes[0]).toMatchObject({ ok: true });
+    const card = getActivePage(result.doc).children[0] as Record<string, any>;
+    expect(card.strokes[0].color.toLowerCase()).toBe("#ff0000");
+    expect(card.strokes[0].tokenId).toBeUndefined();
+  });
+});
+
 describe("the failures are loud", () => {
   it("reports a name no token carries, and drops the declaration", () => {
     const { element, tokenRepairs } = only([{ id: "e", type: "rect", background: "$color/surfce" }]);

@@ -37,11 +37,11 @@ const DOC = {
           height: 260,
           fills: [{ type: "solid", color: "#222222" }],
           children: [
-            { id: "label", type: "text", name: "Label", x: 40, y: 40, width: 200, height: 40, content: "Hello there", style: { fontFamily: "Inter", fontSize: 20, color: "#FFFFFF" } },
+            { id: "label", type: "text", name: "Label", x: 40, y: 40, width: 200, height: 40, content: "Hello there", style: { fontFamily: "Inter, sans-serif", fontSize: 20, color: "#FFFFFF" } },
             { id: "box", type: "rect", name: "Box", x: 40, y: 140, width: 120, height: 60, fills: [{ type: "solid", color: "#3E63DD" }] }
           ]
         },
-        { id: "free", type: "text", name: "Free", x: 560, y: 120, width: 240, height: 40, content: "Free text", style: { fontFamily: "Inter", fontSize: 20, color: "#000000" } }
+        { id: "free", type: "text", name: "Free", x: 560, y: 120, width: 240, height: 40, content: "Free text", style: { fontFamily: "Inter, sans-serif", fontSize: 20, color: "#000000" } }
       ]
     }
   ],

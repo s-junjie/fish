@@ -176,11 +176,9 @@ await idle();
 check("R restarts the deck", (await counter()) === "1 / 4", `got ${await counter()}`);
 
 // ------------------------------------------------------------------- the wheel
-// One gesture, one slide. A trackpad flick is not one event — two fingers emit
-// dozens inside a few hundred ms — and a per-event step sent a single flick to
-// the end of the deck. Dispatched from inside the page so the burst lands in one
-// frame, the way a real flick does; twelve awaited CDP round trips would pace
-// themselves out of any cooldown.
+// A wheel over a deck scrolls the slide or its containers, never jumping to the
+// next slide (see `src/core/presentation/scroll.ts`): slides move on a click,
+// an arrow key or the deck's own controls.
 const wheelBurst = async (deltaY) => {
   await page.mouse.move(VIEW.width / 2, VIEW.height / 2);
   await page.evaluate((dy) => {
@@ -190,15 +188,10 @@ const wheelBurst = async (deltaY) => {
 };
 await wheelBurst(120);
 await idle();
-check("one wheel gesture advances one slide", (await counter()) === "2 / 4", `12 wheel events -> ${await counter()}`);
-await page.waitForTimeout(450);
-await wheelBurst(-120);
-await idle();
-check("and one gesture back is one slide", (await counter()) === "1 / 4", `got ${await counter()}`);
-
+check("wheel over a fitting slide does not jump slides", (await counter()) === "1 / 4", `12 wheel events -> ${await counter()}`);
 await page.keyboard.press("End");
 await idle();
-check("the wheel did not skip us past the end", (await counter()) === "4 / 4", `got ${await counter()}`);
+check("End still reaches the last slide", (await counter()) === "4 / 4", `got ${await counter()}`);
 await page.keyboard.press("Home");
 await idle();
 

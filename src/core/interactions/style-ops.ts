@@ -12,6 +12,7 @@ import {
   PaintStyle,
   Stroke,
   StrokeStyle,
+  STYLE_BINDING_FIELDS,
   StyleType,
   TextElement,
   TextStyle,
@@ -330,20 +331,12 @@ export function removeStyleFromDoc(doc: DesignDocument, styleId: string): Design
     let changed = false;
     let next = el;
 
-    if (el.fillStyleId === styleId) {
-      next = unbindStyleId(next, "fillStyleId");
-      changed = true;
-    }
-    if (el.strokeStyleId === styleId) {
-      next = unbindStyleId(next, "strokeStyleId");
-      changed = true;
-    }
-    if (el.effectStyleId === styleId) {
-      next = unbindStyleId(next, "effectStyleId");
-      changed = true;
-    }
-    if (el.type === "text" && (el as TextElement).textStyleId === styleId) {
-      next = unbindStyleId(next, "textStyleId");
+    for (const field of STYLE_BINDING_FIELDS) {
+      if ((el as unknown as Record<string, unknown>)[field] !== styleId) continue;
+      // A guide binding has no instance-`null` form: it is chrome rather than
+      // paint, it is never an override, and `unbindLayoutGuideStyle` — the
+      // writer that produced it — deletes the key.
+      next = field === "layoutGuideStyleId" ? unbindLayoutGuideStyle(next) : unbindStyleId(next, field);
       changed = true;
     }
 

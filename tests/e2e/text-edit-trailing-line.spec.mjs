@@ -35,7 +35,7 @@ const DOC = {
           height: 300,
           content: "L\nI\nG\nH\nT",
           sizing: { height: "fit-content" },
-          style: { fontFamily: "Inter", fontSize: 28, color: "#333333", verticalAlign: "bottom" }
+          style: { fontFamily: "Inter, sans-serif", fontSize: 28, color: "#333333", verticalAlign: "bottom" }
         }
       ]
     }

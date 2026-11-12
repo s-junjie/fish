@@ -114,20 +114,20 @@ const marker = await page.evaluate(() => {
   const overlapX = Math.min(pin.right, card.right) - Math.max(pin.left, card.left);
   const overlapY = Math.min(pin.bottom, card.bottom) - Math.max(pin.top, card.top);
   return {
-    pin: { cx: pin.x + pin.width / 2, cy: pin.y + pin.height / 2 },
+    pin: { left: pin.left, bottom: pin.bottom },
     overlaps: overlapX > 0 && overlapY > 0
   };
 });
 yes(
-  "the pin is centred on the press",
-  Math.abs(marker.pin.cx - clickX) <= 1 && Math.abs(marker.pin.cy - clickY) <= 1,
+  "the pin tip is anchored on the press",
+  Math.abs(marker.pin.left - clickX) <= 1 && Math.abs(marker.pin.bottom - clickY) <= 1,
   JSON.stringify(marker.pin)
 );
 yes("the window does not cover the pin", !marker.overlaps, JSON.stringify(marker));
 
 const topmost = await page.evaluate(() => {
   const composer = document.querySelector("[data-ui-panel=comment-composer]");
-  const send = [...composer.querySelectorAll("button")].find((b) => b.textContent.trim() === "Send");
+  const send = composer.querySelector('button[aria-label="Send"]');
   if (!send) return { found: false };
   const r = send.getBoundingClientRect();
   const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
@@ -135,8 +135,8 @@ const topmost = await page.evaluate(() => {
 });
 yes("the composer's Send is the topmost element under the pointer", topmost.reachesSend, JSON.stringify(topmost));
 
-await composer.locator("textarea").fill("Make this block brand amber");
-await composer.locator("button", { hasText: /^Send$/ }).click();
+await composer.locator("input").fill("Make this block brand amber");
+await composer.locator('button[aria-label="Send"]').click();
 await page.waitForTimeout(500);
 
 const created = await state();
@@ -176,7 +176,10 @@ yes(
   dragged.rowLabels[0]?.startsWith("Other Block"),
   JSON.stringify(dragged.rowLabels)
 );
-const moved = await pinCentre();
+const moved = await page.evaluate(() => {
+  const r = document.querySelector("[data-comment-pin]").getBoundingClientRect();
+  return { x: Math.round(r.left), y: Math.round(r.bottom) };
+});
 yes(
   "the pin ends where it was dropped",
   Math.abs(moved.x - otherCentre.x) < 2 && Math.abs(moved.y - otherCentre.y) < 2,

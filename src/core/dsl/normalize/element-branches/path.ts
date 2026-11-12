@@ -83,6 +83,13 @@ export const normalizePath: ElementBranch = ({ el, base, path, repairs }) => {
       const baked = bakeViewBox(base.d, box, width, height);
       if (baked) {
         base.d = baked;
+        // The box IS the target the viewBox was baked against, so an axis the
+        // author omitted has to be written down. `base` was initialised from
+        // `pxLength(el.width)` and kept 0, which left a 24×24 drawing inside a
+        // 0×0 element: nothing painted, and `check --geometry` called it
+        // zero-size in a document that looked authored.
+        base.width = round2(width);
+        base.height = round2(height);
         repairs.push({
           kind: "element",
           path: `${path}/viewBox`,

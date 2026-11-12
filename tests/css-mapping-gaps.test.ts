@@ -218,6 +218,15 @@ describe("a path's `viewBox`", () => {
   it("keeps the viewBox's own extent when the box is not declared", () => {
     const { el } = normalize({ type: "path", width: undefined, height: undefined, viewBox: "0 0 24 24", d: "M0 0 H24 V24 H0 Z" }, "path");
     expect(boundsOf(prop(el, "d"))).toMatchObject({ maxX: 24, maxY: 24 });
+    // The geometry was baked to that extent, so the BOX has to be it too: the
+    // element used to keep the 0×0 it was initialised with, which made a
+    // correctly-scaled drawing invisible.
+    expect([el.width, el.height]).toEqual([24, 24]);
+  });
+
+  it("writes the axis it filled in and keeps the one it was given", () => {
+    const { el } = normalize({ type: "path", width: 48, height: undefined, viewBox: "0 0 24 24", d: "M0 0 H24 V24 H0 Z" }, "path");
+    expect([el.width, el.height]).toEqual([48, 24]);
   });
 
   it("subtracts the viewBox's origin", () => {

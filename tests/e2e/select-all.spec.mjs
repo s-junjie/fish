@@ -47,7 +47,7 @@ const text = (id, x, y, content) => ({
   width: 240,
   height: 40,
   content,
-  style: { fontFamily: "Inter", fontSize: 20, color: "#111827" }
+  style: { fontFamily: "Inter, sans-serif", fontSize: 20, color: "#111827" }
 });
 
 const applySetup = (elements) =>

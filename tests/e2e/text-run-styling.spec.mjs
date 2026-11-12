@@ -32,7 +32,7 @@ const ELEMENTS = () => [
     width: 360,
     height: 48,
     content: "Hello World",
-    style: { fontFamily: "Inter", fontSize: 24, color: "#000000" }
+    style: { fontFamily: "Inter, sans-serif", fontSize: 24, color: "#000000" }
   },
   {
     id: "other",
@@ -43,7 +43,7 @@ const ELEMENTS = () => [
     width: 360,
     height: 48,
     content: "Second Line",
-    style: { fontFamily: "Inter", fontSize: 24, color: "#000000" }
+    style: { fontFamily: "Inter, sans-serif", fontSize: 24, color: "#000000" }
   },
   {
     id: "pad",
@@ -425,7 +425,7 @@ await page.evaluate((elements) => {
     width: 360,
     height: 48,
     content: "Hello World",
-    style: { fontFamily: "Inter", fontSize: 24, color: "#3355FF" },
+    style: { fontFamily: "Inter, sans-serif", fontSize: 24, color: "#3355FF" },
     fills: [{ type: "solid", color: "#3355FF", tokenId: "tok_color" }]
   }
 ]);

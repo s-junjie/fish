@@ -20,12 +20,15 @@ const html = path.resolve(process.cwd(), process.argv[2] ?? "dist/index.html");
 
 /** Each panel is identified by text only it renders, so "the panel opened" cannot pass on the header alone. */
 const PLUGINS = [
-  { dir: "fish.icons", name: "Icon Explorer", marker: "Search thousands of icons..." },
-  { dir: "fish.openverse", name: "Openverse Stock Photos", marker: "Search photos (e.g. architecture, nature)..." },
-  { dir: "fish.wikimedia", name: "Wikimedia Commons", marker: "Search Commons photos (e.g. architecture, nature)..." },
-  { dir: "fish.pixabay", name: "Pixabay Photos", marker: "Pixabay API key" },
-  { dir: "fish.cutout", name: "Background Remover", marker: "No Image Selected" }
-].map((p) => ({ ...p, path: path.resolve(process.cwd(), "dist-plugins", p.dir, "1.0.0", "plugin.js") }));
+  { slug: "icons", dir: "fish.icons", name: "Icon Explorer", marker: "Search thousands of icons..." },
+  { slug: "openverse", dir: "fish.openverse", name: "Openverse Stock Photos", marker: "Search photos (e.g. architecture, nature)..." },
+  { slug: "wikimedia", dir: "fish.wikimedia", name: "Wikimedia Commons", marker: "Search Commons photos (e.g. architecture, nature)..." },
+  { slug: "pixabay", dir: "fish.pixabay", name: "Pixabay Photos", marker: "Pixabay API key" },
+  { slug: "cutout", dir: "fish.cutout", name: "Background Remover", marker: "No Image Selected" }
+].map((p) => {
+  const manifest = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "src/plugins", p.slug, "plugin.json"), "utf-8"));
+  return { ...p, path: path.resolve(process.cwd(), "dist-plugins", p.dir, manifest.version, "plugin.js") };
+});
 
 const results = [];
 const pageErrors = [];
@@ -77,7 +80,7 @@ const styleApi = await a.evaluate(() => typeof window.__FISH_HOST__?.styles?.inj
 check("host bridge exposes plugin style injection", styleApi === "function");
 
 await openResources(a);
-const listedBefore = await a.locator('button:has-text("Icon Explorer")').count();
+const listedBefore = await a.locator('div.cursor-pointer:has-text("Icon Explorer")').count();
 check("a fresh shell lists no plugins at all", listedBefore === 0, `${listedBefore} row(s)`);
 
 await install(a, bogus);
@@ -140,19 +143,19 @@ const stored = await a.evaluate(
 check("all bundles are in the browser's store", stored === PLUGINS.length, `${stored} row(s)`);
 
 // Removing one: the row leaves the list, the panel it was showing leaves with it.
-await a.locator('button:has-text("Background Remover")').first().click();
+await a.locator('div.cursor-pointer:has-text("Background Remover")').first().click();
 await a.waitForSelector(PANEL, { timeout: 15000 });
 await openResources(a);
-await a.locator('button:has-text("Background Remover")').first().click({ button: "right" });
+await a.locator('div.cursor-pointer:has-text("Background Remover")').first().click({ button: "right" });
 await a.waitForSelector(PLUGIN_MENU, { timeout: 5000 });
 const menuText = await a.locator(PLUGIN_MENU).innerText();
 check("a row offers Remove on right click", /remove plugin/i.test(menuText), menuText.replace(/\n/g, " | "));
 
 await a.locator(`${PLUGIN_MENU} button:has-text("Remove plugin")`).first().click();
 await a
-  .waitForSelector('button:has-text("Background Remover")', { state: "detached", timeout: 5000 })
+  .waitForSelector('div.cursor-pointer:has-text("Background Remover")', { state: "detached", timeout: 5000 })
   .catch(() => {});
-const rowGone = await a.locator('button:has-text("Background Remover")').count();
+const rowGone = await a.locator('div.cursor-pointer:has-text("Background Remover")').count();
 check("the removed plugin leaves the list", rowGone === 0);
 await a.waitForSelector(PANEL, { state: "detached", timeout: 5000 }).catch(() => {});
 const panelGone = await a.locator(PANEL).count();
@@ -180,11 +183,11 @@ await openResources(b);
 
 // The list is filled by a storage read, so it is legitimately empty on the first
 // frame — wait for it rather than sampling the moment the popover opens.
-await b.waitForSelector('button:has-text("Openverse Stock Photos")', { timeout: 10000 });
-const listedAfter = await b.locator('button:has-text("Icon Explorer")').count();
+await b.waitForSelector('div.cursor-pointer:has-text("Openverse Stock Photos")', { timeout: 10000 });
+const listedAfter = await b.locator('div.cursor-pointer:has-text("Icon Explorer")').count();
 check("another file on disk finds them in the list", listedAfter > 0);
 
-await b.locator('button:has-text("Openverse Stock Photos")').first().click();
+await b.locator('div.cursor-pointer:has-text("Openverse Stock Photos")').first().click();
 await b.waitForSelector(PANEL, { timeout: 15000 });
 const reopened = await b
   .locator(`${PANEL} input[placeholder="Search photos (e.g. architecture, nature)..."]`)

@@ -121,6 +121,24 @@ describe("patch on a node inside an instance", () => {
     });
   });
 
+  it("resolves a `$token` in the patch, exactly as a stored node does", () => {
+    // The clone path handed the normalizer no token table, so a reference on an
+    // instance child stayed the literal string and the colour was dropped —
+    // while the identical patch on a stored node bound the token.
+    const doc = fixture();
+    doc.tokens = [{ id: "tok_ink", name: "color/ink", type: "color", value: "#111111" }];
+    const result = applyOps(doc, [
+      { op: "patch", targetId: CLONE_ID, props: { color: "$color/ink" } }
+    ]);
+
+    expect(result.outcomes[0].ok).toBe(true);
+    expect(instanceIn(result.doc).overrides ?? []).toContainEqual({
+      targetId: "t_btn",
+      property: "fills",
+      value: [{ type: "solid", color: "#111111", tokenId: "tok_ink" }]
+    });
+  });
+
   it("leaves the master alone — an override is the whole point", () => {
     const result = applyOps(fixture(), [
       { op: "patch", targetId: CLONE_ID, props: { content: "Add to cart" } }

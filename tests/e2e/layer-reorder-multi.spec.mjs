@@ -1,5 +1,6 @@
 import { chromium } from "playwright";
 import { pathToFileURL } from "url";
+import os from "os";
 import path from "path";
 
 /**
@@ -194,7 +195,7 @@ await fresh();
 await page.click('[data-ui-panel="left"] [data-layer-row="n3"]');
 await page.click('[data-ui-panel="left"] [data-layer-row="n2"]', { modifiers: ["Shift"] });
 await settle();
-const two = await dragHeld("n3", "n4", 0.1, ".workbuddy/artifacts/layer-drag-ghost.png");
+const two = await dragHeld("n3", "n4", 0.1, path.join(os.tmpdir(), "fish-e2e-artifacts", "layer-drag-ghost.png"));
 check("a two-row drag puts one card behind the image", two.held && two.held.cards, 1);
 checkThat("and the cards step down and right", two.held && two.held.stepped, two.held && two.held.cards);
 checkThat(

@@ -82,26 +82,45 @@ export function writeNumberValue(
   return next;
 }
 
+/**
+ * The bindings a write to `property` supersedes.
+ *
+ * A binding names exactly one slot: the four corners are one tuple, so a
+ * whole-radius binding replaces them and a corner binding replaces the
+ * whole-radius one (and its sibling spelling of the same corner). Shared with
+ * the PATCH surface, which writes a literal into the same slot and therefore
+ * has to drop the same pointer — leaving it there makes the patch a no-op that
+ * reports success, because the next read puts the token's number back.
+ */
+export function withoutNumberBinding(
+  bindings: Record<string, string> | undefined,
+  property: string
+): Record<string, string> | undefined {
+  if (!bindings) return undefined;
+  const next: Record<string, string> = { ...bindings };
+  delete next[property];
+
+  const cornerSlot = CORNER_SLOTS[property];
+  if (cornerSlot !== undefined) {
+    delete next.borderRadius;
+    for (const [alias, slot] of Object.entries(CORNER_SLOTS)) {
+      if (slot === cornerSlot) delete next[alias];
+    }
+  } else if (property === "borderRadius") {
+    for (const cornerProp of Object.keys(CORNER_SLOTS)) delete next[cornerProp];
+  }
+
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
 export function bindNumberToken(
   el: Record<string, unknown>,
   property: string,
   tokenId: string,
   value: number
 ): Record<string, unknown> {
-  const nextBindings = { ...((el.tokenBindings as Record<string, string>) || {}), [property]: tokenId };
-
-  // A binding names exactly one slot: the four corners are one tuple, so a
-  // whole-radius binding replaces them and a corner binding replaces the
-  // whole-radius one (and its sibling spelling of the same corner).
-  const cornerSlot = CORNER_SLOTS[property];
-  if (cornerSlot !== undefined) {
-    delete nextBindings.borderRadius;
-    for (const [alias, s] of Object.entries(CORNER_SLOTS)) {
-      if (s === cornerSlot && alias !== property) delete nextBindings[alias];
-    }
-  } else if (property === "borderRadius") {
-    for (const cornerProp of Object.keys(CORNER_SLOTS)) delete nextBindings[cornerProp];
-  }
+  const cleared = withoutNumberBinding(el.tokenBindings as Record<string, string> | undefined, property) ?? {};
+  const nextBindings = { ...cleared, [property]: tokenId };
 
   return writeNumberValue({ ...el, tokenBindings: nextBindings }, property, value);
 }

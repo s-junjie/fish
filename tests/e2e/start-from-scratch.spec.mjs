@@ -90,6 +90,7 @@ const order = await page.evaluate(() => {
   const name = (c) =>
     c.dataset.titleBarSave ? "[save]" :
     c.dataset.titleBarSaveAs ? "[save-as]" :
+    c.dataset.titleBarSaveReadOnly ? "[save-read-only]" :
     c.dataset.titleBarHistory ? "[history]" :
     c.dataset.titleBarNewFile ? "[new]" :
     c.dataset.titleBarExportJson ? "[export]" :
@@ -117,7 +118,8 @@ check(
 const sep = await page.evaluate(() => {
   const rows = [...document.querySelectorAll("[data-title-bar-new-file]")];
   const menu = rows[0]?.closest("div.flex.flex-col");
-  const node = menu?.children[1];
+  const newIdx = menu ? [...menu.children].findIndex((c) => c.dataset?.titleBarNewFile) : -1;
+  const node = newIdx > 0 ? menu.children[newIdx - 1] : null;
   if (!node || node.tagName !== "DIV") return null;
   const b = node.getBoundingClientRect();
   const pop = document.querySelector("[data-autosave-popover]");

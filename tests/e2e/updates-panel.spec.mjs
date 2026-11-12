@@ -1,5 +1,6 @@
 import { chromium } from "playwright";
 import { pathToFileURL } from "url";
+import fs from "node:fs";
 import path from "node:path";
 
 // The updates panel is the workbench's only app-level surface, and this build
@@ -95,15 +96,20 @@ const panel = await page.evaluate(() => {
     radius: style.borderTopLeftRadius
   };
 });
+const hasReleaseEndpoint = fs.existsSync(path.resolve(process.cwd(), "release/keys/update-public.json"));
+
 check("the panel opens", !!panel);
 check(
-  "it names why there is nothing to check",
-  !!panel && /release address/i.test(panel.status),
+  hasReleaseEndpoint ? "it shows the idle update status" : "it names why there is nothing to check",
+  !!panel && (hasReleaseEndpoint ? /version you opened/i.test(panel.status) : /release address/i.test(panel.status)),
   JSON.stringify(panel?.status)
 );
 check("it offers no write action", panel?.apply === false);
 check("it wears no badge", panel?.badge === false);
-check("the manual check is disabled, not live-and-failing", panel?.checkRow.disabled === true);
+check(
+  hasReleaseEndpoint ? "the manual check is enabled when configured" : "the manual check is disabled, not live-and-failing",
+  panel?.checkRow.disabled === !hasReleaseEndpoint
+);
 check(
   "the launch-check toggle is present and interactive",
   panel?.autoCheck.present === true && panel?.autoCheck.disabled === false

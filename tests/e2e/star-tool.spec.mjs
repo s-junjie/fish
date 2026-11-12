@@ -1,5 +1,6 @@
 import { chromium } from "playwright";
 import { pathToFileURL } from "url";
+import os from "os";
 import path from "path";
 
 // The star tool, driven the way a person drives it: pick it from the dock's
@@ -356,9 +357,9 @@ check(
   exported.slice(exported.indexOf("<path"), exported.indexOf("<path") + 70)
 );
 
-await page.screenshot({ path: ".workbuddy/artifacts/star-tool.png" });
+await page.screenshot({ path: path.join(os.tmpdir(), "fish-e2e-artifacts", "star-tool.png") });
 const panel = await page.$('[data-ui-panel="right"]');
-if (panel) await panel.screenshot({ path: ".workbuddy/artifacts/star-inspector.png" });
+if (panel) await panel.screenshot({ path: path.join(os.tmpdir(), "fish-e2e-artifacts", "star-inspector.png") });
 
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} passed, ${errors.length} console errors`);

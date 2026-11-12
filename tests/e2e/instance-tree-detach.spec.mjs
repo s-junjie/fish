@@ -53,7 +53,7 @@ await page.evaluate(() => {
             width: 160,
             height: 24,
             content: "Caption",
-            style: { fontFamily: "Inter", fontSize: 14, color: "#111111" }
+            style: { fontFamily: "Inter, sans-serif", fontSize: 14, color: "#111111" }
           },
           {
             id: "SUB",

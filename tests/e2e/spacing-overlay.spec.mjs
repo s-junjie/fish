@@ -1,6 +1,9 @@
 import { chromium } from "playwright";
 import { pathToFileURL } from "url";
+import os from "os";
 import path from "path";
+
+const artifactPath = (name) => path.join(os.tmpdir(), "fish-e2e-artifacts", name);
 
 // Scrubbing padding / margin / gap in the inspector has to put a band read-out on
 // the canvas, the same one dragging a gap pill already draws — otherwise the
@@ -155,7 +158,7 @@ check("gap bands carry the field's own value", gap && gap.rects.every((r) => r.v
 const a = await worldBox("A");
 check("the gap band sits between two painted children, not at the page origin", gap && a && gap.rects.every((r) => r.x > 100 && r.w === 30), gap && JSON.stringify(gap.rects.map((r) => [r.x, r.w])));
 
-await page.screenshot({ path: ".workbuddy/artifacts/spacing-gap.png" });
+await page.screenshot({ path: artifactPath("spacing-gap.png") });
 await page.mouse.up();
 await settle();
 check("the overlay leaves with the pointer", (await bands()) === null);
@@ -187,7 +190,7 @@ const heldFields = await page.evaluate(
 const heldMode = await modes();
 check("scrubbing the uniform field leaves it uniform", heldMode[0] === "on", JSON.stringify(heldMode));
 check("and does not replace the input under the pointer", heldFields === 1, `${heldFields} fields`);
-await page.screenshot({ path: ".workbuddy/artifacts/spacing-margin-uniform.png" });
+await page.screenshot({ path: artifactPath("spacing-margin-uniform.png") });
 await page.mouse.up();
 await settle();
 check(
@@ -265,7 +268,7 @@ check("the margin band keeps the child's own width", m0 && b && m0.w === b.width
 
 // The reader's proof, not just the assertions: the overlay only exists while a
 // pointer is down, so a screenshot has to be taken mid-drag.
-await page.screenshot({ path: ".workbuddy/artifacts/spacing-margin.png" });
+await page.screenshot({ path: artifactPath("spacing-margin.png") });
 await page.mouse.up();
 await settle();
 check("the overlay leaves with the pointer", (await bands()) === null);
@@ -295,7 +298,7 @@ const storedPad = await page.evaluate(() => {
   return walk(page_.children);
 });
 check("the readout tracks the field's live value", shot && Array.isArray(storedPad) && shot.rects.every((r) => r.value === String(storedPad[0])), shot && JSON.stringify({ bands: shot.rects.map((r) => r.value), storedPad }));
-await page.screenshot({ path: ".workbuddy/artifacts/spacing-padding.png" });
+await page.screenshot({ path: artifactPath("spacing-padding.png") });
 await page.mouse.up();
 
 const failed = results.filter((r) => !r.ok);

@@ -7,6 +7,7 @@ import {
   DesignStyle,
   DesignToken,
   InstanceElement,
+  STYLE_BINDING_FIELDS,
   getActivePage,
   updateActivePageElements
 } from "../dsl/types";
@@ -37,8 +38,6 @@ function deepClone<T>(value: T): T {
 /** Row spacing for parked masters; matches the gap `component-hoist` uses. */
 const MASTER_ROW_GAP = 40;
 const MASTER_ITEM_GAP = 12;
-
-const STYLE_ID_KEYS = ["fillStyleId", "strokeStyleId", "effectStyleId", "textStyleId"] as const;
 
 /**
  * Consuming half of the cross-file clipboard: a payload's definitions are reminted
@@ -151,7 +150,7 @@ function remapReferences(
     loose.setId = idMap.get(loose.setId);
   }
 
-  for (const key of STYLE_ID_KEYS) {
+  for (const key of STYLE_BINDING_FIELDS) {
     const bound = loose[key];
     if (typeof bound === "string" && styleIdMap.has(bound)) {
       loose[key] = styleIdMap.get(bound);

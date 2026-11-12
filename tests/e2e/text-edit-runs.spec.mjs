@@ -37,7 +37,7 @@ const ELEMENTS = () => [
     width: 420,
     height: 48,
     content: "Hello World",
-    style: { fontFamily: "Inter", fontSize: 24, color: "#000000" },
+    style: { fontFamily: "Inter, sans-serif", fontSize: 24, color: "#000000" },
     spans: [
       { text: "Hello ", style: { color: BLUE } },
       { text: "World", style: { fontWeight: 700 } }
@@ -52,7 +52,7 @@ const ELEMENTS = () => [
     width: 420,
     height: 48,
     content: "aaa",
-    style: { fontFamily: "Inter", fontSize: 24, color: "#000000" },
+    style: { fontFamily: "Inter, sans-serif", fontSize: 24, color: "#000000" },
     spans: [
       { text: "a", style: { color: BLUE } },
       { text: "a", style: { fontWeight: 700 } },
@@ -68,7 +68,7 @@ const ELEMENTS = () => [
     width: 420,
     height: 48,
     content: "Tail",
-    style: { fontFamily: "Inter", fontSize: 24, color: "#000000" }
+    style: { fontFamily: "Inter, sans-serif", fontSize: 24, color: "#000000" }
   },
   {
     id: "pad",

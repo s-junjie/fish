@@ -31,6 +31,7 @@
 import type { CompileDiagnostic } from "./compile";
 import { getActivePage } from "./dsl/types";
 import type { DesignDocument, DesignElement, DesignStyle, Effect, TextElement } from "./dsl/types";
+import { STYLE_BINDING_FIELDS } from "./dsl/types";
 import { flattenElements } from "./geometry/tree-ops";
 
 const BASE_MODE = "default";
@@ -89,15 +90,12 @@ function elementRefs(el: DesignElement): Array<Ref & { kind: RefKind }> {
     if (typeof id === "string" && id) refs.push({ id, where: prop, kind: "token" });
   }
 
-  for (const field of ["fillStyleId", "strokeStyleId", "effectStyleId"] as const) {
-    const id = el[field];
+  for (const field of STYLE_BINDING_FIELDS) {
+    const id = (el as unknown as Record<string, unknown>)[field];
     if (typeof id === "string" && id) refs.push({ id, where: field, kind: "style" });
   }
   if (el.type === "text") {
     const text = el as TextElement;
-    if (typeof text.textStyleId === "string" && text.textStyleId) {
-      refs.push({ id: text.textStyleId, where: "textStyleId", kind: "style" });
-    }
     for (const [prop, id] of Object.entries(text.style?.tokenBindings ?? {})) {
       if (typeof id === "string" && id) refs.push({ id, where: `style.${prop}`, kind: "token" });
     }

@@ -6,7 +6,8 @@ import { FLAT_LAYOUT_KEYS, layoutOf } from "../dsl/layout-flat";
 import { normalizeElement } from "../dsl/normalize/element";
 import { canonicalKey } from "../dsl/normalize/shared";
 import type { NormalizationRepair } from "../dsl/normalize/shared";
-import { applyTokenShorthandsToElement, type ShorthandModes } from "../dsl/normalize/token-shorthand";
+import { applyTokenShorthandsToElement, TOKEN_SHORTHAND_BINDINGS, type ShorthandModes } from "../dsl/normalize/token-shorthand";
+import { withoutNumberBinding } from "../dsl/token-bindings";
 import { FLAT_TEXT_KEYS } from "../dsl/normalize/css-absorb";
 import { CSS_KEY_MAP } from "../dsl/css-spelling";
 import { collectVariables, resolveValueTokens, type Variables } from "../dsl/normalize/resolve-values";
@@ -232,6 +233,22 @@ export function preparePatch(
   if (has("border-radius", "borderRadius", "radius", "corner-radius")) delete out.borderRadius;
   if (has("grid-area")) delete out["grid-area"];
 
+  // A patch that writes a LITERAL into a slot a number token owns is an explicit
+  // new value, and the binding is the pointer that would put the token's number
+  // back when the element is read — so it goes with the old value. A `$ref`
+  // patch is the opposite case: the shorthand pass rebinds that slot, and the
+  // cleanup would drop the binding it is about to write.
+  if (isObj(out.tokenBindings)) {
+    let bindings = out.tokenBindings as Record<string, string>;
+    for (const [key, value] of Object.entries(props)) {
+      const prop = TOKEN_SHORTHAND_BINDINGS[canonicalKey(key)];
+      if (prop === undefined || hasTokenRef(value)) continue;
+      bindings = withoutNumberBinding(bindings, prop) ?? {};
+    }
+    if (Object.keys(bindings).length > 0) out.tokenBindings = bindings;
+    else delete out.tokenBindings;
+  }
+
   if (isObj(out.style)) {
     const style = { ...(out.style as Record<string, unknown>) };
     for (const key of Object.keys(props)) {
@@ -262,8 +279,13 @@ export function preparePatch(
       } else {
         const first = { ...(out.strokes[0] as Record<string, unknown>) };
         if (has("border-color")) {
+          // Three colour sources on a row and the patch names a fourth: the
+          // literal, the paint, and the token the row follows — which
+          // `applyToPaint` re-materialises from `tokenId`, so leaving it made
+          // the new colour disappear between the merge and the reader.
           delete first.color;
           delete first.paint;
+          delete first.tokenId;
         }
         if (has("border-width", "stroke-width")) {
           delete first.width;
@@ -404,7 +426,7 @@ export function patchDerivedClone(
   const parentLayout = masterParent ? (layoutOf(masterParent) ?? null) : null;
   const vars = collectVariables(doc.variables);
   const merged = prepared.css
-    ? normalizePatchedElement(prepared.element, parentLayout, vars)
+    ? normalizePatchedElement(prepared.element, parentLayout, vars, { tokens: doc.tokens, modes: doc })
     : (mergeProps({ ...sel.node } as unknown as Record<string, unknown>, props) as unknown as DesignElement);
   const next = commitInstanceOverrides(doc, [sel], () => merged);
   if (!next) {

@@ -817,6 +817,24 @@ export function normalizeElement(
   if (strokeStyleId !== undefined) base.strokeStyleId = strokeStyleId;
   const effectStyleId = readStyleId("effectStyleId");
   if (effectStyleId !== undefined) base.effectStyleId = effectStyleId;
+  // The ruler's binding, which `layoutGuides` beside it materialises. A set has
+  // no stable box to measure — `normalizeContainer` refuses its guides for that
+  // reason — so the id would let `syncDualStorage` write them back on load.
+  // No `null` form: `unbindLayoutGuideStyle` DELETES the key, so absence is the
+  // one spelling of "detached" and the schema declares this a string.
+  const layoutGuideStyleId = readStyleId("layoutGuideStyleId");
+  if (typeof layoutGuideStyleId === "string") {
+    if (type === "componentSet") {
+      repairs.push({
+        kind: "layout",
+        path: `${path}/layoutGuideStyleId`,
+        message:
+          'type "componentSet" has no stable box — it is fitted to its variants on load — so a layout guide style cannot be bound to it. Bind it to the variants.'
+      });
+    } else {
+      base.layoutGuideStyleId = layoutGuideStyleId;
+    }
+  }
 
   // A container hands its children back to this function with its own id as the
   // prefix and its own layout as theirs, so a nested frame inherits the parent's
