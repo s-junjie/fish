@@ -771,7 +771,11 @@ describe("morph carries every scalar", () => {
     effects: "interpolate-effects",
     children: "walked by morphSlide itself",
     overrides: "instance overrides — ids and values, not appearance",
-    spans: "interpolate-appearance — the runs' size, tracking and colour"
+    spans: "interpolate-appearance — the runs' size, tracking and colour",
+    // A guide is the author's ruler over the box, not something the layer
+    // paints: morphing one into another would claim the columns moved, when the
+    // two slides were simply measured against different grids.
+    layoutGuides: "editor chrome — carried, never interpolated"
   };
 
   it("classifies every structured element key too", () => {

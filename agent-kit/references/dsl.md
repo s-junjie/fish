@@ -50,8 +50,9 @@ Two ways HTML enters a document, and only one of them produces something you can
 - **clipped**: a child's painted box — turn included, so a vertical label is measured by the column it occupies — is cut by a parent whose `overflow` clips (`hidden` or `auto`).
 - **zero-size**: Container with children and paint collapsed to 0px on an axis (`warning`).
 - **unused-space** (`info`): the mirror of overflow — a container that stacks downwards ends well short of a fixed height it was given, which is usually a pixel height written where `hug` was meant.
+- **guide-degenerate** (`warning`): a layout guide that draws nothing — `count: 0`, `size: 0`, a `margin` that leaves no room, or a `stretch` whose gutters eat the box. The panel would still list it, and the canvas would show no ruler at all.
 
-These are measurements, not verdicts: each names the DSL way to say "I meant that", and only `zero-size` is a warning. Runs in Node, no browser.
+These are measurements, not verdicts: each names the DSL way to say "I meant that", and only `zero-size` and `guide-degenerate` are warnings. Runs in Node, no browser.
 
 ### Text Ink Audit (`check --audit`)
 `--geometry` can be satisfied by a page whose every label is pinned to the left edge of its box: nothing in the document is wrong, only the picture. `--audit` opens the file in a headless browser and measures the glyphs. It needs a browser and a shell built with the report channel (rebuild `blank.fish.html`); a shell without it reports `NOT RUN`, never "0 findings".
@@ -279,6 +280,36 @@ A CSS spelling can be accepted, ignored, or stored differently:
 - **`line-height` numbers are unitless multipliers, not px.** `lineHeight: 1.4` means `1.4 * fontSize`. A bare number `27` on a 23px font resolves to `23 * 27 = 621px` and fails height check; a hug-height text hides that overflow, so `check` reports any bare number above `4` by name. Write `"27px"` for absolute pixels.
 - **`path` commands (`d`) are stored as written.** `width` / `height` are its box, not a scale, so a `d` authored for 24×24 inside a 48px box draws in the top-left quarter. Write `viewBox: "0 0 24 24"` and normalize bakes the scale into `d` once — the key itself is not stored, so `d` is still the raw geometry afterwards. Without it, author `d` in the target size. Resizing the LAYER — a canvas drag, the Scale tool, or `apply` patching `width`/`height` — bakes the factor into `d` as well, so patch a path's box instead of hand-transforming its commands. A `d` that covers under a third of its box is reported as an `info`, because an outline left behind by a box edit is otherwise invisible.
 - **A top-level frame's name is editor chrome, not artwork.** The canvas paints it above the frame while you edit; no export and no `?view=canvas` render carries it. Wrapping a design in an extra artboard frame to hide the name changes nothing — and the name is still editable in the Layers panel.
+
+## Layout Guides
+
+A guide is a **ruler** drawn over a frame: nothing is placed into it, and the layout pass never reads it — no child's `x` / `y` / `width` changes because a guide exists. It is Figma's "layout grid", on the same node (`layoutGuides`; Figma calls the field `layoutGrids`). Frame and component only: a `componentSet` is fitted to its variants on load so it has no stable box, and an instance's geometry belongs to its master. Both are reported, not silently dropped.
+
+```jsonc
+"layoutGuides": [
+  { "kind": "columns", "count": 5, "align": "stretch", "gutter": 20, "margin": 0, "color": "#FF00001A" },
+  { "kind": "rows",    "count": 3, "align": "start", "height": 96, "gutter": 16, "margin": 40 },
+  { "kind": "grid",    "size": 8, "color": "#0000000D", "visible": false }
+]
+```
+
+| key | applies to | meaning |
+|---|---|---|
+| `kind` | all | `columns` \| `rows` \| `grid`. Required. |
+| `count` | columns, rows | How many bands. Required. A grid derives its count from the box. |
+| `align` | columns, rows | `start` \| `center` \| `end` \| `stretch` (default `stretch`). UI labels follow the axis: Left/Center/Right, Top/Middle/Bottom. |
+| `width` / `height` | columns / rows | One band's size. Required when `align` is not `stretch`. |
+| `size` | grid | One cell's side. Required. |
+| `gutter` | columns, rows | Space between bands. Default `0`. |
+| `margin` | columns, rows | How far the set is inset **along the axis it measures** — columns: left/right, rows: top/bottom. Default `0`. |
+| `color` | all | `#RRGGBB` / `#RRGGBBAA` — Figma's colour and opacity in one alpha byte. Default `#FF00001A`. |
+| `visible` | all | `false` hides it. Omitted means drawn. |
+
+Two rules for `margin`, and they are the whole of it: with `stretch` it insets **both** sides; with `start` / `center` / `end` it insets only the **starting** side (left/top), because the set is aligned to that edge. It only ever acts on the axis the guide measures — a column band still runs the full height of the box, and a row band the full width. `grid` has no `gutter` / `margin` at all — it is a tiling from the box origin, clipped by the box, exactly as Figma's Grid panel (Size and Colour only) describes it.
+
+Guides are also a **snap target**: a drag and a newly drawn shape take the band edges of every column / row guide, and a `grid`'s pitch (which makes an 8pt grid quantise the drag — that is what the author put it there for). Only the frame the gesture is **inside** contributes: a ruler on the artboard next door is a different drawing. They are editor furniture otherwise: never exported, never in a thumbnail, never in `?view=canvas`.
+
+A frame's guides can be saved as a `layoutGuide` style (`doc.styles[]`, `guides: LayoutGuide[]`) and applied to another frame; applying copies the array, so editing the style never moves a frame that has not re-applied it.
 
 ## Paints, Strokes & Fills
 

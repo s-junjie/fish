@@ -678,3 +678,43 @@ describe("unused space below a stack", () => {
     expect(found[0].message).toContain("456px unused");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Layout guides
+// ---------------------------------------------------------------------------
+
+describe("layout guides", () => {
+  const frameWith = (guide: unknown, box = { width: 600, height: 400 }) => ({
+    id: "guided",
+    type: "frame",
+    ...box,
+    fills: [{ type: "solid", color: "#ffffff" }],
+    layoutGuides: [guide],
+    children: [{ id: "kid", type: "rect", x: 0, y: 0, width: 100, height: 40 }]
+  });
+
+  it("says nothing about a guide that has room to draw", () => {
+    expect(kinds([frameWith({ kind: "columns", count: 5, gutter: 20 })])).not.toContain("guide-degenerate");
+    expect(kinds([frameWith({ kind: "grid", size: 8 })])).not.toContain("guide-degenerate");
+  });
+
+  it("names a guide that would draw nothing", () => {
+    // 600 wide, margin 300 leaves nothing for five bands.
+    const margin = geometryReport(doc([frameWith({ kind: "columns", count: 5, margin: 300 })])).filter(
+      (f) => f.kind === "guide-degenerate"
+    );
+    expect(margin).toHaveLength(1);
+    expect(margin[0].elementId).toBe("guided");
+    expect(margin[0].level).toBe("warning");
+
+    // A gutter the box cannot pay for is the other shape of the same thing:
+    // normalization accepts it (it is a positive number), the arithmetic cannot.
+    expect(kinds([frameWith({ kind: "columns", count: 5, gutter: 200 })])).toContain("guide-degenerate");
+  });
+
+  it("stays quiet about a guide the author hid", () => {
+    expect(kinds([frameWith({ kind: "columns", count: 5, margin: 300, visible: false })])).not.toContain(
+      "guide-degenerate"
+    );
+  });
+});

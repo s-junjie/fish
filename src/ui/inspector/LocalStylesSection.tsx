@@ -3,6 +3,7 @@ import {
   DesignDocument,
   DesignStyle,
   EffectStyle,
+  LayoutGuideStyle,
   PaintStyle,
   StrokeStyle,
   StyleType,
@@ -38,7 +39,7 @@ export function LocalStylesSection({
   doc,
   docRef,
   commitSnapshot,
-  styleTypes = ["paint", "stroke", "text", "effect"],
+  styleTypes = ["paint", "stroke", "text", "effect", "layoutGuide"],
   paintTitle,
   createStyleTypes = styleTypes,
   title,
@@ -56,6 +57,7 @@ export function LocalStylesSection({
   const strokeStyles = styles.filter((s) => s.styleType === "stroke") as StrokeStyle[];
   const textStyles = styles.filter((s) => s.styleType === "text") as TextStyleDefinition[];
   const effectStyles = styles.filter((s) => s.styleType === "effect") as EffectStyle[];
+  const guideStyles = styles.filter((s) => s.styleType === "layoutGuide") as LayoutGuideStyle[];
   const owns = (type: StyleType) => styleTypes.includes(type);
   const canCreate = (type: StyleType) => createStyleTypes.includes(type);
 
@@ -89,6 +91,9 @@ export function LocalStylesSection({
     { type: "stroke", title: t("styles.strokeStyles"), createTitle: t("styles.createStrokeStyle"), list: strokeStyles },
     { type: "text", title: t("styles.textStyles"), createTitle: t("styles.createTextStyle"), list: textStyles },
     { type: "effect", title: t("styles.effectStyles"), createTitle: t("styles.createEffectStyle"), list: effectStyles },
+    // Last, and after the three that paint: a guide measures the box rather than
+    // painting it, which is also why it sits last in the layer inspector.
+    { type: "layoutGuide", title: t("styles.layoutGuideStyles"), createTitle: t("styles.createLayoutGuideStyle"), list: guideStyles },
   ];
 
   return (

@@ -1,10 +1,10 @@
 import type { ComponentChildren } from "preact";
-import { BaseStyle, ColorToken, DesignStyle, EffectStyle, Paint, PaintStack, PaintStyle, StrokeStyle, TextStyleDefinition } from "../../core/dsl/types";
+import { BaseStyle, ColorToken, DesignStyle, EffectStyle, LayoutGuideStyle, Paint, PaintStack, PaintStyle, StrokeStyle, TextStyleDefinition } from "../../core/dsl/types";
 import { PaintStackSwatch } from "../PaintStackSwatch";
 import { topPaint } from "../../core/dsl/paint-stack";
 import { gradientKindLongLabel, isGradientKind } from "../paint-kind";
 import { t } from "../../i18n";
-import { Type, Layers2 } from "lucide-react";
+import { Type, Layers2, Columns, Rows, Grid } from "lucide-react";
 import { DEFAULT_FONT_FAMILY } from "../../core/font-stack";
 
 function GlyphTile({ children, className }: { children: ComponentChildren; className: string }) {
@@ -52,6 +52,20 @@ export function renderStylePreview(
       </GlyphTile>
     );
   }
+  if (style.styleType === "layoutGuide") {
+    // A GLYPH, like text and effect styles: the card's subtitle already says how
+    // many rulers and of what kind, and a bar-drawing at 14px reads as noise at
+    // this size. Which glyph follows the first guide, so a column style and a
+    // grid style are told apart at a glance.
+    const first = (style as LayoutGuideStyle).guides?.[0];
+    const Glyph =
+      first?.kind === "grid" ? Grid : first?.kind === "rows" ? Rows : Columns;
+    return (
+      <GlyphTile className={sizeClass}>
+        <Glyph size={11} />
+      </GlyphTile>
+    );
+  }
   return (
     <GlyphTile className={sizeClass}>
       {style.styleType === "text" ? <Type size={11} /> : <Layers2 size={11} />}
@@ -73,6 +87,9 @@ export function getStyleSubtitle(style: DesignStyle): string {
   }
   if (style.styleType === "effect") {
     return t("styles.effectCount", { n: (style as EffectStyle).effects.length });
+  }
+  if (style.styleType === "layoutGuide") {
+    return style.description || t("styles.guideCount", { n: (style as LayoutGuideStyle).guides.length });
   }
   return (style as BaseStyle).description || "";
 }

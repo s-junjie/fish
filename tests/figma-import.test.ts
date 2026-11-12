@@ -2561,3 +2561,50 @@ describe("strokes and text fields", () => {
   });
 });
 
+
+// ---------------------------------------------------------------------------
+// Layout grids
+// ---------------------------------------------------------------------------
+
+describe("Figma layout grids", () => {
+  it("becomes layout guides: column dimensions, cell size, and the alpha byte", () => {
+    const { el } = walkOne(
+      frame("f-guides", [], {
+        layoutGrids: [
+          { pattern: "COLUMNS", alignment: "STRETCH", gutterSize: 20, offset: 0, count: 5, color: rgb(1, 0, 0, 0.1) },
+          { pattern: "GRID", alignment: "STRETCH", sectionSize: 8, color: rgb(0, 0, 0, 0.05) }
+        ]
+      } as Partial<FigmaNode>)
+    );
+    expect((el as any).layoutGuides).toEqual([
+      { kind: "columns", count: 5, align: "stretch", gutter: 20, color: "#ff00001a" },
+      { kind: "grid", size: 8, color: "#0000000d" }
+    ]);
+  });
+
+  it("carries a fixed alignment's band size, and reports one it cannot draw", () => {
+    const fixed = walkOne(
+      frame("f-fixed", [], {
+        layoutGrids: [{ pattern: "ROWS", alignment: "MIN", count: 3, sectionSize: 96, offset: 40 }]
+      } as Partial<FigmaNode>)
+    );
+    expect((fixed.el as any).layoutGuides).toEqual([
+      { kind: "rows", count: 3, align: "start", height: 96, margin: 40 }
+    ]);
+
+    // MIN with no sectionSize has no band size to state, so it is a gap rather
+    // than a guessed 96.
+    const broken = walkOne(
+      frame("f-broken", [], {
+        layoutGrids: [{ pattern: "ROWS", alignment: "MIN", count: 3 }]
+      } as Partial<FigmaNode>)
+    );
+    expect((broken.el as any).layoutGuides).toBeUndefined();
+    expect(broken.state.gaps.some((g) => g.property.startsWith("layoutGrid"))).toBe(true);
+  });
+
+  it("leaves a frame without grids alone", () => {
+    const { el } = walkOne(frame("f-plain"));
+    expect((el as any).layoutGuides).toBeUndefined();
+  });
+});

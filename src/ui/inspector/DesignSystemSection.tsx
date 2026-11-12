@@ -19,6 +19,11 @@ interface DesignSystemSectionProps {
 
 /**
  * Document-level design system: tokens and styles.
+ *
+ * A layout guide style is a list of rulers like any other style here: it is
+ * created, edited and deleted from this panel, and the layer's own section also
+ * offers one (seeded from the frame you are looking at) because that is where a
+ * ruler is usually first drawn.
  */
 export function DesignSystemSection({ doc, docRef, commitSnapshot }: DesignSystemSectionProps) {
   const [tab, setTab] = useState<DesignSystemTab>("tokens");
@@ -63,8 +68,8 @@ export function DesignSystemSection({ doc, docRef, commitSnapshot }: DesignSyste
             doc={doc}
             docRef={docRef}
             commitSnapshot={commitSnapshot}
-            styleTypes={["paint", "stroke", "text", "effect"]}
-            createStyleTypes={["paint", "stroke", "text", "effect"]}
+            styleTypes={["paint", "stroke", "text", "effect", "layoutGuide"]}
+            createStyleTypes={["paint", "stroke", "text", "effect", "layoutGuide"]}
             showStylePreview={false}
           />
         )}

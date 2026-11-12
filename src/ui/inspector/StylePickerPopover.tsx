@@ -4,6 +4,8 @@ import {
   DesignDocument,
   DesignStyle,
   EffectStyle,
+  LayoutGuide,
+  LayoutGuideStyle,
   Paint,
   PaintStyle,
   Stroke,
@@ -18,7 +20,8 @@ import {
   createPaintStyle,
   createStrokeStyle,
   createTextStyle,
-  createEffectStyle
+  createEffectStyle,
+  createLayoutGuideStyle
 } from "../../core/interactions/style-ops";
 import { t } from "../../i18n";
 import { createEffect } from "../EffectRows";
@@ -65,20 +68,24 @@ export interface CurrentSelectionPreview {
   strokes?: Stroke[];
   textStyle?: TextStyle;
   effects?: Effect[];
+  /** A layout guide style's ruler, as the selection carries it. */
+  guides?: LayoutGuide[];
 }
 
 const DEFAULT_STYLE_NAME: Record<string, string> = {
   paint: "New fill style",
   stroke: "New stroke style",
   text: "New text style",
-  effect: "New effect style"
+  effect: "New effect style",
+  layoutGuide: "New layout guide style"
 };
 
 const STYLE_ID_PREFIX: Record<StyleType, string> = {
   paint: "style_paint",
   stroke: "style_stroke",
   text: "style_text",
-  effect: "style_effect"
+  effect: "style_effect",
+  layoutGuide: "style_guide"
 };
 
 interface StyleDraft {
@@ -87,6 +94,8 @@ interface StyleDraft {
   /** A text style's declarations — type only, no ink (see `TextStyleDeclaration`). */
   textStyle: TextStyleDeclaration;
   effects: Effect[];
+  /** A layout guide style's ruler. Seeds from the frame's own guides. */
+  guides: LayoutGuide[];
 }
 
 /** Seeds all draft kinds, so switching `styleType` never shows a stale one. */
@@ -103,12 +112,17 @@ function seedDrafts(
     // its properties are the fixed set of type rows. Effects still exist on the
     // shape (an imported or older style can carry one) but this editor neither
     // seeds nor shows them, so saving such a style is what strips them.
-    effects: styleType === "text" ? [] : current?.effects?.length ? draft(current.effects) : [createEffect("drop-shadow")]
+    effects: styleType === "text" ? [] : current?.effects?.length ? draft(current.effects) : [createEffect("drop-shadow")],
+    // A guide style has no per-row editor: the frame IS the editor, so the draft
+    // is whatever ruler the selection is wearing (or a default grid).
+    guides: current?.guides?.length ? draft(current.guides) : [{ kind: "grid", size: 8 }]
   };
   if (!editTarget) return defaults;
   if (editTarget.styleType === "paint" && (editTarget as PaintStyle).paints?.length) defaults.paints = draft((editTarget as PaintStyle).paints);
   else if (editTarget.styleType === "stroke" && (editTarget as StrokeStyle).strokes?.length) defaults.strokes = draft((editTarget as StrokeStyle).strokes);
-  else if (editTarget.styleType === "text") {
+  else if (editTarget.styleType === "layoutGuide" && (editTarget as LayoutGuideStyle).guides?.length) {
+    defaults.guides = draft((editTarget as LayoutGuideStyle).guides);
+  } else if (editTarget.styleType === "text") {
     // `effects` is left at the seeded empty list: a style saved by an older
     // build may still carry them, and saving it again is how it loses them.
     defaults.textStyle = draft((editTarget as TextStyleDefinition).style);
@@ -137,7 +151,9 @@ function buildSavedStyle(
         ? createStrokeStyle(name, drafts.strokes.length ? drafts.strokes : [draft(DEFAULT_STROKE_ROW)])
         : styleType === "text"
           ? createTextStyle(name, drafts.textStyle)
-          : createEffectStyle(name, drafts.effects);
+          : styleType === "layoutGuide"
+            ? createLayoutGuideStyle(name, drafts.guides)
+            : createEffectStyle(name, drafts.effects);
   (style as any).id = styleId;
   return style;
 }
@@ -307,6 +323,10 @@ export function StylePickerPopover({
    */
   useEffect(() => {
     if (viewMode !== "create" || !touchedRef.current) return;
+    // A guide style previews like any other: `previewStyleInDoc` swaps the style
+    // in `doc.styles` and re-syncs, so every frame bound to it repaints its ruler
+    // without anything being selected — which is the whole point of editing a
+    // style rather than a frame.
     preview.preview(draftStyle(), previewElementIds);
   }, [drafts, createName, createDescription, viewMode, previewElementKey]);
 
@@ -345,6 +365,29 @@ export function StylePickerPopover({
 
   const handleCreateSubmit = (e?: Event) => {
     e?.preventDefault();
+
+    /**
+     * A second copy of the SAME ruler is not a new style.
+     *
+     * "Save as style" is seeded from the frame you are looking at, so pressing it
+     * twice — or once per frame that already wears the same grid — minted identical
+     * entries with count-derived names ("13 columns", "13 columns"), and the design
+     * system filled up with rows nobody could tell apart. Saving a ruler that
+     * already exists means APPLYING it.
+     */
+    if (styleType === "layoutGuide") {
+      const wanted = JSON.stringify(drafts.guides);
+      const twin = availableStyles.find(
+        (s) => s.styleType === "layoutGuide" && JSON.stringify((s as LayoutGuideStyle).guides) === wanted
+      );
+      if (twin) {
+        preview.discard();
+        onSelectStyle(twin);
+        onClose();
+        return;
+      }
+    }
+
     const saved = draftStyle();
     // Back to the document the editor opened on BEFORE the host's save runs: the
     // save records one undo step, and its baseline must be that document, not the

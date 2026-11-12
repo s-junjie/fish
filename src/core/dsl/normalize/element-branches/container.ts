@@ -2,6 +2,7 @@ import type { DesignElement } from "../../types";
 import { flattenLayout } from "../../layout-flat";
 import { asBoolean, isPlainObject, normalizeOverflow, normalizeScrollOffset } from "../shared";
 import { normalizeFillStack } from "../paint";
+import { normalizeLayoutGuides } from "../layout-guides";
 import { cornerRadiusInput, normalizeCornerRadius, normalizeStrokes } from "../stroke";
 import { normalizeCornerControls, type ElementBranch } from "./shared";
 
@@ -38,6 +39,24 @@ export const normalizeContainer: ElementBranch = ({ el, base, path, repairs, typ
   if (type !== "componentSet") normalizeCornerControls(el, base, true);
 
   if (ownLayout && type !== "componentSet") Object.assign(base, flattenLayout(ownLayout));
+
+  // Guides are the author's ruler over this box, so they belong to the two types
+  // that HAVE a box the author lays out in. A componentSet is fitted to its
+  // variants on every load, so a guide on it would point at a size that is about
+  // to change under it — reported, not dropped, and not stored.
+  if (type === "componentSet") {
+    if (el.layoutGuides !== undefined || el["layout-guides"] !== undefined) {
+      repairs.push({
+        kind: "layout",
+        path: `${path}/layoutGuides`,
+        message:
+          'type "componentSet" has no stable box — it is fitted to its variants on load — so layout guides cannot be stored on it. Put them on the variants.'
+      });
+    }
+  } else {
+    const guides = normalizeLayoutGuides(el, path, repairs);
+    if (guides && guides.length > 0) base.layoutGuides = guides;
+  }
 
   if (type === "componentSet") {
     // Reported, not dropped: a set is a group of definitions and a stack is

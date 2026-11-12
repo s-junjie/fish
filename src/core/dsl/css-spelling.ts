@@ -157,12 +157,16 @@ export const NO_CSS_EQUIVALENT: Readonly<Record<string, string>> = {
       "componentId", "setId", "variantProperties", "variantGroupProperties", "overrides",
       "cornerSmoothing", "onPath", "startAngle", "innerRadius", "isMask", "fillEnabled",
       "alwaysLive", "cachedTitle", "cachedFavicon", "sizeOverride", "instanceScale", "spans", "arrow",
-      "arrowhead", "autoplay", "loop", "muted", "controls", "srcdoc"
+      "arrowhead", "autoplay", "loop", "muted", "controls", "srcdoc",
+      // A ruler over the box, not a style: CSS's nearest neighbours (`background`
+      // tiling, `padding`) are a different contract, so there is nothing to
+      // rename it into (§13 of `plans/LAYOUT-GUIDES.md`).
+      "layoutGuides"
     ],
     "a design primitive or embed option CSS has no property for"
   ),
   ...grouped(
-    ["tokenBindings", "fillStyleId", "strokeStyleId", "effectStyleId", "textStyleId", "link"],
+    ["tokenBindings", "fillStyleId", "strokeStyleId", "effectStyleId", "textStyleId", "layoutGuideStyleId", "link"],
     "engine bookkeeping: a binding, a style link or a prototype action"
   )
 };

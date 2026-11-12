@@ -9,6 +9,9 @@ import { transformBoundsToAABB } from "../../../core/geometry/bounds";
 import { worldMatrixOf } from "../../../core/interactions/component-swap";
 import { computeMeasurement, MeasureResult } from "../../../core/geometry/measure-guides";
 import { isCreatableTool, computeShapeDraftBounds, ShapeDraftGeometry } from "../../../core/geometry/shape-creation";
+import { guideSnapLines, snapPointToGuides } from "../../../core/layout/layout-guides";
+import { findFrameAtPoint } from "../../../core/geometry/tree-hit";
+import { SNAP_REACH_PX } from "../../../core/geometry/snap-guides";
 import { ToolType } from "../../../core/tools";
 import { resolveSingleClickTarget } from "./targeting";
 import { selectionCommonParent, selectionWorldBox } from "./selection-measure";
@@ -120,7 +123,20 @@ export function createCanvasHover(ctx: CanvasHoverContext) {
       const worldX = Math.round(((e.clientX - rect.left) - currentPan.x) / currentZoom);
       const worldY = Math.round(((e.clientY - rect.top) - currentPan.y) / currentZoom);
 
-      shapeDrawCurrent.current = { x: worldX, y: worldY };
+      // A new shape lands ON the ruler: the moving corner is the point being
+      // placed, so it takes the magnet while the anchor stays where the author
+      // pressed. Alt draws from the centre, where the mirrored corner is the one
+      // that would need snapping — left alone rather than snapped to the wrong
+      // side of the anchor.
+      // The frame the shape is being drawn INTO owns the ruler: a guide on the
+      // artboard next door is a different drawing.
+      const children = getActivePage(docRef.current).children;
+      const startPoint = shapeDrawStart.current;
+      const frame = findFrameAtPoint(children, startPoint.x, startPoint.y);
+      const guides = guideSnapLines(children, frame?.id);
+      shapeDrawCurrent.current = e.altKey
+        ? { x: worldX, y: worldY }
+        : snapPointToGuides(guides, { x: worldX, y: worldY }, SNAP_REACH_PX / currentZoom);
       const draft = computeShapeDraftBounds(
         activeTool,
         shapeDrawStart.current,

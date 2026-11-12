@@ -14,6 +14,7 @@ import { MeasureResult } from "../../core/geometry/measure-guides";
 import { LIVE_CHROME_SELECTOR } from "../../core/chrome-markers";
 import { MeasurementOverlay } from "./MeasurementOverlay";
 import { GridCellOverlay } from "./GridCellOverlay";
+import { LayoutGuideLayer } from "./LayoutGuideLayer";
 import { SpacingOverlay } from "./SpacingOverlay";
 import { SmartSelectionInfo } from "../../core/geometry/smart-selection";
 import { PathEditOverlay } from "./PathEditOverlay";
@@ -789,6 +790,15 @@ export function CanvasArea({
                   onRotatePointerDown={onCropRotatePointerDown}
                 />
               )}
+
+              {/* The author's own rulers, over the artwork and under every piece
+                  of chrome. Above the artwork because that is the whole point —
+                  you align things TO them — and below the selection box because
+                  a guide is never the thing you grabbed. Deliberately outside the
+                  `overlaySuppressed` guard: a ruler that disappears while a
+                  spacing field is being scrubbed is a ruler you cannot measure
+                  against, and these bands are the reference for that measurement. */}
+              <LayoutGuideLayer doc={doc} zoom={zoom} />
 
               {/* The cells of a selected grid. Outside the selection group, and
                   for the same reason as the bands below: working a gap or a

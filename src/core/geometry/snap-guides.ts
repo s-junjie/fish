@@ -1,5 +1,6 @@
 import { DesignElement } from "../dsl/types";
 import { elementAABB } from "./element-bounds";
+import type { GuideLineSet } from "../layout/layout-guides";
 
 export interface GuideLine {
   orientation: "horizontal" | "vertical";
@@ -23,7 +24,7 @@ export interface SnapResult {
  * impossible to place near a sibling — the drag is swallowed by the guide long
  * before the pointer gets where the user is aiming.
  */
-const SNAP_REACH_PX = 6;
+export const SNAP_REACH_PX = 6;
 
 const snapReach = (zoom: number): number => SNAP_REACH_PX / (zoom > 0 ? zoom : 1);
 
@@ -46,7 +47,8 @@ export function calculateResizeSnapping(
   zoom: number,
   canvasWidth?: number,
   canvasHeight?: number,
-  siblingElements: DesignElement[] = []
+  siblingElements: DesignElement[] = [],
+  guideLines?: GuideLineSet
 ): { x: number; y: number; width: number; height: number; guides: GuideLine[] } {
   let x = bounds.x;
   let y = bounds.y;
@@ -69,6 +71,15 @@ export function calculateResizeSnapping(
       { pos: canvasHeight / 2, start: 0, end: canvasWidth },
       { pos: canvasHeight, start: 0, end: canvasWidth }
     );
+  }
+
+  if (guideLines) {
+    for (const span of guideLines.vertical) {
+      vCandidates.push({ pos: span.position, start: span.start, end: span.end });
+    }
+    for (const span of guideLines.horizontal) {
+      hCandidates.push({ pos: span.position, start: span.start, end: span.end });
+    }
   }
 
   for (const el of siblingElements) {
@@ -162,7 +173,8 @@ export function calculateSnapping(
   zoom: number,
   canvasWidth?: number,
   canvasHeight?: number,
-  siblingElements: DesignElement[] = []
+  siblingElements: DesignElement[] = [],
+  guideLines?: GuideLineSet
 ): SnapResult {
   const reach = snapReach(zoom);
   const targetLeft = draggingBounds.x;
@@ -217,6 +229,26 @@ export function calculateSnapping(
       { delta: sibBottom - targetTop, position: sibBottom }
     ]) {
       yCandidates.push({ ...c, start: gyStart, end: gyEnd });
+    }
+  }
+
+  /**
+   * A guide edge takes any of the box's three lines, the same way a sibling's
+   * edge does: aligning the LEFT of a card to a column line, its CENTRE, or its
+   * RIGHT are three different intents and all three are worth a magnet. The span
+   * is the guide's own drawn extent, so the line that appears is the band edge
+   * the author can actually see.
+   */
+  if (guideLines) {
+    for (const span of guideLines.vertical) {
+      for (const delta of [span.position - targetLeft, span.position - targetCenterX, span.position - targetRight]) {
+        xCandidates.push({ delta, position: span.position, start: span.start, end: span.end });
+      }
+    }
+    for (const span of guideLines.horizontal) {
+      for (const delta of [span.position - targetTop, span.position - targetCenterY, span.position - targetBottom]) {
+        yCandidates.push({ delta, position: span.position, start: span.start, end: span.end });
+      }
     }
   }
 

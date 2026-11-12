@@ -1027,6 +1027,71 @@
         }
       }
     },
+    "LayoutGuide": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "description": "A ruler drawn over a frame \u2014 never a layout constraint: no child's box moves because a guide exists. Figma's layout grid, frame and component only.",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "columns",
+            "rows",
+            "grid"
+          ]
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "columns / rows only: how many bands. A grid derives its count from the box width."
+        },
+        "align": {
+          "type": "string",
+          "enum": [
+            "start",
+            "center",
+            "end",
+            "stretch"
+          ],
+          "description": "columns / rows only: where a fixed-size set sits. Defaults to stretch, which divides the box."
+        },
+        "width": {
+          "type": "number",
+          "minimum": 0,
+          "description": "columns only: one band's width. Required when align is not stretch."
+        },
+        "height": {
+          "type": "number",
+          "minimum": 0,
+          "description": "rows only: one band's height. Required when align is not stretch."
+        },
+        "size": {
+          "type": "number",
+          "minimum": 0,
+          "description": "grid only: one cell's side."
+        },
+        "gutter": {
+          "type": "number",
+          "minimum": 0,
+          "description": "columns / rows only: the space between two bands."
+        },
+        "margin": {
+          "type": "number",
+          "minimum": 0,
+          "description": "columns / rows only: how far the set is inset. Both sides when stretched, the starting side otherwise."
+        },
+        "color": {
+          "type": "string",
+          "description": "#RRGGBB or #RRGGBBAA: Figma's colour and its opacity in one alpha byte. Defaults to #FF00001A."
+        },
+        "visible": {
+          "type": "boolean",
+          "description": "An explicit hide. Absent means drawn: a guide nobody decided about is one."
+        }
+      }
+    },
     "AutoLayout": {
       "type": "object",
       "required": [
@@ -1640,9 +1705,17 @@
             "paint",
             "text",
             "effect",
-            "stroke"
+            "stroke",
+            "layoutGuide"
           ],
           "description": "A style is a set of DECLARATIONS. A value — a colour, a number — is a doc.tokens[] entry, and an id lives in exactly one of the two tables."
+        },
+        "guides": {
+          "type": "array",
+          "description": "layoutGuide only: the ruler, saved whole. Applying the style copies this array onto a frame, so editing the style never moves a frame that has not re-applied it.",
+          "items": {
+            "$ref": "#/definitions/LayoutGuide"
+          }
         },
         "paints": {
           "type": "array",
@@ -1696,6 +1769,28 @@
             "video",
             "html"
           ]
+        },
+        "layoutGuides": {
+          "type": "array",
+          "description": "Rulers drawn over this frame or component \u2014 Figma's `layoutGrids`. They never move a child: the layout pass does not read this key.",
+          "items": {
+            "$ref": "#/definitions/LayoutGuide"
+          }
+        },
+        "layoutGuideStyleId": {
+          "type": "string",
+          "description": "The `doc.styles[]` entry this ruler follows. `layoutGuides` beside it is the materialised value, kept in step on load and on every edit."
+        },
+        "layout-guide-style-id": {
+          "type": "string",
+          "description": "Kebab-case spelling of `layoutGuideStyleId`; both spellings are read."
+        },
+        "layout-guides": {
+          "type": "array",
+          "description": "Kebab-case spelling of `layoutGuides`; both spellings are read.",
+          "items": {
+            "$ref": "#/definitions/LayoutGuide"
+          }
         },
         "name": {
           "type": "string"

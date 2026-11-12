@@ -193,6 +193,36 @@ function collectIndividualStrokeWeights(node) {
  * as the stroke weights above, and the same reason: the all-equal case is
  * exactly the one REST omits.
  */
+/**
+ * The frame's layout grids, verbatim.
+ *
+ * REST and the plugin spell a grid identically — `pattern`, `alignment`,
+ * `offset`, `sectionSize`, `color` — so nothing is renamed here and the mapping
+ * lives in one place, the app's importer. Carried as a whole array rather than
+ * filtered: a guide is positional, and dropping the second one silently moves
+ * the first one's gutters.
+ */
+function collectLayoutGrids(node) {
+  var grids = node.layoutGrids;
+  if (!Array.isArray(grids) || isMixed(grids) || grids.length === 0) return undefined;
+  var out = [];
+  for (var i = 0; i < grids.length; i++) {
+    var g = grids[i];
+    if (!g || typeof g !== "object") continue;
+    var one = {};
+    put(one, "pattern", g.pattern);
+    put(one, "visible", g.visible);
+    put(one, "alignment", g.alignment);
+    put(one, "gutterSize", g.gutterSize);
+    put(one, "offset", g.offset);
+    put(one, "count", g.count);
+    put(one, "sectionSize", g.sectionSize);
+    put(one, "color", g.color);
+    out.push(one);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 function collectCornerRadii(node) {
   var sides = ["topLeftRadius", "topRightRadius", "bottomRightRadius", "bottomLeftRadius"];
   var radii = [];
@@ -664,6 +694,9 @@ function collectNode(node, ctx) {
     out.cornerRadius = node.cornerRadius;
   }
   put(out, "cornerSmoothing", node.cornerSmoothing);
+
+  var layoutGrids = collectLayoutGrids(node);
+  if (layoutGrids) out.layoutGrids = layoutGrids;
 
   var fillGeometry = collectVectorPaths(node.fillGeometry);
   if (fillGeometry) out.fillGeometry = fillGeometry;

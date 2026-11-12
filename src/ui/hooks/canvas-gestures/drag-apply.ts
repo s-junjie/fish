@@ -9,6 +9,7 @@ import { layoutOf } from "../../../core/dsl/layout-flat";
 import { calculateSnapping, GuideLine } from "../../../core/geometry/snap-guides";
 import { calculateVisibleViewport } from "../../../core/geometry/cull";
 import { snapCandidates } from "../../../core/geometry/snap-candidates";
+import { guideSnapLines, type GuideLineSet } from "../../../core/layout/layout-guides";
 import { measureSpan } from "../../../core/perf";
 import { moveElementTo } from "../../../core/interactions/line-ops";
 import { insertClones } from "../../../core/interactions/clipboard";
@@ -114,6 +115,8 @@ export interface SnapCandidateCache {
   excluded: ReadonlySet<string>;
   viewportKey: string;
   list: DesignElement[];
+  /** Guide edges are part of the same listing: they do not move during a drag either. */
+  lines: GuideLineSet;
 }
 
 export interface DragApplyContext {
@@ -389,8 +392,23 @@ export function createDragApply(ctx: DragApplyContext) {
         const siblings = reusable
           ? cached.list
           : measureSpan("fish.snapCandidates", () => {
-              const list = snapCandidates(getActivePage(docRef.current).children, draggedIds, snapExcluded, vp);
-              snapCacheRef.current = { dragged: draggedIds, excluded: snapExcluded, viewportKey: vpKey, list };
+              const children = getActivePage(docRef.current).children;
+              const list = snapCandidates(children, draggedIds, snapExcluded, vp);
+              // The ruler that counts is the one the dragged layers are measured
+              // against: their PARENT. A top-level frame has the page for a
+              // parent and therefore no guides to snap to — its own travel with it.
+              const owner = findParentById(children, primary.id)?.id;
+              snapCacheRef.current = {
+                dragged: draggedIds,
+                excluded: snapExcluded,
+                viewportKey: vpKey,
+                list,
+                // Listed once per gesture, not per frame: the page array is rebuilt
+                // every frame (the dragged element moved), and `guideSnapLines`
+                // memoises on that array, so asking it each frame would miss every
+                // time and walk the whole tree for every pointer sample.
+                lines: guideSnapLines(children, owner)
+              };
               return list;
             });
         const snap = calculateSnapping(
@@ -398,7 +416,8 @@ export function createDragApply(ctx: DragApplyContext) {
           zoom,
           pageCanvas.width,
           pageCanvas.height,
-          siblings
+          siblings,
+          snapCacheRef.current?.lines
         );
         // Only the free axis may be moved by a guide; the locked one keeps the
         // exact start position. A `vertical` guide is a VERTICAL LINE and so marks

@@ -117,6 +117,30 @@ export interface FigmaGridTrack {
   value?: number;
 }
 
+/**
+ * One layout grid, as both of Figma's doors describe it.
+ *
+ * REST's `layoutGrids` and the plugin's `node.layoutGrids` agree field for field
+ * — `pattern`, `alignment`, `gutterSize`, `offset`, `count`, `sectionSize`,
+ * `color`, `visible` — which is why the shim carries the array verbatim instead
+ * of renaming anything, and why the mapper below is a rename rather than a
+ * translation table.
+ */
+export interface FigmaLayoutGrid {
+  /** `COLUMNS` | `ROWS` | `GRID`. */
+  pattern?: string;
+  visible?: boolean;
+  /** `MIN` | `CENTER` | `MAX` | `STRETCH`; absent on a `GRID`. */
+  alignment?: string;
+  gutterSize?: number;
+  /** How far the set is inset from the frame. Figma's word for the DSL's `margin`. */
+  offset?: number;
+  count?: number;
+  /** A column's width, a row's height, or a grid cell's side. */
+  sectionSize?: number;
+  color?: FigmaColor;
+}
+
 export interface FigmaNode {
   id: string;
   name?: string;
@@ -141,6 +165,8 @@ export interface FigmaNode {
   cornerRadius?: number;
   rectangleCornerRadii?: number[];
   cornerSmoothing?: number;
+  /** The frame's rulers. Present only on containers, and only when one exists. */
+  layoutGrids?: FigmaLayoutGrid[];
 
   fills?: FigmaPaint[];
   strokes?: FigmaPaint[];

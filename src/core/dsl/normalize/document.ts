@@ -7,6 +7,7 @@ import { normalizeEffects } from "./effects";
 import { textStyleRefusal, toTextStyleDeclaration } from "../text-style-declarations";
 import { normalizeTextStyle } from "./text-sizing";
 import { normalizeStrokes } from "./stroke";
+import { normalizeLayoutGuides } from "./layout-guides";
 import { normalizeElement } from "./element";
 import { collectVariables, resolveValueTokens } from "./resolve-values";
 import { applyTokenShorthandsToDocument } from "./token-shorthand";
@@ -176,6 +177,27 @@ export function normalizeStyles(raw: unknown, repairs?: NormalizationRepair[]): 
         styleType: "stroke",
         strokes: rows
       });
+    } else if (styleType === "layoutGuide" || styleType === "layout-guide" || styleType === "layoutGrid") {
+      // A guide style is one array, read by the same normalizer a frame's own
+      // guides go through — a style that could hold a guide the frame could not
+      // would be a ruler that changes shape on apply.
+      const guides =
+        normalizeLayoutGuides({ layoutGuides: (item as Record<string, unknown>).guides ?? (item as Record<string, unknown>).grids }, "/styles", repairs ?? []) ?? [];
+      if (guides.length > 0) {
+        out.push({
+          id,
+          name,
+          ...(description ? { description } : {}),
+          styleType: "layoutGuide",
+          guides
+        });
+      } else {
+        repairs?.push({
+          kind: "dropped-property",
+          path: `/styles[${out.length}]/guides`,
+          message: "a layout guide style with no drawable guide was dropped"
+        });
+      }
     }
   }
   return out;

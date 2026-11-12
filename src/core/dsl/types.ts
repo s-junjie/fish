@@ -575,6 +575,66 @@ export interface AutoLayoutFields {
   "column-width-min"?: number;
 }
 
+/** The three rulers Figma draws. Two divide the box; one measures a pitch. */
+export type LayoutGuideKind = "columns" | "rows" | "grid";
+
+/** Where a fixed-size guide set sits in the box. `stretch` divides what is there. */
+export type LayoutGuideAlign = "start" | "center" | "end" | "stretch";
+
+/**
+ * One layout guide on a frame: a RULER, not a constraint.
+ *
+ * Nothing here is read by the layout pass — no child's `x`/`y`/`width` moves
+ * because a guide exists, and that is the whole point. The moment a guide
+ * participates it stops being a reference: drag a swatch, the column widths
+ * change, and the drawing the author measured against is gone. Figma stores the
+ * same thing on the same kind of node (`frame.layoutGrids`) under the same
+ * contract; the fields below are its panel's, in this repository's spelling.
+ *
+ * Absence means "not decided", and for a guide not-decided is `stretch` /
+ * `#FF00001A`. Only `visible` can record an explicit no.
+ *
+ * `grid` is deliberately the poor relation: a Figma grid panel has Size and
+ * Colour and nothing else, because a pitch has no count to divide and no start
+ * to align. Giving it a `gutter` would invent a second meaning for the fields a
+ * column guide already spends on alignment.
+ */
+export interface LayoutGuide {
+  kind: LayoutGuideKind;
+  /** Columns / rows: how many bands. A grid derives its count from the box. */
+  count?: number;
+  /** Columns / rows: where a fixed-size set sits. Absent means `stretch`. */
+  align?: LayoutGuideAlign;
+  /** Columns: one band's width. Required when `align` is not `stretch`. */
+  width?: number;
+  /** Rows: one band's height. Required when `align` is not `stretch`. */
+  height?: number;
+  /** Grid: one cell's side. */
+  size?: number;
+  /** Columns / rows: the space between two bands. */
+  gutter?: number;
+  /** Columns / rows: how far the set is inset from the box. */
+  margin?: number;
+  /** `#RRGGBB` / `#RRGGBBAA` — Figma's colour and opacity in one alpha byte. */
+  color?: string;
+  /** An explicit hide. Absent means drawn: a guide nobody decided about is one. */
+  visible?: boolean;
+}
+
+/** Mixed into the containers that can carry guides: frames and components. */
+export interface LayoutGuideFields {
+  layoutGuides?: LayoutGuide[];
+  /**
+   * The `doc.styles[]` entry this frame's ruler follows.
+   *
+   * Same contract as `fillStyleId`: the binding is the id, and `layoutGuides`
+   * beside it is the MATERIALISED value, kept in step by `syncDualStorage` so the
+   * canvas can paint without resolving. Unlinking drops the id and leaves the
+   * guides — a detached ruler keeps measuring what it measured.
+   */
+  layoutGuideStyleId?: string;
+}
+
 /**
  * Where a child sits in its grid parent, for the children auto-flow would put
  * somewhere else — CSS `grid-column` / `grid-row`.
@@ -834,7 +894,7 @@ export interface BaseElement {
 }
 
 
-export interface FrameElement extends BaseElement, SlideHost, AutoLayoutFields {
+export interface FrameElement extends BaseElement, SlideHost, AutoLayoutFields, LayoutGuideFields {
   type: "frame";
   children: DesignElement[];
   /** Ordered background paint stack (first layer bottom-most). */
@@ -1010,7 +1070,7 @@ export interface ComponentOverride {
   value: unknown;
 }
 
-export interface ComponentElement extends BaseElement, SlideHost, AutoLayoutFields {
+export interface ComponentElement extends BaseElement, SlideHost, AutoLayoutFields, LayoutGuideFields {
   type: "component";
   children: DesignElement[];
   fills?: PaintStack;
@@ -1751,7 +1811,7 @@ export interface LayoutConstraints {
   vertical?: "top" | "bottom" | "center" | "stretch" | "scale";
 }
 
-export type StyleType = "paint" | "text" | "effect" | "stroke";
+export type StyleType = "paint" | "text" | "effect" | "stroke" | "layoutGuide";
 
 /**
  * One entry in `doc.styles[]`: a set of DECLARATIONS a layer applies.
@@ -1826,7 +1886,25 @@ export interface StrokeStyle extends BaseStyle {
 
 export type NumberTokenCategory = "spacing" | "radius" | "stroke" | "size" | "typography" | "effect";
 
-export type DesignStyle = PaintStyle | TextStyleDefinition | EffectStyle | StrokeStyle;
+/**
+ * A layout guide STYLE: a ruler, named, so the same division can be applied to
+ * another frame.
+ *
+ * `guides` is the whole declaration and there is no per-guide binding: you wear
+ * the ruler or you do not. That is also why it is one array rather than one style
+ * per guide — a five-column rule with one band deleted is not a design system, it
+ * is a frame somebody edited.
+ *
+ * Nothing reads this at paint time. Applying it COPIES the array onto a frame, the
+ * way applying a paint style copies a stack, so a frame that has never worn the
+ * style is untouched by editing it.
+ */
+export interface LayoutGuideStyle extends BaseStyle {
+  styleType: "layoutGuide";
+  guides: LayoutGuide[];
+}
+
+export type DesignStyle = PaintStyle | TextStyleDefinition | EffectStyle | StrokeStyle | LayoutGuideStyle;
 
 /**
  * One entry in `doc.tokens[]`: a token is a VALUE, a style is a set of

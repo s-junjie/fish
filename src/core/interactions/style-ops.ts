@@ -5,6 +5,8 @@ import {
   DesignToken,
   Effect,
   EffectStyle,
+  LayoutGuide,
+  LayoutGuideStyle,
   Paint,
   PaintStack,
   PaintStyle,
@@ -29,6 +31,7 @@ import {
   syncDualStorage
 } from "./style-sync";
 import { getActiveNumberMode, getActiveTheme } from "./mode-ops";
+import { withLayoutGuides } from "../layout/layout-guides";
 
 export { syncDualStorage };
 
@@ -105,6 +108,48 @@ export function createEffectStyle(
     effects: JSON.parse(JSON.stringify(effects)),
     ...(description ? { description: description.trim() } : {})
   };
+}
+
+/**
+ * A layout guide style: the ruler, saved.
+ *
+ * Deep-copied for the same reason every other style is — a style that shared its
+ * array with the frame it was saved from would edit that frame's guides from the
+ * style panel, and the copy is what makes "apply" a one-way operation.
+ */
+export function createLayoutGuideStyle(
+  name: string,
+  guides: LayoutGuide[],
+  description?: string
+): LayoutGuideStyle {
+  return {
+    id: createId("style_guide"),
+    name: name.trim() || "Untitled Guide",
+    styleType: "layoutGuide",
+    guides: JSON.parse(JSON.stringify(guides)),
+    ...(description ? { description: description.trim() } : {})
+  };
+}
+
+/**
+ * Bind a frame's ruler to a saved guide style.
+ *
+ * The id is the binding and `layoutGuides` is its materialised value, exactly as
+ * `bindFillStyle` writes `fills` beside `fillStyleId`. Unlinking drops the id and
+ * KEEPS the guides: a detached ruler must go on measuring what it measured.
+ */
+export function bindLayoutGuideStyle(el: DesignElement, style: LayoutGuideStyle): DesignElement {
+  return {
+    ...el,
+    layoutGuideStyleId: style.id,
+    layoutGuides: JSON.parse(JSON.stringify(style.guides))
+  } as DesignElement;
+}
+
+export function unbindLayoutGuideStyle(el: DesignElement): DesignElement {
+  const next = { ...el } as Record<string, unknown>;
+  delete next.layoutGuideStyleId;
+  return next as unknown as DesignElement;
 }
 
 export function addStyleToDoc(doc: DesignDocument, style: DesignStyle): DesignDocument {
@@ -261,6 +306,12 @@ function bindDraftStyle(el: DesignElement, style: DesignStyle): DesignElement {
       return bindEffectStyle(el, style as EffectStyle);
     case "text":
       return el.type === "text" ? bindTextStyle(el as TextElement, style as TextStyleDefinition) : el;
+    case "layoutGuide":
+      // The draft's ruler, drawn on the selection (or on the frame the picker was
+      // opened from) so an edit is visible before it is saved — the same transient
+      // write `bindFillStyle` makes. The BINDING is not written here: a preview
+      // must not claim the frame follows the style until the save says so.
+      return (style.guides?.length ? withLayoutGuides(el, style.guides) : el) as DesignElement;
   }
 }
 

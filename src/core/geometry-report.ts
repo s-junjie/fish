@@ -2,12 +2,13 @@ import { relayoutDocumentTree, resolvePadding } from "./compile";
 import { getActivePage } from "./dsl/types";
 import { DEFAULT_FLEX_DIRECTION, layoutOf, type FlatAutoLayout } from "./dsl/layout-flat";
 import { elementRotatedAABB } from "./geometry/element-bounds";
-import type { AutoLayout, DesignDocument, DesignElement } from "./dsl/types";
+import type { AutoLayout, DesignDocument, DesignElement, LayoutGuide } from "./dsl/types";
+import { guideGeometry } from "./layout/layout-guides";
 import { clipsContent, scrollsAxis, type OverflowFields } from "./dsl/overflow";
 
 export interface GeometryFinding {
   level: "info" | "warning";
-  kind: "overflow" | "clipped" | "zero-size" | "unused-space";
+  kind: "overflow" | "clipped" | "zero-size" | "unused-space" | "guide-degenerate";
   message: string;
   elementId?: string;
 }
@@ -242,5 +243,41 @@ export function geometryReport(doc: DesignDocument): GeometryFinding[] {
   };
 
   walk(laidOut);
+
+  /**
+   * Guides are checked on their own axis, outside the child walk.
+   *
+   * A frame with no children can still carry a ruler, and a guide that draws
+   * nothing is the quietest defect in the feature: the panel lists a guide, the
+   * canvas shows none, and nothing anywhere says the two disagree. `w <= 0` is
+   * skipped because the box already reports itself as zero-size.
+   */
+  const checkGuides = (els: DesignElement[]) => {
+    for (const el of els) {
+      const any = fields(el);
+      const width = num(any.width);
+      const height = num(any.height);
+      const guides = (any.layoutGuides as LayoutGuide[] | undefined) ?? [];
+      if (guides.length > 0 && width > EPS && height > EPS) {
+        guides.forEach((guide, index) => {
+          if (guide.visible === false) return;
+          if (guideGeometry(guide, { width, height }).kind !== "none") return;
+          const why =
+            guide.kind === "grid"
+              ? `a grid cell of ${guide.size ?? 0}px`
+              : `${String(guide.count ?? 0)} ${guide.kind} in ${Math.round(width)}×${Math.round(height)} with margin ${guide.margin ?? 0} and gutter ${guide.gutter ?? 0}`;
+          out.push({
+            level: "warning",
+            kind: "guide-degenerate",
+            elementId: String(any.id ?? ""),
+            message: `layout guide ${index + 1} (${guide.kind}) draws nothing: ${why} leaves no room. Give the guide a smaller margin / gutter, or a smaller cell.`
+          });
+        });
+      }
+      checkGuides((any.children as DesignElement[] | undefined) ?? []);
+    }
+  };
+  checkGuides(laidOut);
+
   return out;
 }

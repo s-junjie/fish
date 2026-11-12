@@ -9,7 +9,7 @@
  * HTML importer meets by reading `getBoundingClientRect` behind an offset host.
  */
 
-import type { AutoLayout, DesignElement, ElementSizing, LayoutConstraints, Paint, Stroke } from "../dsl/types";
+import type { AutoLayout, DesignElement, ElementSizing, LayoutConstraints, LayoutGuide, Paint, Stroke } from "../dsl/types";
 import { mapFigmaGridChild, mapFigmaGridLayout } from "./figma-grid";
 import { EFFECT_BLEND_MODES, figmaBlendMode, mapFigmaCornerRadius, mapFigmaEffects, mapFigmaFills, mapFigmaPaint, mapFigmaStrokeAsFills, mapFigmaStrokes, type PaintPlacement } from "./figma-paint";
 import { figmaFillIsTurned } from "./figma-image-fill";
@@ -921,6 +921,92 @@ function carryRotation(out: Draft, rotation: number | undefined): void {
   if (Math.abs(angle) > 0.01) out.rotation = round2(angle);
 }
 
+/** Figma's four `alignment` values, and where a fixed-size set then sits. */
+const FIGMA_GUIDE_ALIGN: Record<string, LayoutGuide["align"]> = {
+  MIN: "start",
+  CENTER: "center",
+  MAX: "end",
+  STRETCH: "stretch"
+};
+
+/**
+ * Figma's `{r,g,b,a}` as `#RRGGBBAA` — the alpha byte is the `10%` in the panel.
+ *
+ * Deliberately not `figmaColor`: that one returns `rgba(...)` for anything
+ * translucent, which is right for a paint and wrong for a guide, whose colour is
+ * written in the same spelling as `fills` and read back by the DSL's validator.
+ */
+function guideColor(c: { r?: number; g?: number; b?: number; a?: number } | undefined): string | undefined {
+  if (!c) return undefined;
+  const byte = (n: number) => Math.max(0, Math.min(255, Math.round(n * 255))).toString(16).padStart(2, "0");
+  const alpha = c.a ?? 1;
+  const rgb = `#${byte(c.r ?? 0)}${byte(c.g ?? 0)}${byte(c.b ?? 0)}`;
+  return alpha >= 1 ? rgb : `${rgb}${byte(alpha)}`;
+}
+
+/**
+ * Figma's layout grids → the DSL's layout guides.
+ *
+ * A rename, not a translation: `pattern` is the kind, `alignment` is where a
+ * fixed-size set sits, `offset` is the margin, `sectionSize` is a band's width, a
+ * band's height or a grid cell's side. Figma's `GRID` has neither a count nor an
+ * alignment, and its `sectionSize` is then the cell — which is why that branch
+ * returns before any of the alignment handling.
+ *
+ * A grid that cannot be drawn (no `count`, no fixed `sectionSize` under a fixed
+ * alignment) is reported and skipped rather than guessed at: an imported ruler
+ * the author did not draw is worse than one they know is missing.
+ */
+function mapFigmaLayoutGuides(node: FigmaNode, state: NodeWalkState): LayoutGuide[] {
+  const grids = node.layoutGrids;
+  if (!Array.isArray(grids)) return [];
+
+  const guides: LayoutGuide[] = [];
+  for (const grid of grids) {
+    const pattern = String(grid.pattern ?? "");
+    const hidden = grid.visible === false ? { visible: false } : {};
+    const color = guideColor(grid.color);
+    const colour = color ? { color } : {};
+
+    if (pattern === "GRID") {
+      const size = typeof grid.sectionSize === "number" ? grid.sectionSize : 0;
+      if (size <= 0) {
+        gap(state, node, "layoutGrid:grid without sectionSize", pattern);
+        continue;
+      }
+      guides.push({ kind: "grid", size, ...colour, ...hidden });
+      continue;
+    }
+
+    const kind = pattern === "COLUMNS" ? "columns" : pattern === "ROWS" ? "rows" : null;
+    if (!kind) {
+      gap(state, node, "layoutGrid:pattern", pattern);
+      continue;
+    }
+    const count = typeof grid.count === "number" ? grid.count : 0;
+    if (count < 1) {
+      gap(state, node, "layoutGrid:noCount", pattern);
+      continue;
+    }
+
+    const align = FIGMA_GUIDE_ALIGN[String(grid.alignment ?? "STRETCH")] ?? "stretch";
+    const guide: LayoutGuide = { kind, count, align };
+    if (align !== "stretch") {
+      const size = typeof grid.sectionSize === "number" ? grid.sectionSize : 0;
+      if (size <= 0) {
+        gap(state, node, "layoutGrid:fixed alignment without sectionSize", pattern);
+        continue;
+      }
+      if (kind === "columns") guide.width = size;
+      else guide.height = size;
+    }
+    if (typeof grid.gutterSize === "number" && grid.gutterSize > 0) guide.gutter = grid.gutterSize;
+    if (typeof grid.offset === "number" && grid.offset > 0) guide.margin = grid.offset;
+    guides.push({ ...guide, ...colour, ...hidden });
+  }
+  return guides;
+}
+
 function mapContainer(node: FigmaNode, rect: Rect, parentX: number, parentY: number, state: NodeWalkState, kind: "frame" | "component" | "componentSet"): Draft {
   const out = base(node, rect, parentX, parentY);
   out.type = kind;
@@ -929,6 +1015,10 @@ function mapContainer(node: FigmaNode, rect: Rect, parentX: number, parentY: num
   const radius = mapFigmaCornerRadius(node);
   if (radius !== undefined) out.borderRadius = radius;
   if (typeof node.cornerSmoothing === "number" && node.cornerSmoothing > 0) out.cornerSmoothing = node.cornerSmoothing;
+  if (kind !== "componentSet") {
+    const guides = mapFigmaLayoutGuides(node, state);
+    if (guides.length > 0) out.layoutGuides = guides;
+  }
   paintOf(node, out, state);
   const layout = mapFigmaAutoLayout(node, state);
   if (layout) Object.assign(out, flattenLayout(layout));

@@ -347,6 +347,22 @@ export function syncDualStorage(
     }
   }
 
+  // A guide style is a ruler, and a bound frame follows it — that is what makes
+  // editing the style in the design system move every frame wearing it. The
+  // comparison is by value so a load does not report a change on every frame.
+  const guideStyleId = (next as { layoutGuideStyleId?: string }).layoutGuideStyleId;
+  if (guideStyleId && stylesById.has(guideStyleId)) {
+    const style = stylesById.get(guideStyleId)!;
+    if (style.styleType === "layoutGuide") {
+      const wanted = style.guides ?? [];
+      const current = (next as { layoutGuides?: unknown[] }).layoutGuides ?? [];
+      if (JSON.stringify(wanted) !== JSON.stringify(current)) {
+        next = { ...next, layoutGuides: cloneDeclarations(wanted) } as DesignElement;
+        changed = true;
+      }
+    }
+  }
+
   const resolveColorToken = (tokenId: string): string | undefined => {
     const token = tokensById.get(tokenId);
     return token?.type === "color" ? resolveColorTokenHex(token, effectiveTheme) : undefined;

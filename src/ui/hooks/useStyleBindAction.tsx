@@ -34,13 +34,23 @@ interface StyleBindParams<S extends DesignStyle> {
    * the attribute they had before this was shared.
    */
   triggerProps?: Record<string, string>;
+  /**
+   * Dismiss the picker once a style is chosen.
+   *
+   * Off for the appearance sections, whose picker stays up so a stack can be
+   * compared while it is applied. On for a guide style, which replaces the whole
+   * ruler in one move and has nothing left to compare: a picker that stayed open
+   * over an unchanged-looking frame read as "the click did nothing".
+   */
+  closeOnSelect?: boolean;
 }
 
 const TRIGGER_TITLE: Record<string, string> = {
   paint: "styles.colorStyles",
   stroke: "styles.strokeStyles",
   text: "styles.textStyles",
-  effect: "styles.effectStyles"
+  effect: "styles.effectStyles",
+  layoutGuide: "styles.layoutGuideStyles"
 };
 
 /**
@@ -63,7 +73,8 @@ export function useStyleBindAction<S extends DesignStyle>({
   unbind,
   onMutate,
   onCommitSnapshot,
-  triggerProps
+  triggerProps,
+  closeOnSelect = false
 }: StyleBindParams<S>) {
   const [open, setOpen] = useState(false);
   // The picker positions against whatever last opened it, which may be the
@@ -128,7 +139,10 @@ export function useStyleBindAction<S extends DesignStyle>({
       availableStyles={docRef.current.styles || []}
       anchorRef={anchorRef}
       currentSelection={currentSelection}
-      onSelectStyle={(s) => onMutate((el) => bind(el, s as S), true)}
+      onSelectStyle={(s) => {
+        onMutate((el) => bind(el, s as S), true);
+        if (closeOnSelect) setOpen(false);
+      }}
       onDetachStyle={() => onMutate((el) => unbind(el, boundStyle), true)}
       onSaveStyle={commitStyle}
       onCommitSnapshot={onCommitSnapshot}

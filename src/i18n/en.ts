@@ -831,6 +831,43 @@ export const en = {
     color: "Color",
     backgroundOn: "Background"
   },
+  layoutGuide: {
+    title: "Layout guide",
+    add: "Add layout guide",
+    remove: "Remove guide",
+    show: "Show guide",
+    hide: "Hide guide",
+    kind: {
+      columns: "Columns",
+      rows: "Rows",
+      grid: "Grid"
+    },
+    count: "Count",
+    size: "Size",
+    width: "Width",
+    height: "Height",
+    margin: "Margin",
+    gutter: "Gutter",
+    align: {
+      x: {
+        start: "Left",
+        center: "Center",
+        end: "Right",
+        stretch: "Stretch"
+      },
+      y: {
+        start: "Top",
+        center: "Middle",
+        end: "Bottom",
+        stretch: "Stretch"
+      }
+    },
+    summary: {
+      columns: "{count} columns",
+      rows: "{count} rows",
+      grid: "{size}px grid"
+    }
+  },
   stack: {
     gap: "Gap",
     lineGap: "Line gap",
@@ -1148,13 +1185,16 @@ export const en = {
     strokeStyles: "Stroke Styles",
     textStyles: "Text Styles",
     effectStyles: "Effect Styles",
+    layoutGuideStyles: "Layout Guide Style",
     strokeCount: "{n, plural, one {# stroke} other {# strokes}}",
     effectCount: "{n, plural, one {# effect} other {# effects}}",
+    guideCount: "{n, plural, one {# guide} other {# guides}}",
     createStyle: "Create Style",
     createColorStyle: "Create Fill Style",
     createStrokeStyle: "Create Stroke Style",
     createTextStyle: "Create Text Style",
     createEffectStyle: "Create Effect Style",
+    createLayoutGuideStyle: "Create Layout Guide Style",
     editStyle: "Edit Style",
     deleteStyle: "Delete Style",
     detachStyle: "Detach Style",

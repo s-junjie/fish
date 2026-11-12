@@ -70,6 +70,10 @@ export const CANONICAL_KEYS: ReadonlySet<string> = new Set([
   // swaps the box's axes, so it is a spelling, not a stored field.
   "writing-mode", "text-orientation",
   "visible", "visibility", "locked", "isMask", "maskMode", "maskInvert", "effects", "filter", "adjust", "constraints", "metadata", "tokenBindings", "themeMode", "numberMode", "sizing",
+  // The author's ruler on a container. Read by the overlay and by `check`, never
+  // by the layout pass — see `LayoutGuide` in types.ts for why that is the point.
+  "layoutGuides",
+  "layoutGuideStyleId",
   "position", "align-self", "margin", "grid-area", "grid-column", "grid-row",
   "content", "style", "text", "characters", "textColor", "assetId", "asset", "fit", "objectFit",
   // A text's own glyph outline. Carried so a mask has geometry to carry (see

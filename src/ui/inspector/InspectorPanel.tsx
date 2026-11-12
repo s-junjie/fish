@@ -22,6 +22,7 @@ import {
 import { styleTables } from "../../core/interactions/style-tables";
 import { TransformSection } from "./TransformSection";
 import { AutoLayoutSection } from "./AutoLayoutSection";
+import { LayoutGuideSection } from "./LayoutGuideSection";
 import { AppearanceSection } from "./AppearanceSection";
 import { FillSection } from "./FillSection";
 import { StrokeSection } from "./StrokeSection";
@@ -840,6 +841,21 @@ function InspectorPanelBase({
                 inside a component is exactly where one instance's link has to
                 differ from the master's. */}
               <LinkSection elements={selectedElements} primarySelected={primarySelected} onMutate={onMutate} />
+
+              {/* The author's ruler on this box. Last of the box's own sections,
+                directly above EXPORT: everything above paints, this measures,
+                and export is what happens next. A guide is set once and then
+                measured against for the rest of the session — so it must not be
+                behind a menu. */}
+              <LayoutGuideSection
+                primarySelected={primarySelected}
+                doc={doc}
+                docRef={docRef}
+                onMutate={onMutate}
+                onCommitSnapshot={onCommitSnapshot}
+                onDragStart={onDragStart}
+                onDragEnd={onDragEnd}
+              />
 
               {!isInstanceChild && (
                 <ExportSection

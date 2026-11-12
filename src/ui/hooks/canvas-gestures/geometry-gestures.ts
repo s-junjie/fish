@@ -12,6 +12,7 @@ import { layoutOf } from "../../../core/dsl/layout-flat";
 import { calculateVisibleViewport } from "../../../core/geometry/cull";
 import { snapCandidates } from "../../../core/geometry/snap-candidates";
 import { calculateResizeSnapping, GuideLine } from "../../../core/geometry/snap-guides";
+import { guideSnapLines, type GuideLineSet } from "../../../core/layout/layout-guides";
 import { getRotateCursor } from "../../../core/geometry/transforms";
 import { resolveResizeBox } from "../../../core/geometry/resize-box";
 import type { ResizeHandleType } from "../../../core/geometry/snap-guides";
@@ -426,7 +427,7 @@ export function createGeometryGestures(ctx: GeometryGestureContext) {
     // resize. Built once for the gesture so the snapshot below can key on it.
     const ownIds = new Set([el.id, ...(isContainer(el) ? collectDescendantIds(el) : [])]);
     /** The gesture's snap candidates: same reasoning as the move drag. */
-    let snapCache: { viewportKey: string; list: DesignElement[] } | null = null;
+    let snapCache: { viewportKey: string; list: DesignElement[]; lines: GuideLineSet } | null = null;
 
     const coalescer = createRafCoalescer<{ x: number; y: number; shiftKey: boolean; altKey: boolean }>((p) => {
       const screenDx = (p.x - startClientX) / zoom;
@@ -507,8 +508,10 @@ export function createGeometryGestures(ctx: GeometryGestureContext) {
           snapCache && snapCache.viewportKey === vpKey
             ? snapCache.list
             : (() => {
-                const list = snapCandidates(getActivePage(docRef.current).children, ownIds, NO_IDS, vp);
-                snapCache = { viewportKey: vpKey, list };
+                const children = getActivePage(docRef.current).children;
+                const list = snapCandidates(children, ownIds, NO_IDS, vp);
+                // The resized layer's OWN frame, not every ruler on the page.
+                snapCache = { viewportKey: vpKey, list, lines: guideSnapLines(children, findParentById(children, el.id)?.id) };
                 return list;
               })();
         const pageCanvas = getActivePage(docRef.current).canvas;
@@ -523,7 +526,8 @@ export function createGeometryGestures(ctx: GeometryGestureContext) {
           zoom,
           pageCanvas.width,
           pageCanvas.height,
-          siblings
+          siblings,
+          snapCache?.lines
         );
         // Unconditional, so the guides from the last frame that happened to hit
         // something do not outlive the drag: they are a statement about where the

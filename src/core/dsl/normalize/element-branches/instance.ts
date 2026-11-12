@@ -77,4 +77,17 @@ export const normalizeInstance: ElementBranch = ({ el, base, path, repairs, box 
       base.instanceScale = { x, y };
     }
   }
+
+  // A guide is geometry, and an instance's geometry belongs to its master — the
+  // same reason it stores no auto-layout of its own. Reported rather than kept:
+  // a stored array would draw bands the instance cannot honour, and a silently
+  // ignored one is a ruler the author thinks they placed.
+  if (el.layoutGuides !== undefined || el["layout-guides"] !== undefined) {
+    repairs.push({
+      kind: "layout",
+      path: `${path}/layoutGuides`,
+      message:
+        "instance cannot carry layout guides: they belong to the master. Drawn on the master; not projected into instances yet."
+    });
+  }
 };

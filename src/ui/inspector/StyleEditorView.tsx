@@ -1,6 +1,6 @@
 import type { RefObject } from "preact";
 import { useState } from "preact/hooks";
-import type { ColorToken, DesignDocument, Effect, Paint, PaintStyle, Stroke, StyleType, TextStyleDeclaration, TextDecorationLine } from "../../core/dsl/types";
+import type { ColorToken, DesignDocument, Effect, LayoutGuide, Paint, PaintStyle, Stroke, StyleType, TextStyleDeclaration, TextDecorationLine } from "../../core/dsl/types";
 import { parseColorAlpha, composeColorAlpha } from "../../core/geometry/color-utils";
 import { cssBlurFilter } from "../../core/css-encode";
 import { paintRowLabel, paintSwatchBackground, paintImageUri, IMAGE_SWATCH_FALLBACK } from "./paint-preview";
@@ -19,6 +19,10 @@ import { TypographyFields, type TypographyNumberProp } from "./typography-fields
 import { EffectRows } from "../EffectRows";
 import { Plus, Eye, EyeOff, Minus, SlidersHorizontal } from "lucide-react";
 import { TEXT_FIELD_CLASS } from "../ScrubInput";
+import { DEFAULT_GUIDE_COLOR } from "../../core/layout/layout-guides";
+import { GUIDE_KIND_ICON } from "./layout-guide-fields";
+import { LayoutGuidePopover } from "./LayoutGuidePopover";
+import { PAINT_ROW_CLASS, PAINT_ROW_RULE_IDLE, PAINT_ROW_RULE_OPEN } from "./paint-row-style";
 import { Button } from "../Button";
 import { SUB_LABEL_CLASS } from "../label-tier";
 import { NEW_SOLID, DEFAULT_STROKE_ROW } from "./style-draft-defaults";
@@ -30,6 +34,8 @@ export interface StyleDrafts {
   /** A text style's declarations — type only, no ink (see `TextStyleDeclaration`). */
   textStyle: TextStyleDeclaration;
   effects: Effect[];
+  /** A layout guide style's ruler, carried through the picker unchanged. */
+  guides: LayoutGuide[];
 }
 
 interface StyleEditorViewProps {
@@ -123,7 +129,7 @@ export function StyleEditorView({
             (family, weight, size, line height, tracking), and the only thing a
             plus could have added was an effect — which a text style does not
             own. Effects belong to the layer, or to an effect style. */}
-        {(styleType === "paint" || styleType === "stroke" || styleType === "effect") && (
+        {(styleType === "paint" || styleType === "stroke" || styleType === "effect" || styleType === "layoutGuide") && (
           <Button
             size="icon"
             type="button"
@@ -133,17 +139,32 @@ export function StyleEditorView({
                 setDrafts((cur) => ({ ...cur, paints: [...cur.paints, { ...NEW_SOLID }] }));
               } else if (styleType === "stroke") {
                 setDrafts((cur) => ({ ...cur, strokes: [...cur.strokes, { ...DEFAULT_STROKE_ROW }] }));
+              } else if (styleType === "layoutGuide") {
+                // A new row in a guide style is a column rule, the same default the
+                // layer's own `+` uses.
+                setDrafts((cur) => ({
+                  ...cur,
+                  guides: [...cur.guides, { kind: "columns", count: 5, align: "stretch", gutter: 20, margin: 0 }]
+                }));
               } else {
                 setEffectMenuAnchor(e.currentTarget as HTMLElement);
               }
             }}
-            title={styleType === "paint" ? t("paint.addFill") : styleType === "stroke" ? t("paint.addStroke") : t("effects.add")}
-            aria-label={styleType === "paint" ? t("paint.addFill") : styleType === "stroke" ? t("paint.addStroke") : t("effects.add")}
+            title={styleType === "paint" ? t("paint.addFill") : styleType === "stroke" ? t("paint.addStroke") : styleType === "layoutGuide" ? t("layoutGuide.add") : t("effects.add")}
+            aria-label={styleType === "paint" ? t("paint.addFill") : styleType === "stroke" ? t("paint.addStroke") : styleType === "layoutGuide" ? t("layoutGuide.add") : t("effects.add")}
           >
             <Plus size={14} />
           </Button>
         )}
       </div>
+
+      {styleType === "layoutGuide" && (
+        <GuideRows
+          guides={drafts.guides}
+          doc={doc}
+          onChange={(guides) => setDrafts((cur) => ({ ...cur, guides }))}
+        />
+      )}
 
       {styleType === "paint" && (
         <DraftPaintRows
@@ -657,7 +678,114 @@ function StyleBannerPreview({
   if (styleType === "paint") return <PaintBanner paints={drafts.paints} doc={doc} />;
   if (styleType === "stroke") return <StrokeBanner strokes={drafts.strokes} />;
   if (styleType === "text") return <TextBanner style={drafts.textStyle} />;
+  if (styleType === "layoutGuide") return <GuideBanner guides={drafts.guides} />;
   return <EffectBanner effects={drafts.effects} />;
+}
+
+/** One guide as a row of text — the same wording the layer panel uses. */
+/** A nominal box, so `retargetGuide` can seed a fixed band's width. A style has
+ *  no frame of its own — the number it seeds is only a starting point, and the
+ *  author overrides it in the very next field. */
+const GUIDE_BOX = { width: 800, height: 600 };
+
+const noop = () => {};
+
+/** One guide, in the words a designer uses for it. */
+function guideLabel(guide: LayoutGuide): string {
+  if (guide.kind === "grid") return t("layoutGuide.summary.grid", { size: guide.size ?? 8 });
+  return t(guide.kind === "columns" ? "layoutGuide.summary.columns" : "layoutGuide.summary.rows", {
+    count: Math.max(1, Math.round(guide.count ?? 1))
+  });
+}
+
+/**
+ * A guide style's body: the fields, one block per guide.
+ *
+ * There is NO list of guides above them. The fields already start with the kind,
+ * and a row that restates "13 columns" over a Count of 13 was a second place to
+ * read one fact — it existed only so a style could hold several rulers, which is
+ * rare enough to handle inline: each block carries its own remove button beside
+ * the kind select, and the `+` in Properties appends.
+ */
+function GuideRows({
+  guides,
+  doc,
+  onChange
+}: {
+  guides: LayoutGuide[];
+  doc?: DesignDocument;
+  onChange: (guides: LayoutGuide[]) => void;
+}) {
+  const [open, setOpen] = useState<{ index: number; anchor: HTMLElement } | null>(null);
+  const openIndex = open && open.index < guides.length ? open.index : null;
+
+  return (
+    <div className="space-y-1.5" data-style-guide-rows="true">
+      {guides.map((guide, index) => {
+        const KindIcon = GUIDE_KIND_ICON[guide.kind];
+        return (
+          <div
+            key={index}
+            data-style-guide-row={index}
+            className={`${PAINT_ROW_CLASS} ${openIndex === index ? PAINT_ROW_RULE_OPEN : PAINT_ROW_RULE_IDLE}`}
+          >
+            <button
+              type="button"
+              className="h-full flex-1 min-w-0 flex items-center gap-2 text-left cursor-default"
+              aria-expanded={openIndex === index}
+              onClick={(e) =>
+                setOpen(openIndex === index ? null : { index, anchor: e.currentTarget as HTMLElement })
+              }
+            >
+              <span className="shrink-0 h-3.5 w-3.5 flex items-center text-ink-dim" aria-hidden="true">
+                <KindIcon size={16} className="-ml-0.5" />
+              </span>
+              <span className="truncate text-row text-ink">{guideLabel(guide)}</span>
+            </button>
+            {guides.length > 1 && (
+              <Button
+                size="icon"
+                type="button"
+                data-style-guide-remove={index}
+                title={t("layoutGuide.remove")}
+                aria-label={t("layoutGuide.remove")}
+                onClick={() => {
+                  onChange(guides.filter((_, at) => at !== index));
+                  setOpen(null);
+                }}
+              >
+                <Minus size={12} />
+              </Button>
+            )}
+          </div>
+        );
+      })}
+
+      {open && openIndex !== null && (
+        <LayoutGuidePopover
+          anchor={open.anchor}
+          guide={guides[openIndex]}
+          box={GUIDE_BOX}
+          doc={doc}
+          onChange={(next) => onChange(guides.map((g, i) => (i === openIndex ? next : g)))}
+          onDragStart={noop}
+          onDragEnd={noop}
+          onClose={() => setOpen(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function GuideBanner({ guides }: { guides: LayoutGuide[] }) {
+  const colour = guides[0]?.color ?? DEFAULT_GUIDE_COLOR;
+  return (
+    <div className="w-full h-20 rounded-ctl border border-rule-strong bg-inset flex items-stretch gap-1 p-2">
+      {Array.from({ length: Math.min(8, Math.max(1, guides.length * 4)) }).map((_, index) => (
+        <div key={index} className="flex-1 rounded-[1px]" style={{ background: colour }} />
+      ))}
+    </div>
+  );
 }
 
 function StrokeBanner({ strokes }: { strokes: Stroke[] }) {
