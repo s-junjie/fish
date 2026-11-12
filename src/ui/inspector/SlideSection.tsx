@@ -12,7 +12,7 @@ import { SegmentedControl } from "../SegmentedControl";
 import { ScrubInput } from "../ScrubInput";
 import { Select } from "../Select";
 import { Button } from "../Button";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Timer } from "lucide-react";
 import { t } from "../../i18n";
 import { ROW_DENSE_CLASS, ROW_SPREAD_GAP_CLASS, ROW_TIGHT_CLASS } from "../row-style";
 
@@ -207,7 +207,10 @@ export function SlideSection({
           <div className={ROW_TIGHT_CLASS}>
             <div className="w-24 shrink-0">
               <ScrubInput
-                label="ms"
+                /* A timer, not the string `ms`: this handle is what the field
+                   is FOR — drag it and the duration scrubs — and `ms` spent the
+                   slot saying something the icon already says. */
+                label={<Timer size={12} />}
                 title={t("slide.duration")}
                 value={resolved.durationMs}
                 min={0}
@@ -281,10 +284,6 @@ export function SlideSection({
             </ul>
           )}
         </div>
-      )}
-
-      {resolved.transition === "morph" && (
-        <p className="text-meta text-ink-muted leading-relaxed">{t("slide.morphHint")}</p>
       )}
     </Section>
   );

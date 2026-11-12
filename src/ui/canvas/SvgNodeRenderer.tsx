@@ -10,6 +10,7 @@ import {
   PaintStyle,
   BackdropBlurEffect
 } from "../../core/dsl/types";
+import { clipsContent } from "../../core/dsl/overflow";
 import { getShapeLocalPath } from "../../core/geometry/gradient-utils";
 import { isNeutralColorFilter } from "../../core/dsl/color-filter";
 import { isContainer } from "../../core/geometry/tree-ops";
@@ -428,13 +429,15 @@ export function SvgNodeRenderer({
             const containerEl = el as ContainerElement;
             const sx = containerEl.scrollX || 0;
             const sy = containerEl.scrollY || 0;
-            const hasScroll = (sx !== 0 || sy !== 0) && Boolean(containerEl.clipContent);
+            const clipped = clipsContent(containerEl);
+            const clipUrl = clipped ? `url(#clip_${el.id})` : undefined;
+            const hasScroll = (sx !== 0 || sy !== 0) && clipped;
             return (
               <g
                 transform={`translate(${el.x}, ${el.y})`}
-                clipPath={containerEl.clipContent ? `url(#clip_${el.id})` : undefined}
-                data-clip-chain={containerEl.clipContent ? `url(#clip_${el.id})` : undefined}
-                data-clip-span={containerEl.clipContent ? String(Math.max(el.width, el.height)) : undefined}
+                clipPath={clipUrl}
+                data-clip-chain={clipUrl}
+                data-clip-span={clipped ? String(Math.max(el.width, el.height)) : undefined}
               >
                 {(() => {
                   const children = containerEl.children || [];

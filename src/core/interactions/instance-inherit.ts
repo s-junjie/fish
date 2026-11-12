@@ -9,10 +9,11 @@ import {
   InstanceElement,
   Page,
   PaintStack,
-  ScrollOverflow,
+  Overflow,
   Stroke
 } from "../dsl/types";
 import { flattenElements, isContainer } from "../geometry/tree-ops";
+import { overflowFields, resolveOverflow } from "../dsl/overflow";
 import { resolveAxis } from "../geometry/resolve-axis";
 import { instanceScaleOf, scaleCornerRadius, scaleEffect, scaleStrokeWidth } from "../geometry/scale-geometry";
 import { topLayer } from "../dsl/paint-stack";
@@ -68,7 +69,7 @@ export function resolveInstanceNumberMode(
  * different ways.
  *
  * Scope: the instance's OWN box (width/height/fills/strokes/effects/borderRadius/
- * clipContent). Child-layer geometry is never inherited this way.
+ * overflow). Child-layer geometry is never inherited this way.
  */
 export interface InstanceBox {
   width: number;
@@ -81,8 +82,9 @@ export interface InstanceBox {
   strokes: Stroke[];
   borderRadius?: CornerRadius;
   cornerSmoothing?: number;
-  clipContent: boolean;
-  scrollOverflow?: ScrollOverflow;
+  overflow?: Overflow;
+  overflowX?: Overflow;
+  overflowY?: Overflow;
   scrollX?: number;
   scrollY?: number;
   effects: Effect[];
@@ -162,8 +164,9 @@ export function resolveInstanceBox(
       (inst as { cornerSmoothing?: number }).cornerSmoothing !== undefined
         ? (inst as { cornerSmoothing?: number }).cornerSmoothing
         : (master as { cornerSmoothing?: number }).cornerSmoothing,
-    clipContent: inst.clipContent !== undefined ? inst.clipContent : Boolean(master.clipContent),
-    scrollOverflow: inst.scrollOverflow !== undefined ? inst.scrollOverflow : master.scrollOverflow,
+    // The instance's own shorthand is a statement about BOTH axes, so it has to
+    // suppress the master's longhands rather than let one survive beside it.
+    ...overflowFields(resolveOverflow(inst, master)),
     scrollX: inst.scrollX !== undefined ? inst.scrollX : 0,
     scrollY: inst.scrollY !== undefined ? inst.scrollY : 0,
     effects:

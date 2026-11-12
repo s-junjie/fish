@@ -27,8 +27,9 @@ import {
 import { performBooleanOperation, type BooleanOp } from "../geometry/boolean-ops";
 import { variantName } from "../interactions/variant-naming";
 import { layoutOf } from "../dsl/layout-flat";
-import { canonicalKey, pxLength } from "../dsl/normalize/shared";
+import { canonicalKey, pxLength, type NormalizationRepair } from "../dsl/normalize/shared";
 import { collectVariables, resolveValueTokens } from "../dsl/normalize/resolve-values";
+import { applyTokenShorthandsToElement } from "../dsl/normalize/token-shorthand";
 import {
   CSS_PATCH_SPELLINGS,
   STRING_LENGTH_AXES,
@@ -132,17 +133,31 @@ function applyOne(doc: DesignDocument, raw: unknown): { doc: DesignDocument; out
       // `mergeProps` DEEP-merges, so `{ x: { a: 1 } }` is a delta meaning "keep
       // every other key of x" — which is what makes a nested patch able to touch
       // one variant coordinate without naming the rest.
-      let next = commit(
-        mapElements(els, (el) => {
-          if (el.id !== targetId) return el;
-          const prepared = preparePatch(el, props);
-          if (!prepared.css) {
-            const merged = mergeProps(el as unknown as Record<string, unknown>, props) as unknown as DesignElement;
-            return scalePatchedPath(el, merged, props);
-          }
-          return scalePatchedPath(el, normalizePatchedElement(prepared.element, parentLayout, vars), props);
-        })
-      );
+      //
+      // A token reference is resolved against THIS document's table and modes,
+      // and a reference that resolves to nothing fails the op: a patch that
+      // reports `ok` while its declaration was dropped is a lie the panel then
+      // repeats.
+      const tokenRepairs: NormalizationRepair[] = [];
+      const patched = mapElements(els, (el) => {
+        if (el.id !== targetId) return el;
+        const prepared = preparePatch(el, props);
+        if (!prepared.css) {
+          const merged = mergeProps(el as unknown as Record<string, unknown>, props) as unknown as DesignElement;
+          return scalePatchedPath(el, merged, props);
+        }
+        return scalePatchedPath(
+          el,
+          normalizePatchedElement(prepared.element, parentLayout, vars, {
+            tokens: doc.tokens,
+            modes: doc,
+            onRepair: (repair) => tokenRepairs.push(repair)
+          }),
+          props
+        );
+      });
+      if (tokenRepairs.length > 0) return fail(tokenRepairs[0].message, targetId);
+      let next = commit(patched);
       // A variant's NAME is its coordinates, so a patch that moved one has to move
       // the name with it. `mergeProps` knows nothing about that pairing and left
       // the layer reading `State=Default` while the member sat at `State=Hover`.
@@ -166,7 +181,20 @@ function applyOne(doc: DesignDocument, raw: unknown): { doc: DesignDocument; out
       const element = raw.element;
       if (!isObj(element)) return fail("replace needs `element: { ... }`", targetId);
       if (derived) return refuseDerived(doc, op, derived);
-      const replacement = { ...element, id: targetId } as unknown as DesignElement;
+      // The replacement is a fresh subtree the normalizer has never seen, so it
+      // takes the same fold `insert` takes: a CSS-spelled body ("color",
+      // "background", flat layout keys) arrives as ink and layout instead of
+      // dead stored keys the audit reads as "content but no ink".
+      const parent = targetId ? findParentById(els, targetId) : null;
+      const parentLayout = parent ? (layoutOf(parent) ?? null) : null;
+      const vars = collectVariables(doc.variables);
+      const tokenRepairs: NormalizationRepair[] = [];
+      const replacement = normalizePatchedElement({ ...element, id: targetId }, parentLayout, vars, {
+        tokens: doc.tokens,
+        modes: doc,
+        onRepair: (repair) => tokenRepairs.push(repair)
+      });
+      if (tokenRepairs.length > 0) return fail(tokenRepairs[0].message, targetId);
       const next = commit(mapElements(els, (el) => (el.id === targetId ? replacement : el)));
       return { doc: next, outcome: { op, ok: true, detail: "subtree replaced (id kept)", id: targetId } };
     }
@@ -230,15 +258,27 @@ function applyOne(doc: DesignDocument, raw: unknown): { doc: DesignDocument; out
       }
       const vars = collectVariables(doc.variables);
       const resolvedEl = resolveValueTokens({ ...element, id }, vars).value as Record<string, unknown>;
-      const rawPlaced = placeElement(els, resolvedEl as unknown as DesignElement, raw.position, parentId);
+      // Tokens are lowered BEFORE placement: a `$ref` in `padding` or `gap` is a
+      // number once it is resolved, and placing a box against a literal "$x" is
+      // how the element ends up at the wrong coordinate.
+      const tokenRepairs: NormalizationRepair[] = [];
+      const withTokens = applyTokenShorthandsToElement(resolvedEl, doc.tokens, doc, "/insert", tokenRepairs);
+      if (tokenRepairs.length > 0) return fail(tokenRepairs[0].message, id);
+      const rawPlaced = placeElement(els, withTokens as unknown as DesignElement, raw.position, parentId);
       if (!rawPlaced) return fail(`insert: no container with id "${parentId}"`, parentId);
       const parentLayout = parent ? (layoutOf(parent) ?? null) : null;
       const hasCss = Object.entries(rawPlaced as unknown as Record<string, unknown>).some(([key, value]) => {
         const canon = canonicalKey(key);
         return CSS_PATCH_SPELLINGS.has(canon) || (STRING_LENGTH_AXES.has(canon) && typeof value === "string");
       });
-      const placed = hasCss
-        ? normalizePatchedElement(rawPlaced as unknown as Record<string, unknown>, parentLayout, vars)
+      // An element that named a token is normalized even when it spells no CSS
+      // key: the shapes this pass writes (`fills`, `tokenBindings`) still have to
+      // go through the reader that gives them sizing and a type.
+      const placed = hasCss || withTokens !== resolvedEl
+        ? normalizePatchedElement(rawPlaced as unknown as Record<string, unknown>, parentLayout, vars, {
+            tokens: doc.tokens,
+            modes: doc
+          })
         : rawPlaced;
       const withChild = parentId
         ? commit(mapElements(els, (el) => (el.id === parentId && isContainer(el) ? { ...el, children: [...(el.children ?? []), placed] } as DesignElement : el)))

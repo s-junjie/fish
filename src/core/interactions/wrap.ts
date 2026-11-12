@@ -81,8 +81,7 @@ export function buildWrapFrame(
       sizing: { width: "fit-content", height: "fit-content" },
       children: ordered,
       fills: options.fills || [{ type: "solid", color: "#1E1E1E" }],
-      borderRadius: options.borderRadius ?? 16,
-      clipContent: false
+      borderRadius: options.borderRadius ?? 16
     } as FrameElement,
     layout
   );

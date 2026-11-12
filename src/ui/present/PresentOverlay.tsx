@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "preact/hooks";
-import { DesignDocument, DesignElement, InstanceElement, Page } from "../../core/dsl/types";
+import { DesignDocument, DesignElement, Page } from "../../core/dsl/types";
 import { DEFAULT_CANVAS_BACKGROUND } from "../../core/dsl/defaults";
 import { PresentationFrame } from "../../core/presentation/frames";
 import { DocumentStage } from "../canvas/DocumentStage";
@@ -14,9 +14,7 @@ import { matchSlides } from "../../core/presentation/morph";
 import { morphSlide, slidePaint } from "../../core/presentation/animate";
 import { flattenElements } from "../../core/geometry/tree-ops";
 import { mapElements } from "../../core/geometry/tree-edit";
-import { findElementAtPoint } from "../../core/geometry/tree-hit";
-import { canContainerScroll, clampScrollOffset, computeContainerScrollBounds, findScrollableContainersAtPoint } from "../../core/geometry/scroll-bounds";
-import { findMasterComponent } from "../../core/interactions/component-inventory";
+import { planPresentWheel } from "../../core/presentation/scroll";
 import { MENU_ITEM_CLASS, MENU_ITEM_ON_CLASS, MENU_SEPARATOR_CLASS, MENU_SURFACE_CLASS } from "../menu-style";
 import { LEADER_RULE_CLASS } from "../inspector/SectionHeader";
 import { ScaleModeIcon } from "../scale-icons";
@@ -59,7 +57,6 @@ interface PresentOverlayProps {
   onSetCanvasBackground?: (value: boolean) => void;
 }
 
-const WHEEL_COOLDOWN_MS = 350;
 const AUTO_HIDE_DELAY_MS = 2500;
 
 /** The share of the width that reads as "back" when the slide is clicked. */
@@ -133,7 +130,6 @@ export function PresentOverlay({
   const scaleMenuRef = useRef<HTMLDivElement>(null);
   const pageButtonRef = useRef<HTMLButtonElement>(null);
   const pageMenuRef = useRef<HTMLDivElement>(null);
-  const lastWheelRef = useRef(0);
   const hideTimerRef = useRef<number | null>(null);
   const size = useElementSize(screenRef);
 
@@ -144,6 +140,14 @@ export function PresentOverlay({
   const [uiVisible, setUiVisible] = useState(true);
   const [scrollY, setScrollY] = useState(0);
   const [containerScrolls, setContainerScrolls] = useState<Record<string, { x: number; y: number }>>({});
+  /**
+   * The offsets the deck holds, authoritative while a gesture is in flight: a
+   * wheel is applied once per animation frame, and a delta accumulated against
+   * the rendered state instead of this would be a frame behind itself.
+   */
+  const scrollsRef = useRef<Record<string, { x: number; y: number }>>({});
+  const slideScrollRef = useRef(0);
+  const wheelRef = useRef({ dx: 0, dy: 0, x: 0, y: 0, frame: 0 });
 
   // Read once: the deck is mounted and unmounted per presentation, and a
   // pointer type cannot change inside one.
@@ -155,6 +159,8 @@ export function PresentOverlay({
 
   // Reset scroll state whenever slide changes
   useEffect(() => {
+    scrollsRef.current = {};
+    slideScrollRef.current = 0;
     setScrollY(0);
     setContainerScrolls({});
   }, [index, frame?.id]);
@@ -172,6 +178,13 @@ export function PresentOverlay({
 
   useDismiss(scaleMenuOpen, () => setScaleMenuOpen(false), scaleMenuRef, scaleButtonRef);
   useDismiss(pageMenuOpen, () => setPageMenuOpen(false), pageMenuRef, pageButtonRef);
+
+  useEffect(
+    () => () => {
+      if (wheelRef.current.frame) cancelAnimationFrame(wheelRef.current.frame);
+    },
+    []
+  );
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -333,6 +346,42 @@ export function PresentOverlay({
 
   const maxScroll = fit && frame ? Math.max(0, frame.bounds.height * fit.zoom - viewport.height) : 0;
 
+  /**
+   * The wheel, applied once per frame. A trackpad reports several events
+   * between two refreshes and each one used to flush its own paint of the whole
+   * stage, so a single refresh could cost three of them.
+   */
+  const applyWheel = useCallback(() => {
+    const pending = wheelRef.current;
+    pending.frame = 0;
+    const dx = pending.dx;
+    const dy = pending.dy;
+    pending.dx = 0;
+    pending.dy = 0;
+    if ((dx === 0 && dy === 0) || !fit || !frame) return;
+
+    const plan = planPresentWheel({
+      elements: scrolledElements,
+      doc: docRef.current,
+      point: {
+        x: (pending.x - (fit.pan.x + paint.inShift.x)) / fit.zoom,
+        y: (pending.y - (fit.pan.y - slideScrollRef.current + paint.inShift.y)) / fit.zoom
+      },
+      delta: { x: dx, y: dy },
+      offsets: scrollsRef.current,
+      slideY: slideScrollRef.current,
+      maxSlideY: maxScroll
+    });
+
+    if (plan.kind === "container") {
+      scrollsRef.current = { ...scrollsRef.current, [plan.id]: { x: plan.x, y: plan.y } };
+      setContainerScrolls(scrollsRef.current);
+    } else if (plan.kind === "slide") {
+      slideScrollRef.current = plan.y;
+      setScrollY(plan.y);
+    }
+  }, [fit, frame, paint, scrolledElements, maxScroll]);
+
   // Under a mouse a deck is driven by the keyboard and these controls are a
   // reminder; under a thumb they are the whole interface, and 32px is not a
   // target. Same object, two metrics.
@@ -391,76 +440,21 @@ export function PresentOverlay({
         resetAutoHide();
 
         const target = e.target as HTMLElement | null;
-        if (target && target.closest("foreignObject, video, iframe")) {
+        // An embed scrolls itself. Text paints inside a `foreignObject` too, so
+        // this names the embeds rather than the box they ride in — matching the
+        // box made every word on every slide a dead zone.
+        if (target && target.closest("video, iframe")) {
           return;
         }
 
         e.preventDefault();
 
-        // 1. Scroll container under cursor if scrollable
-        if (fit && frame) {
-          const shiftX = paint.inShift.x;
-          const shiftY = paint.inShift.y;
-          const worldX = (e.clientX - (fit.pan.x + shiftX)) / fit.zoom;
-          const worldY = (e.clientY - (fit.pan.y - scrollY + shiftY)) / fit.zoom;
-
-          const hit = findElementAtPoint(scrolledElements, worldX, worldY, { includeLocked: true });
-          if (hit && hit.type === "html") {
-            return;
-          }
-
-          const candidates = findScrollableContainersAtPoint(scrolledElements, worldX, worldY, docRef.current);
-          if (candidates.length > 0) {
-            for (const cand of candidates) {
-              const curX = containerScrolls[cand.id]?.x ?? cand.scrollX ?? 0;
-              const curY = containerScrolls[cand.id]?.y ?? cand.scrollY ?? 0;
-              const candWithScroll = { ...cand, scrollX: curX, scrollY: curY };
-              if (canContainerScroll(candWithScroll, e.deltaX, e.deltaY, docRef.current)) {
-                const { scrollX: nextX, scrollY: nextY } = clampScrollOffset(
-                  candWithScroll as any,
-                  curX + e.deltaX,
-                  curY + e.deltaY,
-                  undefined,
-                  docRef.current
-                );
-                if (nextX !== curX || nextY !== curY) {
-                  setContainerScrolls((prev) => ({
-                    ...prev,
-                    [cand.id]: { x: nextX, y: nextY }
-                  }));
-                  return;
-                }
-              }
-            }
-            const hasOverflow = candidates.some((cand) => {
-              const { maxScrollX, maxScrollY } = computeContainerScrollBounds(cand, undefined, docRef.current);
-              const mode =
-                cand.scrollOverflow ??
-                (cand.type === "instance"
-                  ? findMasterComponent(docRef.current, (cand as InstanceElement).componentId)?.scrollOverflow
-                  : "none");
-              return (
-                ((mode === "horizontal" || mode === "both") && maxScrollX > 0) ||
-                ((mode === "vertical" || mode === "both") && maxScrollY > 0)
-              );
-            });
-            if (hasOverflow) {
-              return;
-            }
-          }
-        }
-
-        // If content height exceeds viewport, scrolling is strictly used for scrolling content, never turning slides
-        if (maxScroll > 0) {
-          setScrollY((prev) => Math.min(maxScroll, Math.max(0, prev + e.deltaY)));
-          return;
-        }
-
-        const now = Date.now();
-        if (now - lastWheelRef.current < WHEEL_COOLDOWN_MS) return;
-        lastWheelRef.current = now;
-        if (e.deltaY > 0) onNext();
-        else if (e.deltaY < 0) onPrev();
+        const pending = wheelRef.current;
+        pending.dx += e.deltaX;
+        pending.dy += e.deltaY;
+        pending.x = e.clientX;
+        pending.y = e.clientY;
+        if (!pending.frame) pending.frame = requestAnimationFrame(applyWheel);
       }}
     >
       {/* Canvas Slide Viewport */}

@@ -86,7 +86,6 @@ const MASTER = {
   width: PANEL.width,
   height: PANEL.height,
   borderRadius: R,
-  clipContent: false,
   fills: [{ type: "solid", color: "#111827" }],
   children: [
     {

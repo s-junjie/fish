@@ -56,16 +56,13 @@ export function styleMap(styles: readonly DesignStyle[]): Map<string, DesignStyl
   return map;
 }
 
-/** `modes[theme] ?? value` — a token's other half for the mode in scope. */
-export function colorTokenValue(token: ColorToken, theme?: string): string {
-  if (theme && token.modes && typeof token.modes[theme] === "string") return token.modes[theme];
-  return token.value;
-}
-
-export function numberTokenValue(token: NumberToken, theme?: string): number {
-  if (theme && token.modes && typeof token.modes[theme] === "number") return token.modes[theme];
-  return token.value;
-}
+/**
+ * `modes[mode] ?? value` — the arithmetic lives in the DSL (`dsl/token-value`),
+ * because the normalize-time `$token` resolver has to answer it too and the two
+ * answers must be the same one. Re-exported here for the sync pass and the
+ * inspector, which have always read them from this module.
+ */
+export { colorTokenValue, numberTokenValue } from "../dsl/token-value";
 
 export function isColorTokenType(token: DesignToken): token is ColorToken {
   return token.type === "color";

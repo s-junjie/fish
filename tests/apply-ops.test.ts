@@ -103,7 +103,6 @@ describe("applyOps", () => {
         ]),
         display: "flex",
         "flex-direction": "row",
-        clipContent: false,
         rotation: 45,
         sizing: { minWidth: 100 }
       } as DesignElement,
@@ -138,7 +137,7 @@ describe("applyOps", () => {
       { op: "patch", targetId: "grid_child", props: { "grid-column": "3" } }
     ]);
     expect(outcomes.map((o) => o.ok)).toEqual([true, true, true, true]);
-    expect(byId(next, "f")).toMatchObject({ clipContent: true, rotation: 90, sizing: { minWidth: 200 } });
+    expect(byId(next, "f")).toMatchObject({ overflow: "hidden", rotation: 90, sizing: { minWidth: 200 } });
     expect((byId(next, "t") as unknown as { style: Record<string, unknown> }).style).toMatchObject({
       fontSize: 24,
       align: "center",

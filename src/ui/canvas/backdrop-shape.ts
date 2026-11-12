@@ -6,7 +6,7 @@ import { isContainer } from "../../core/geometry/tree-ops";
 /**
  * The shape clip for a backdrop-filter `<div>` inside a `foreignObject`.
  *
- * Under an ancestor SVG `clip-path` (any frame with `clipContent`), Chromium's
+ * Under an ancestor SVG `clip-path` (any frame whose `overflow` clips), Chromium's
  * backdrop-filter compositor reduces every clip on the backdrop — CSS
  * `clip-path: path()`, `ellipse()`, or an SVG `clipPath` wrapper — to its
  * bounding box, painting the frosted backdrop as a dark rectangle around a

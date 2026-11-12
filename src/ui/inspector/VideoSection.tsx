@@ -211,7 +211,7 @@ export function VideoSection({
         </div>
       </div>
 
-      {/* Native Controls Checkbox (Left-aligned CheckRow matching clipContent) */}
+      {/* Native Controls Checkbox (Left-aligned CheckRow matching the clip row) */}
       {!isIframe && (
         <div className="pt-0.5 px-0.5">
           <CheckRow

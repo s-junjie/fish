@@ -1,5 +1,5 @@
 import { OVERRIDABLE_PROPERTIES } from "../../types";
-import { asBoolean, asNumber, isPlainObject, normalizeClipContent, normalizeScrollOverflow, normalizeScrollOffset } from "../shared";
+import { asBoolean, asNumber, isPlainObject, normalizeOverflow, normalizeScrollOffset } from "../shared";
 import { normalizeFillStack } from "../paint";
 import { cornerRadiusInput, normalizeCornerRadius, normalizeStrokes } from "../stroke";
 import type { ElementBranch } from "./shared";
@@ -56,13 +56,9 @@ export const normalizeInstance: ElementBranch = ({ el, base, path, repairs, box 
   if (Array.isArray(el.effects) && base.effects === undefined) base.effects = [];
   const instRadius = normalizeCornerRadius(cornerRadiusInput(el), path, repairs, box);
   if (instRadius !== undefined) base.borderRadius = instRadius;
-  const instClip = normalizeClipContent(el, path, repairs);
-  if (instClip !== undefined) base.clipContent = instClip;
-  const instScroll = normalizeScrollOverflow(el, path, repairs);
-  if (instScroll !== undefined) {
-    base.scrollOverflow = instScroll;
-    if (instScroll !== "none") base.clipContent = true;
-  }
+  // Nothing at all when the master's is inherited — an instance stores only what
+  // it OWNS, so an `overflow` here always means the instance overrides it.
+  Object.assign(base, normalizeOverflow(el, path, repairs));
   const instSx = normalizeScrollOffset(el.scrollX ?? el.scrollLeft ?? el["scroll-x"] ?? el["scroll-left"]);
   if (instSx !== undefined && instSx > 0) base.scrollX = instSx;
   const instSy = normalizeScrollOffset(el.scrollY ?? el.scrollTop ?? el["scroll-y"] ?? el["scroll-top"]);

@@ -1,4 +1,5 @@
-import type { DesignDocument, DesignElement, InstanceElement, ScrollOverflow } from "../../core/dsl/types";
+import type { DesignDocument, DesignElement, InstanceElement } from "../../core/dsl/types";
+import { clipsAxes, overflowAxes, type OverflowFields } from "../../core/dsl/overflow";
 import { getActivePage } from "../../core/dsl/types";
 import { layoutOf } from "../../core/dsl/layout-flat";
 import { findParentById } from "../../core/geometry/tree-ops";
@@ -48,7 +49,7 @@ export function parentPlacesChildren(doc: DesignDocument, parent: DesignElement)
  * master — `constraints` is deliberately absent from `OVERRIDABLE_PROPERTIES`,
  * so a widget there would take an edit the engine cannot store. Everything a
  * layer inside an instance may own is a paint or a behaviour decision
- * (`clipContent`, `scrollBehavior`, the overridable rest).
+ * (`overflow`, `scrollBehavior`, the overridable rest).
  */
 export function canConstrainChild(el: DesignElement, placesChildren: boolean): boolean {
   if (isInstanceChild(el)) return false;
@@ -59,21 +60,21 @@ export function canConstrainChild(el: DesignElement, placesChildren: boolean): b
  * What a container does with what it holds — the pair every scroll affordance
  * is gated on.
  *
- * An instance stores neither field unless the user set it: both are inherited
- * from the master, so reading them off the instance itself answered `false` and
- * `undefined` for an instance that scrolls perfectly well on the canvas.
+ * An instance stores nothing unless the user set it: the axes are inherited from
+ * the master, so reading them off the instance itself answered `visible` for an
+ * instance that scrolls perfectly well on the canvas.
  */
 export function parentScrollOf(
   doc: DesignDocument,
   parent: DesignElement
-): { clipContent: boolean; scrollOverflow: ScrollOverflow } {
-  if (parent.type !== "instance") {
-    const el = parent as { clipContent?: boolean; scrollOverflow?: ScrollOverflow };
-    return { clipContent: Boolean(el.clipContent), scrollOverflow: el.scrollOverflow ?? "none" };
-  }
-  const instance = parent as InstanceElement;
-  const master = findMasterComponent(doc, instance.componentId);
-  if (!master) return { clipContent: false, scrollOverflow: "none" };
-  const box = resolveInstanceBox(instance, master);
-  return { clipContent: box.clipContent, scrollOverflow: box.scrollOverflow ?? "none" };
+): { clips: boolean; scrolls: boolean } {
+  const box =
+    parent.type === "instance"
+      ? (() => {
+          const master = findMasterComponent(doc, (parent as InstanceElement).componentId);
+          return master ? resolveInstanceBox(parent as InstanceElement, master) : null;
+        })()
+      : parent;
+  const axes = overflowAxes(box as OverflowFields | null);
+  return { clips: clipsAxes(axes), scrolls: axes.x === "auto" || axes.y === "auto" };
 }

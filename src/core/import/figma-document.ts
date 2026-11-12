@@ -9,7 +9,7 @@
  * like an import that did nothing.
  */
 
-import type { ComponentElement, DesignElement, Page } from "../dsl/types";
+import type { ComponentElement, DesignElement, Overflow, Page } from "../dsl/types";
 import { DEFAULT_CANVAS_BACKGROUND } from "../dsl/defaults";
 import { mapFigmaNode, type NodeWalkState } from "./figma-node";
 import { sanitizeElementId } from "../id";
@@ -310,7 +310,9 @@ export function promoteFigmaInstances(pages: Page[]): Page[] {
             fills: sample.fills,
             strokes: sample.strokes,
             effects: sample.effects,
-            clipContent: (sample as { clipContent?: boolean }).clipContent ?? false,
+            ...((sample as { overflow?: Overflow }).overflow
+              ? { overflow: (sample as { overflow?: Overflow }).overflow }
+              : {}),
             borderRadius: (sample as { borderRadius?: number | [number, number, number, number] }).borderRadius,
             metadata: { figmaComponentId: componentId },
             children: cloneTree((sample as { children?: DesignElement[] }).children ?? [])

@@ -108,11 +108,17 @@ export function useStructuralCommands({
   // Replace `wrapped` with `frame` in the tree, nesting the frame inside the
   // wrapped elements' common parent (so grouping inside a frame stays in place)
   // and re-basing the children into the frame's local space.
+  //
+  // Reflowed, because the frame is a new CHILD of that parent and a parent with
+  // a layout places its own children: dropping one in at `minX`/`minY` hands the
+  // canvas a box the next edit will overwrite, and the stack keeps a hole where
+  // the group is about to be. Same reason `layer-reorder.ts` reflows after a
+  // move — structure and geometry are written by the same pass or they disagree.
   const replaceSelectionWithFrame = useCallback(
     (frame: FrameElement, wrapped: DesignElement[]) => {
       const cur = getActivePage(docRef.current);
       const nextElements = reparentSelectionIntoFrame(cur.children, wrapped, frame);
-      commitSnapshot(updateActivePageElements(docRef.current, nextElements));
+      commitSnapshot(updateActivePageElements(docRef.current, relayoutDocumentTree(nextElements)));
       setSelectedIds(new Set([frame.id]));
     },
     [commitSnapshot, docRef, setSelectedIds]
@@ -156,7 +162,7 @@ export function useStructuralCommands({
         height: Math.max(10, maxY - minY),
         children: [...groupable],
         fills: asFrame ? [{ type: "solid", color: "#FFFFFF" }] : [],
-        clipContent: asFrame
+        ...(asFrame ? { overflow: "hidden" as const } : {})
       };
 
       replaceSelectionWithFrame(newFrame, groupable);
@@ -178,12 +184,22 @@ export function useStructuralCommands({
     if (target.type === "componentSet") {
       const dissolved = dissolveComponentSet(docRef.current, target.id);
       if (!dissolved) return;
-      commitSnapshot(dissolved);
+      commitSnapshot(updateActivePageElements(dissolved, relayoutDocumentTree(getActivePage(dissolved).children)));
       setSelectedIds(new Set((target.children || []).map((c) => c.id)));
       return;
     }
-    const { elements: nextElements, releasedIds } = dissolveFrame(getActivePage(docRef.current).children, target.id);
-    commitSnapshot(updateActivePageElements(docRef.current, nextElements));
+    // Reflowed, and not only because the frame's slot disappears: the released
+    // children are now SIBLINGS of whatever held the frame, so a parent with a
+    // layout owns their boxes from here on. Committing the tree without the pass
+    // leaves the canvas drawing the authored `x`/`y` — the fan the frame used to
+    // hold — while the stored document already means "four flow items". The two
+    // only diverge later, at the worst possible moment: the next edit reflows
+    // them, and Present reflows an unlaid page on open.
+    const { elements: dissolvedElements, releasedIds } = dissolveFrame(
+      getActivePage(docRef.current).children,
+      target.id
+    );
+    commitSnapshot(updateActivePageElements(docRef.current, relayoutDocumentTree(dissolvedElements)));
     setSelectedIds(new Set(releasedIds));
   }, [commitSnapshot, docRef, setSelectedIds]);
 

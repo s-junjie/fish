@@ -66,7 +66,6 @@ const applyFixture = (masterW = MASTER_W, masterH = MASTER_H) =>
             width: mw,
             height: mh,
             fills: solid("#1F2937"),
-            clipContent: false,
             children: [
               {
                 id: "LABEL",
@@ -102,7 +101,6 @@ const applyFixture = (masterW = MASTER_W, masterH = MASTER_H) =>
             width: 200,
             height: 100,
             fills: solid("#374151"),
-            clipContent: false,
             children: [
               {
                 id: "sub",
@@ -129,7 +127,6 @@ const applyFixture = (masterW = MASTER_W, masterH = MASTER_H) =>
             width: 200,
             height: 80,
             fills: solid("#1F2937"),
-            clipContent: false,
             children: [
               { id: "slot", type: "instance", name: "SLOT", componentId: "icon_a", x: 10, y: 10, width: 24, height: 24 }
             ]
@@ -153,7 +150,6 @@ const applyFixture = (masterW = MASTER_W, masterH = MASTER_H) =>
             width: 240,
             height: 120,
             fills: solid("#0F172A"),
-            clipContent: false,
             children: [
               {
                 id: "chip",
@@ -164,7 +160,6 @@ const applyFixture = (masterW = MASTER_W, masterH = MASTER_H) =>
                 width: 120,
                 height: 48,
                 fills: solid("#7C3AED"),
-                clipContent: false,
                 children: [
                   {
                     id: "chipLabel",

@@ -70,7 +70,9 @@ export function useFramePresetCreate({
         height: size.height,
         children: [],
         fills: [{ type: "solid", color: PRESET_FRAME_FILL }],
-        clipContent: false
+        // A preset frame is a canvas: what the author drops in is clipped to it,
+        // exactly as Figma's frame tool does.
+        overflow: "hidden"
       };
 
       commitSnapshot(updateActivePageElements(cur, [...siblings, frame]));

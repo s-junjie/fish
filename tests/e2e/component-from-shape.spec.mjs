@@ -41,7 +41,6 @@ await page.evaluate(() => {
         width: 400,
         height: 300,
         fills: [{ type: "solid", color: "#111827" }],
-        clipContent: false,
         children: [
           {
             id: "r_fill",
@@ -114,7 +113,7 @@ check(
   comp?.x === 40 && comp?.y === 60 && comp?.width === 120 && comp?.height === 48,
   JSON.stringify({ x: comp?.x, y: comp?.y, w: comp?.width, h: comp?.height })
 );
-check("the wrapper is transparent and does not clip", comp?.fills === undefined && comp?.clipContent === false);
+check("the wrapper is transparent and does not clip", comp?.fills === undefined && !comp?.overflow);
 
 const after = await boxOf("r_fill");
 check("the drawing does not move or resize on screen", sameBox(before, after), JSON.stringify({ before, after }));

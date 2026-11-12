@@ -377,8 +377,8 @@ function apply(opsArg: string, file: string, opts: { json: boolean; out?: string
     return 1;
   }
 
-  // `#design-doc` is the CSS-spelled dialect: `x: "320px"`, `overflow` instead
-  // of `clipContent`. Every op below does arithmetic on these fields, so the
+  // `#design-doc` is the CSS-spelled dialect: `x: "320px"`, `overflow`, not the
+  // stored field names. Every op below does arithmetic on these fields, so the
   // document is read once here exactly as the app reads it on load.
   const normalized = normalizeDesignDocument(doc).document;
   const result = applyOps(normalized, ops);

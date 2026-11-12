@@ -43,7 +43,6 @@ await page.evaluate(
           width: 300,
           height: 200,
           fills: [{ type: "solid", color: "#1F2937" }],
-          clipContent: false,
           display: "flex",
           "flex-direction": "column",
           gap: 8,
@@ -89,7 +88,7 @@ await page.evaluate(
               y: 128,
               width: 276,
               height: 40,
-              clipContent: true,
+              overflow: "hidden",
               fills: [{ type: "solid", color: "#374151" }],
               children: [
                 {

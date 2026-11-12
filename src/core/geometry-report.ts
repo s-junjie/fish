@@ -3,6 +3,7 @@ import { getActivePage } from "./dsl/types";
 import { DEFAULT_FLEX_DIRECTION, layoutOf, type FlatAutoLayout } from "./dsl/layout-flat";
 import { elementRotatedAABB } from "./geometry/element-bounds";
 import type { AutoLayout, DesignDocument, DesignElement } from "./dsl/types";
+import { clipsContent, scrollsAxis, type OverflowFields } from "./dsl/overflow";
 
 export interface GeometryFinding {
   level: "info" | "warning";
@@ -26,6 +27,12 @@ const isLayoutContainer = (el: DesignElement): boolean => {
 
 const inFlow = (child: DesignElement): boolean =>
   fields(child).position !== "absolute" && fields(child).visible !== false;
+
+/** The axes a container lets its content exceed it: `overflow: auto` is the author's "by design". */
+const scrollOf = (el: OverflowFields | null | undefined): { x: boolean; y: boolean } => ({
+  x: scrollsAxis(el, "x"),
+  y: scrollsAxis(el, "y")
+});
 
 /** Below this the gap is padding by another name, and the ratio is noise. */
 const UNUSED_MIN_PX = 32;
@@ -85,7 +92,7 @@ const hasVisibleSurface = (el: DesignElement): boolean => {
   const fills = Array.isArray(any.fills) ? any.fills : [];
   const effects = Array.isArray(any.effects) ? any.effects : [];
   return (
-    fills.length > 0 || any.strokes !== undefined || effects.length > 0 || any.clipContent === true
+    fills.length > 0 || any.strokes !== undefined || effects.length > 0 || clipsContent(any as OverflowFields)
   );
 };
 
@@ -162,9 +169,21 @@ export function geometryReport(doc: DesignDocument): GeometryFinding[] {
           const overBottom = cy + ch - bottom;
           const overLeft = left - cx;
           const overTop = top - cy;
-          const worst = Math.max(overRight, overBottom, overLeft, overTop);
-          if (worst > EPS) {
-            const axis = overRight === worst ? "right" : overBottom === worst ? "bottom" : overLeft === worst ? "left" : "top";
+          // A scrolled axis is the container saying content may exceed it, so
+          // spill on that axis is the feature working — only the rest can be a
+          // mis-measurement worth naming.
+          const scroll = scrollOf(any as OverflowFields);
+          const active = (
+            [
+              [overRight, "right", scroll.x],
+              [overBottom, "bottom", scroll.y],
+              [overLeft, "left", scroll.x],
+              [overTop, "top", scroll.y]
+            ] as Array<[number, string, boolean]>
+          ).filter(([over, , scrolled]) => !scrolled && over > EPS);
+          if (active.length > 0) {
+            const worst = Math.max(...active.map(([over]) => over));
+            const axis = (active.find(([over]) => over === worst) as [number, string, boolean])[1];
             out.push({
               level: "info",
               kind: "overflow",
@@ -175,14 +194,21 @@ export function geometryReport(doc: DesignDocument): GeometryFinding[] {
         }
       }
 
-      if (any.clipContent === true) {
+      if (clipsContent(any as OverflowFields)) {
+        const scroll = scrollOf(any as OverflowFields);
         for (const child of children) {
           if (fields(child).visible === false || isBleedDecor(child)) continue;
           // The clip acts on PAINT, and a turned child paints its turned
           // envelope. Reading the stored box reports a vertical label as cut by
           // the width it no longer occupies — the user sees it inside the frame.
           const box = elementRotatedAABB(child);
-          const cut = Math.max(box.x + box.width - w, box.y + box.height - h, -box.x, -box.y);
+          // A scrolled axis is reachable by scrolling, so its cut says nothing.
+          const cut = Math.max(
+            scroll.x ? 0 : box.x + box.width - w,
+            scroll.y ? 0 : box.y + box.height - h,
+            scroll.x ? 0 : -box.x,
+            scroll.y ? 0 : -box.y
+          );
           if (cut > EPS) {
             out.push({
               level: "info",

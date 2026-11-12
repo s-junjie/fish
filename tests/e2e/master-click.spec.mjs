@@ -50,7 +50,6 @@ await page.evaluate(
           width: 420,
           height: 320,
           fills: [{ type: "solid", color: "#2A2A2A" }],
-          clipContent: false,
           children: [
             makeLeaf("LEAF", 30, 30, 120, 80, "#3B82F6"),
             {
@@ -62,7 +61,6 @@ await page.evaluate(
               width: 190,
               height: 150,
               fills: [{ type: "solid", color: "#1F1F1F" }],
-              clipContent: false,
               children: [makeLeaf("DEEP", 30, 30, 60, 40, "#10B981")]
             },
             {
@@ -74,7 +72,6 @@ await page.evaluate(
               width: 360,
               height: 110,
               fills: [{ type: "solid", color: "#242424" }],
-              clipContent: false,
               children: [makeLeaf("NESTED", 30, 30, 100, 50, "#F59E0B")]
             }
           ]
@@ -98,7 +95,6 @@ await page.evaluate(
           width: 420,
           height: 320,
           fills: [{ type: "solid", color: "#2A2A2A" }],
-          clipContent: false,
           children: [makeLeaf("PLEAF", 30, 30, 120, 80, "#EC4899")]
         }
       ], { canvas: { ...base.canvas, width: 4000, height: 3000 } });

@@ -15,6 +15,7 @@ import { resetInstance } from "../src/core/interactions/component-ops";
 import { swapInstanceComponent } from "../src/core/interactions/component-swap";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
 import { validateDocument } from "../src/core/validate";
+import { clipsContent, overflowAxes } from "../src/core/dsl/overflow";
 
 const canvas = {
   width: 2000,
@@ -48,7 +49,6 @@ function fixture(): DesignDocument {
     width: 200,
     height: 80,
     fills: solid("#1F2937"),
-    clipContent: false,
     children: [
       { id: "slot", type: "instance", name: "ICON", componentId: "icon", x: 10, y: 10, width: 24, height: 24 },
       { id: "label", type: "text", name: "label", x: 60, y: 30, width: 100, height: 20, content: "Card", style: { fontSize: 14 } }
@@ -136,16 +136,18 @@ describe("a node inside a nested instance is addressable by path", () => {
 
   it("clips and locks a node inside an instance", () => {
     const doc = fixture();
-    for (const property of ["clipContent", "locked"] as const) {
-      const sel = resolveInstanceSelection(doc, "cardInst_slot")!;
-      const next = commitInstanceOverrides(doc, [sel], (el) => ({ ...el, [property]: true }))!;
-      expect(instOf(next).overrides).toEqual([{ targetId: "slot", property, value: true }]);
-      const resolved = resolveInstanceChildren(
-        instOf(next),
-        findMasterComponent(next, "card")!
-      ).find((el) => el.id === "cardInst_slot")!;
-      expect((resolved as any)[property]).toBe(true);
-    }
+    const sel = resolveInstanceSelection(doc, "cardInst_slot")!;
+    const clipped = commitInstanceOverrides(doc, [sel], (el) => ({ ...el, overflow: "hidden" }) as DesignElement)!;
+    expect(instOf(clipped).overrides).toEqual([{ targetId: "slot", property: "overflow", value: "hidden" }]);
+    const resolved = resolveInstanceChildren(
+      instOf(clipped),
+      findMasterComponent(clipped, "card")!
+    ).find((el) => el.id === "cardInst_slot")!;
+    expect(clipsContent(resolved as never)).toBe(true);
+
+    const lockSel = resolveInstanceSelection(doc, "cardInst_slot")!;
+    const locked = commitInstanceOverrides(doc, [lockSel], (el) => ({ ...el, locked: true }))!;
+    expect(instOf(locked).overrides).toEqual([{ targetId: "slot", property: "locked", value: true }]);
   });
 
   /**
@@ -211,13 +213,12 @@ describe("an assetId override changes the painted asset", () => {
 });
 
 /**
- * Both renderers gate the scroll offset AND the clip path on `clipContent`, and
- * `ScrollOverflowControl` writes the pair together for that reason. An override
- * that names only the mode — written by an AI op, a paste, or the override API —
- * landed on a frame that still had clipping off, so it painted nothing at all.
+ * An overflow override names a value, and the clone paints it. There is no
+ * companion flag any more: `clipContent` and `scrollOverflow` used to be two
+ * statements that could disagree, and the control had to write both.
  */
-describe("an overflow override brings the clipping it needs", () => {
-  const docWith = (value: unknown): DesignDocument => {
+describe("an overflow override lands on the clone", () => {
+  const docWith = (value: string): DesignDocument => {
     const master: ComponentElement = {
       id: "panelCmp",
       type: "component",
@@ -235,7 +236,6 @@ describe("an overflow override brings the clipping it needs", () => {
           y: 0,
           width: 200,
           height: 120,
-          clipContent: false,
           children: []
         } as DesignElement
       ]
@@ -249,7 +249,7 @@ describe("an overflow override brings the clipping it needs", () => {
       y: 0,
       width: 200,
       height: 120,
-      overrides: [{ targetId: "body", property: "scrollOverflow", value }]
+      overrides: [{ targetId: "body", property: "overflow", value }]
     };
     const elements = [master, instance] as DesignElement[];
     return {
@@ -268,17 +268,16 @@ describe("an overflow override brings the clipping it needs", () => {
   const body = (doc: DesignDocument) =>
     resolveInstanceChildren(instOf(doc, "panelInst"), findMasterComponent(doc, "panelCmp")!)[0] as FrameElement;
 
-  it("turns clipping on, and does it on the clone rather than the master", () => {
-    const doc = docWith("vertical");
+  it("paints the axes on the clone rather than the master", () => {
+    const doc = docWith("auto");
     const resolved = body(doc);
-    expect(resolved.scrollOverflow).toBe("vertical");
-    expect(resolved.clipContent, "the offset would move nothing without it").toBe(true);
+    expect(overflowAxes(resolved)).toEqual({ x: "auto", y: "auto" });
     const master = findMasterComponent(doc, "panelCmp")!;
-    expect((master.children[0] as any).clipContent, "the master is a definition, not this instance's").toBe(false);
+    expect((master.children[0] as any).overflow, "the master is a definition, not this instance's").toBeUndefined();
   });
 
-  it("says nothing about clipping when the override turns overflow off", () => {
-    expect(body(docWith("none")).clipContent).toBe(false);
+  it("stops clipping when the override says visible", () => {
+    expect(clipsContent(body(docWith("visible")))).toBe(false);
   });
 });
 

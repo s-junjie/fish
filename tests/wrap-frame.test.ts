@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { buildWrapFrame } from "../src/core/interactions/wrap";
 import { DesignElement, RectElement } from "../src/core/dsl/types";
 import { layoutOf } from "../src/core/dsl/layout-flat";
+import { clipsContent } from "../src/core/dsl/overflow";
 
 const rect = (id: string, x: number, y: number, w = 120, h = 100): RectElement =>
   ({ id, type: "rect", x, y, width: w, height: h } as RectElement);
@@ -16,7 +17,7 @@ describe("buildWrapFrame", () => {
   it("sizes the wrapper from its content, not from the selection box", () => {
     const frame = buildWrapFrame(spread(), { mode: "flex", direction: "column", padding: 24, gap: 16 });
     expect(frame!.sizing).toEqual({ width: "fit-content", height: "fit-content" });
-    expect(frame!.clipContent).toBe(false);
+    expect(clipsContent(frame!)).toBe(false);
     // Anchored at the selection's top-left, then sized by the layout pass.
     expect([frame!.x, frame!.y]).toEqual([100, 100]);
   });

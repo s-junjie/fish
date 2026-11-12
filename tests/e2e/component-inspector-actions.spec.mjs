@@ -37,7 +37,6 @@ const frame = (id, x, y, w, h) => ({
   width: w,
   height: h,
   fills: [{ type: "solid", color: "#2A2A2A" }],
-  clipContent: false,
   children: [
     { id: `${id}_kid`, type: "rect", name: "kid", x: 10, y: 10, width: 40, height: 30,
       fills: [{ type: "solid", color: "#3B82F6" }] }
@@ -63,7 +62,6 @@ await page.evaluate(
           width: 300,
           height: 220,
           fills: [{ type: "solid", color: "#1F1F1F" }],
-          clipContent: false,
           children: [makeFrame("INNER", 20, 20, 200, 150)]
         }
       ], { canvas: { ...base.canvas, width: 4000, height: 3000 } });

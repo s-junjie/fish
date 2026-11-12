@@ -36,7 +36,7 @@ export function ConstraintsSection({ primarySelected, doc, onMutate }: Constrain
 
   const canConstrain = canConstrainChild(primarySelected, parentPlacesChildren(doc, parent));
   const scroll = parentScrollOf(doc, parent);
-  const parentHasScroll = scroll.clipContent && scroll.scrollOverflow !== "none";
+  const parentHasScroll = scroll.scrolls;
 
   if (!canConstrain && !parentHasScroll) return null;
 

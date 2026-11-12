@@ -925,7 +925,7 @@ function mapContainer(node: FigmaNode, rect: Rect, parentX: number, parentY: num
   const out = base(node, rect, parentX, parentY);
   out.type = kind;
   out.children = [];
-  out.clipContent = node.clipsContent ?? false;
+  if (node.clipsContent) out.overflow = "hidden";
   const radius = mapFigmaCornerRadius(node);
   if (radius !== undefined) out.borderRadius = radius;
   if (typeof node.cornerSmoothing === "number" && node.cornerSmoothing > 0) out.cornerSmoothing = node.cornerSmoothing;

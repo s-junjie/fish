@@ -129,7 +129,6 @@ function groupGlyphs(el: TextElement, glyphs: PathElement[]): FrameElement {
     effects: el.effects,
     adjust: el.adjust,
     fills: [],
-    clipContent: false,
     // Children are parent-local: rebased onto the frame's own top-left.
     children: glyphs.map((g) => ({ ...g, x: g.x - minX, y: g.y - minY }))
   };

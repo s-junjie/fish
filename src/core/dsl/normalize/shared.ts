@@ -1,4 +1,5 @@
-import type { DesignDocument, DesignElement, ElementType, ScrollOverflow, SizeMode, TextStyle } from "../types";
+import type { DesignDocument, DesignElement, ElementType, SizeMode, TextStyle } from "../types";
+import type { Overflow } from "../overflow";
 import { ELEMENT_TYPES as ELEMENT_TYPE_VALUES } from "../schema-enums";
 
 export const ELEMENT_TYPES = ELEMENT_TYPE_VALUES;
@@ -99,6 +100,7 @@ export type RepairKind =
   | "layout"
   | "sizing"
   | "metadata"
+  | "token"
   | "dropped-property";
 
 export interface NormalizationRepair {
@@ -187,98 +189,120 @@ export const asBoolean = (v: unknown): boolean | undefined =>
   typeof v === "boolean" ? v : v === "true" ? true : v === "false" ? false : undefined;
 
 /**
- * The clip flag, written either as CSS's `overflow` or as the DSL's
- * `clipContent` / Figma's `clipsContent`.
+ * The overflow block: one shorthand, two optional longhands, in CSS's own
+ * vocabulary minus what this engine cannot mean (`clip` reads as `hidden`,
+ * `scroll` as `auto`). Both of those are accepted so a real stylesheet imports
+ * unchanged; neither is ever written back.
  *
- * Both spellings are first-class now, so neither is reported: `overflow` is what
- * this dialect WRITES (see `document-json`), and a document that round-trips
- * through the workbench must come back with an empty repair list. Reporting a
- * spelling the writer itself chose would fill the repair panel with one entry
- * per frame — noise that hides the repairs that matter.
+ * `visible` is never stored — it is CSS's initial value, so an axis nobody
+ * mentioned stays absent and the presence of the key keeps meaning "someone
+ * decided this". The result is canonical: a shorthand when both axes agree, two
+ * longhands only when they must differ.
  *
- * What is still reported is a genuine disagreement: both keys present with
- * different values. `overflow` accepts anything CSS does and maps what the
- * engine can express; `auto` / `scroll` clip in a way a canvas cannot, so they
- * are named rather than silently treated as `hidden`.
+ * A `visible` axis beside a clipping one is repaired to `hidden`. CSS promotes
+ * that axis to `auto`; we paint no scrollbar, so `auto` would advertise a
+ * control the engine never draws, and `hidden` is the same picture without the
+ * promise.
  */
-export function normalizeClipContent(
+export function normalizeOverflow(
   el: Record<string, unknown>,
   path: string,
   repairs: NormalizationRepair[]
-): boolean | undefined {
-  const dsl = asBoolean(el.clipContent ?? el.clipsContent ?? el.clip);
-  const parsed = readOverflow(el.overflow, path, repairs);
-  const css = parsed?.clip;
-  if (dsl !== undefined && css !== undefined && dsl !== css) {
+): NormalizedOverflow {
+  const shorthand = readOverflowShorthand(el.overflow, `${path}/overflow`, repairs);
+  const x =
+    readOverflowValue(el.overflowX ?? el["overflow-x"], `${path}/overflow-x`, repairs) ??
+    shorthand?.x ??
+    "visible";
+  const y =
+    readOverflowValue(el.overflowY ?? el["overflow-y"], `${path}/overflow-y`, repairs) ??
+    shorthand?.y ??
+    "visible";
+
+  let fx = x;
+  let fy = y;
+  if (fx === "visible" && fy !== "visible") {
+    fx = "hidden";
     repairs.push({
       kind: "element",
-      path: `${path}/overflow`,
-      message: `overflow ${JSON.stringify(el.overflow)} and clipContent ${dsl} disagree; kept clipContent`
+      path: `${path}/overflow-x`,
+      message: `overflow-x visible beside a clipping overflow-y ${fy}; clipped instead`
     });
-    return dsl;
+  } else if (fy === "visible" && fx !== "visible") {
+    fy = "hidden";
+    repairs.push({
+      kind: "element",
+      path: `${path}/overflow-y`,
+      message: `overflow-y visible beside a clipping overflow-x ${fx}; clipped instead`
+    });
   }
-  return dsl ?? css;
+
+  if (fx === "visible" && fy === "visible") return {};
+  if (fx === fy) return { overflow: fx };
+  return { overflowX: fx, overflowY: fy };
 }
 
-interface ParsedOverflow {
-  clip: boolean;
-  scrollOverflow?: ScrollOverflow;
+export interface NormalizedOverflow {
+  overflow?: Overflow;
+  overflowX?: Overflow;
+  overflowY?: Overflow;
 }
 
-function readOverflow(
+const OVERFLOW_ALIASES: Record<string, Overflow> = {
+  visible: "visible",
+  hidden: "hidden",
+  clip: "hidden",
+  auto: "auto",
+  scroll: "auto"
+};
+
+function readOverflowValue(
   raw: unknown,
   path: string,
   repairs: NormalizationRepair[]
-): ParsedOverflow | undefined {
-  if (typeof raw !== "string" || !raw.trim()) return undefined;
+): Overflow | undefined {
+  if (typeof raw !== "string") return undefined;
   const value = raw.trim().toLowerCase();
-  if (value === "hidden" || value === "clip") {
-    return { clip: true, scrollOverflow: undefined };
-  }
-  if (value === "scroll" || value === "auto") {
-    return { clip: true, scrollOverflow: "both" };
-  }
-  if (value === "scroll-y") {
-    return { clip: true, scrollOverflow: "vertical" };
-  }
-  if (value === "scroll-x") {
-    return { clip: true, scrollOverflow: "horizontal" };
-  }
-  if (value === "visible") return { clip: false, scrollOverflow: undefined };
+  if (!value) return undefined;
+  const mapped = OVERFLOW_ALIASES[value];
+  if (mapped) return mapped;
   repairs.push({
     kind: "element",
-    path: `${path}/overflow`,
-    message: `"overflow: ${value}" is not one of hidden | clip | auto | scroll | scroll-x | scroll-y | visible; ignored`
+    path,
+    message: `"overflow: ${value}" is not one of visible | hidden | auto; ignored`
   });
   return undefined;
 }
 
-export function normalizeScrollOverflow(
-  el: Record<string, unknown>,
+/** CSS's shorthand order: one value for both axes, or two meaning x then y. */
+function readOverflowShorthand(
+  raw: unknown,
   path: string,
   repairs: NormalizationRepair[]
-): ScrollOverflow | undefined {
-  const direct = el.scrollOverflow ?? el["scroll-overflow"];
-  if (typeof direct === "string") {
-    const v = direct.trim().toLowerCase();
-    if (v === "none" || v === "vertical" || v === "horizontal" || v === "both") {
-      return v as ScrollOverflow;
-    }
+): { x: Overflow; y: Overflow } | undefined {
+  if (typeof raw !== "string") return undefined;
+  const tokens = raw.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return undefined;
+  if (tokens.length > 2) {
+    repairs.push({
+      kind: "element",
+      path,
+      message: `"overflow: ${tokens.join(" ")}" takes one or two values; ignored`
+    });
+    return undefined;
   }
-  const css = readOverflow(el.overflow, path, repairs);
-  if (css?.scrollOverflow) return css.scrollOverflow;
-
-  const rawOx = el.overflowX ?? el["overflow-x"];
-  const rawOy = el.overflowY ?? el["overflow-y"];
-  const ox = typeof rawOx === "string" ? rawOx.trim().toLowerCase() : undefined;
-  const oy = typeof rawOy === "string" ? rawOy.trim().toLowerCase() : undefined;
-  const scrollX = ox === "scroll" || ox === "auto";
-  const scrollY = oy === "scroll" || oy === "auto";
-  if (scrollX && scrollY) return "both";
-  if (scrollX) return "horizontal";
-  if (scrollY) return "vertical";
-
-  return undefined;
+  const values = tokens.map((token) => OVERFLOW_ALIASES[token]);
+  if (values.some((value) => value === undefined)) {
+    repairs.push({
+      kind: "element",
+      path,
+      message: `"overflow: ${tokens.join(" ")}" is not one of visible | hidden | auto; ignored`
+    });
+    return undefined;
+  }
+  return values.length === 1
+    ? { x: values[0], y: values[0] }
+    : { x: values[0], y: values[1] };
 }
 
 export function normalizeScrollOffset(raw: unknown): number | undefined {
@@ -289,7 +313,7 @@ export function normalizeScrollOffset(raw: unknown): number | undefined {
 
 /**
  * The visibility flag, written either as CSS's `visibility` or as the DSL's
- * boolean `visible`. Same rule as `normalizeClipContent`: both spellings are
+ * boolean `visible`. Same rule as `normalizeOverflow`: both spellings are
  * silent, and only a disagreement is reported.
  */
 export function normalizeVisible(

@@ -109,26 +109,34 @@ describe("matchSlides", () => {
     expect(exits.map((e) => e.id)).toEqual(["l2"]);
   });
 
-  it("does not pair internal elements of a frame that is already paired", () => {
-    // When a container already has a pair between two slides, its internal elements
-    // do not pair anymore — the frame transitions as a single unified container.
+  it("pairs the contents of a frame that is itself paired", () => {
+    // A stage frame that exists on both slides is the frame the cards inside it
+    // move WITHIN: freezing its contents made a card fan pop on the first frame.
     const from = frame("a", [frame("panel", [el("dot", { x: 8, y: 6 })], { x: 48, y: 320 })]);
     const to = frame("b", [frame("panel", [el("dot", { x: 40, y: 84 })], { x: 496, y: 130 })]);
-    const { pairs } = matchSlides(from, to);
-    expect(pairs.map((p) => p.name)).toEqual(["panel"]);
-    expect(pairs[0].from).toEqual({ x: 48, y: 320, width: 10, height: 10 });
-    expect(pairs[0].to).toEqual({ x: 496, y: 130, width: 10, height: 10 });
+    const match = matchSlides(from, to);
+    expect(match.pairs.map((p) => p.name)).toEqual(["panel", "dot"]);
+    expect(match.pairs[0].from).toEqual({ x: 48, y: 320, width: 10, height: 10 });
+    // The nested box carries its parent's offset so the overlay can draw the
+    // line on the canvas…
+    expect(match.pairs[1].from).toEqual({ x: 56, y: 326, width: 10, height: 10 });
+    // …and the write-back is in the child's OWN space, or it lands a panel away.
+    expect(match.pairs[1].fromLocal).toEqual({ x: 8, y: 6 });
+
+    const drawn = morphSlide(from, to, match, 0.5) as { children: DesignElement[] };
+    const panel = drawn.children[0] as { children: DesignElement[] };
+    expect(panel.children[0].x).toBeCloseTo(24);
+    expect(panel.children[0].y).toBeCloseTo(45);
   });
 
-  it("does not pair children of an unmatched container, and only pairs the container itself when matched", () => {
+  it("does not pair children of an unmatched container, and pairs them once it matches", () => {
     const from = frame("a", [frame("box", [el("dot")])]);
     const to = frame("b", [frame("carton", [el("dot")])]);
-    const { pairs } = matchSlides(from, to);
-    expect(pairs).toEqual([]);
+    expect(matchSlides(from, to).pairs).toEqual([]);
 
     const matched = matchSlides(from, frame("b2", [frame("box", [el("dot", { x: 5 })])]));
-    expect(matched.pairs.map((p) => p.name)).toEqual(["box"]);
-    expect(matched.pairs.map((p) => p.depth)).toEqual([0]);
+    expect(matched.pairs.map((p) => p.name)).toEqual(["box", "dot"]);
+    expect(matched.pairs.map((p) => p.depth)).toEqual([0, 1]);
   });
 
   it("ignores hidden layers on both sides", () => {

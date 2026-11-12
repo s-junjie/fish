@@ -16,7 +16,7 @@ import {
   subtreeBounds
 } from "../src/core/geometry/element-bounds";
 import { findFrameAtPoint, findElementAtPoint, reparentOnCanvasDrop, dissolveFrame } from "../src/core/geometry/tree-ops";
-import { applyAutoLayout } from "../src/core/compile";
+import { applyAutoLayout, relayoutDocumentTree } from "../src/core/compile";
 import type { FrameElement, RectElement, LineElement } from "../src/core/dsl/types";
 
 // ---------------------------------------------------------------------------
@@ -219,6 +219,42 @@ describe("dissolveFrame (local → the parent's local space on release)", () => 
     const released = elements[0] as FrameElement;
     expect(released.children![0].x).toBe(60); // 10 + 50 -> canvas 100 + 60
     expect(released.children![0].y).toBe(70); // 10 + 60 -> canvas 200 + 70
+  });
+
+  /**
+   * The released box is only the truth when the parent has no layout.
+   *
+   * A frame dissolving into an auto-layout parent hands it four new FLOW
+   * children, and that parent places them — `x`/`y` are overwritten on the next
+   * pass. Committing the raw dissolve therefore leaves a canvas drawing boxes
+   * the document no longer means, and the disagreement surfaces later: the next
+   * edit reflows them, and Present reflows an unlaid page the moment it opens.
+   * `ungroup` commits `relayoutDocumentTree(dissolved)` for this reason; this is
+   * the shape of the bug it avoids, on the smallest deck that shows it.
+   */
+  it("is rewritten by the parent's layout when that parent places its children", () => {
+    const stage = makeFrame("stage", 24, 112, 300, 200, [
+      makeRect("a", 0, 0, 300, 80),
+      makeRect("b", 0, 100, 300, 80)
+    ]);
+    // `gap` is stored as a number here: the flat keys are CSS-named, the values
+    // are the document's own units, and `layoutOf` only reads a number.
+    const phone = {
+      ...makeFrame("phone", 0, 0, 390, 844, [stage]),
+      display: "flex",
+      "flex-direction": "column",
+      gap: 16
+    } as FrameElement;
+
+    const { elements } = dissolveFrame([phone], "stage");
+    const released = (elements[0] as FrameElement).children!;
+    // The dissolve's own answer: the frame's translation, local to the phone.
+    expect(released.map((c) => c.y)).toEqual([112, 212]);
+
+    // And one layout pass, which the command owes the document: the column owns
+    // the slots, so the authored `y` is gone and the gap is the only spacing.
+    const laid = relayoutDocumentTree(elements);
+    expect((laid[0] as FrameElement).children!.map((c) => c.y)).toEqual([0, 96]);
   });
 });
 

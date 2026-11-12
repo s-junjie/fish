@@ -2087,10 +2087,6 @@
           "$ref": "#/definitions/AutoLayout/properties/masonry",
           "description": "Grid only — lay items out as masonry columns rather than aligned rows."
         },
-        "clipContent": {
-          "type": "boolean",
-          "description": "Files write the CSS spelling `overflow`. `clipsContent` (Figma) and `clip` are input aliases. Defaults to false."
-        },
         "sizeOverride": {
           "type": "boolean",
           "description": "Instance only: the user sized this instance by hand, so it stops following the master's box when the master is resized."
@@ -2150,7 +2146,7 @@
                   "assetId",
                   "componentId",
                   "locked",
-                  "clipContent",
+                  "overflow",
                   "fillStyleId",
                   "strokeStyleId",
                   "textStyleId",
@@ -2158,7 +2154,6 @@
                   "tokenBindings",
                   "themeMode",
                   "numberMode",
-                  "scrollOverflow",
                   "scrollX",
                   "scrollY",
                   "scrollBehavior"
@@ -3347,15 +3342,11 @@
         "overflow": {
           "type": "string",
           "enum": [
+            "visible",
             "hidden",
-            "clip",
-            "auto",
-            "scroll",
-            "scroll-x",
-            "scroll-y",
-            "visible"
+            "auto"
           ],
-          "description": "CSS `overflow`, folded onto `clipContent` and `scrollOverflow`: `\"hidden\"` / `\"clip\"` clip; `\"visible\"` does not; `\"scroll\"` / `\"auto\"` clips and scrolls both axes; `\"scroll-x\"` / `\"scroll-y\"` scroll that axis."
+          "description": "What happens to children that do not fit, both axes. `hidden` clips (CSS `clip` reads as this); `auto` clips and scrolls whichever axis is measured to overflow; `visible` is the initial value and is never written. No `scroll`: we paint no scrollbar, so writing it would promise a bar a browser draws and this engine never does."
         },
         "visibility": {
           "type": "string",
@@ -3729,42 +3720,6 @@
           "$ref": "#/definitions/AutoLayout/properties/columnsMode",
           "description": "Camel-case spelling of `columns-mode`; both spellings are read. CSS columns mode (`fixed` / `auto`)."
         },
-        "clip": {
-          "type": "boolean",
-          "description": "Input alias of `clipContent`; both are read. Files write the CSS spelling `overflow`. `clipsContent` (Figma) and `clip` are input aliases. Defaults to false."
-        },
-        "clip-content": {
-          "type": "boolean",
-          "description": "Kebab-case spelling of `clipContent`; both spellings are read. Files write the CSS spelling `overflow`. `clipsContent` (Figma) and `clip` are input aliases. Defaults to false."
-        },
-        "clips-content": {
-          "type": "boolean",
-          "description": "Kebab-case spelling of `clipContent`; both spellings are read. Files write the CSS spelling `overflow`. `clipsContent` (Figma) and `clip` are input aliases. Defaults to false."
-        },
-        "clipsContent": {
-          "type": "boolean",
-          "description": "Input alias of `clipContent`; both are read. Files write the CSS spelling `overflow`. `clipsContent` (Figma) and `clip` are input aliases. Defaults to false."
-        },
-        "scrollOverflow": {
-          "type": "string",
-          "enum": [
-            "none",
-            "vertical",
-            "horizontal",
-            "both"
-          ],
-          "description": "Direction of container scroll. When set to anything other than `\"none\"`, `clipContent` is enabled."
-        },
-        "scroll-overflow": {
-          "type": "string",
-          "enum": [
-            "none",
-            "vertical",
-            "horizontal",
-            "both"
-          ],
-          "description": "Kebab-case spelling of `scrollOverflow`."
-        },
         "scrollX": {
           "oneOf": [
             { "type": "number" },
@@ -3841,19 +3796,39 @@
         },
         "overflowX": {
           "type": "string",
-          "description": "CSS `overflow-x` input alias."
+          "enum": [
+            "visible",
+            "hidden",
+            "auto"
+          ],
+          "description": "CSS `overflow-x`, the per-axis override. Read only when the two axes must differ."
         },
         "overflow-x": {
           "type": "string",
-          "description": "CSS `overflow-x` input property."
+          "enum": [
+            "visible",
+            "hidden",
+            "auto"
+          ],
+          "description": "CSS `overflow-x`, the per-axis override. Read only when the two axes must differ."
         },
         "overflowY": {
           "type": "string",
-          "description": "CSS `overflow-y` input alias."
+          "enum": [
+            "visible",
+            "hidden",
+            "auto"
+          ],
+          "description": "CSS `overflow-y`, the per-axis override. Read only when the two axes must differ."
         },
         "overflow-y": {
           "type": "string",
-          "description": "CSS `overflow-y` input property."
+          "enum": [
+            "visible",
+            "hidden",
+            "auto"
+          ],
+          "description": "CSS `overflow-y`, the per-axis override. Read only when the two axes must differ."
         },
         "href": {
           "type": "string",

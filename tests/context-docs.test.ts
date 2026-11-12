@@ -91,7 +91,8 @@ describe("the showcase document", () => {
 
     for (const element of elements) {
       expect(element).not.toHaveProperty("borderRadius");
-      expect(element).not.toHaveProperty("clipContent");
+      expect(element).not.toHaveProperty("overflowX");
+      expect(element).not.toHaveProperty("overflowY");
       if (element.type === "text") expect(element).not.toHaveProperty("style");
     }
     const assets = raw.assets as Array<Record<string, unknown>>;

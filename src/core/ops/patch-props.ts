@@ -5,6 +5,8 @@ import { findParentById } from "../geometry/tree-ops";
 import { FLAT_LAYOUT_KEYS, layoutOf } from "../dsl/layout-flat";
 import { normalizeElement } from "../dsl/normalize/element";
 import { canonicalKey } from "../dsl/normalize/shared";
+import type { NormalizationRepair } from "../dsl/normalize/shared";
+import { applyTokenShorthandsToElement, type ShorthandModes } from "../dsl/normalize/token-shorthand";
 import { FLAT_TEXT_KEYS } from "../dsl/normalize/css-absorb";
 import { CSS_KEY_MAP } from "../dsl/css-spelling";
 import { collectVariables, resolveValueTokens, type Variables } from "../dsl/normalize/resolve-values";
@@ -79,9 +81,38 @@ export const CSS_PATCH_SPELLINGS: ReadonlySet<string> = new Set(
     "image-crop",
     "crop",
     "href",
-    "link-url"
+    "link-url",
+    // Input spellings the normalizer folds but CSS_KEY_MAP never names: without
+    // them a patch carrying only one of these keys skips the normalizer and the
+    // raw key survives on the stored element (a `white-space` that never became
+    // a width, a `view-box` the renderer never baked).
+    "view-box",
+    "white-space",
+    "overflow-x",
+    "overflow-y",
+    "skew-x",
+    "skew-y",
+    "rotate-x",
+    "rotate-y"
   ].map(canonicalKey)
 );
+
+/**
+ * Kebab spellings the normalizer only reads in its stored camelCase form. The
+ * patch surface accepts the CSS spelling, so the key is renamed to what the
+ * reader takes before the merge — otherwise the folded result stores a dead
+ * `"skew-x"` beside the live `skewX` the renderer actually reads.
+ */
+const PATCH_KEY_FOLD: Readonly<Record<string, string>> = {
+  "view-box": "viewBox",
+  "white-space": "whiteSpace",
+  "overflow-x": "overflowX",
+  "overflow-y": "overflowY",
+  "skew-x": "skewX",
+  "skew-y": "skewY",
+  "rotate-x": "rotateX",
+  "rotate-y": "rotateY"
+};
 
 export const STRING_LENGTH_AXES: ReadonlySet<string> = new Set(["x", "y", "width", "height", "perspective"]);
 
@@ -107,10 +138,25 @@ const CORNER_RADIUS_LONGHANDS = [
 ] as const;
 
 /**
+ * Whether a patch value names a token.
+ *
+ * A `$ref` is not a CSS spelling and not a stored one, so the gate below would
+ * let it through unnormalized — and an unnormalized `borderRadius: "$x"` stores
+ * the literal string, which the renderer reads as 0. Deep, because a paint
+ * entry's colour is a ref one level in.
+ */
+export function hasTokenRef(value: unknown): boolean {
+  if (typeof value === "string") return /^\$[A-Za-z0-9._/-]+$/.test(value.trim());
+  if (Array.isArray(value)) return value.some(hasTokenRef);
+  if (isObj(value)) return Object.values(value).some(hasTokenRef);
+  return false;
+}
+
+/**
  * The patch surface speaks the same dialect as the file, while the document the
  * op runs on holds stored fields. A CSS key must therefore REPLACE the stored
  * field it names before the two are merged — otherwise the reader sees both and
- * its own precedence rule keeps the old one (`overflow` beside `clipContent`,
+ * its own precedence rule keeps the old one (`overflow` beside `overflow-x`,
  * `rotate` beside `rotation`, an outer `font-size` beside `style.fontSize`).
  * These cleanups only remove the field the patch itself re-states; everything
  * the patch did not mention is left alone.
@@ -120,17 +166,35 @@ export function preparePatch(
   props: Record<string, unknown>
 ): { element: Record<string, unknown>; css: boolean; keys: string[] } {
   const out = { ...(target as unknown as Record<string, unknown>) };
+  // One key, one meaning: a CSS spelling that survives the merge under its own
+  // name is a field the reader never looks at, so the alias is folded here.
+  const folded: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(props)) {
+    folded[PATCH_KEY_FOLD[canonicalKey(key)] ?? key] = value;
+  }
+  props = folded;
   const propCanon = new Set(Object.keys(props).map(canonicalKey));
   const has = (...names: string[]): boolean => names.some((name) => propCanon.has(canonicalKey(name)));
   const css = Object.entries(props).some(([key, value]) => {
     const canon = canonicalKey(key);
-    return CSS_PATCH_SPELLINGS.has(canon) || (STRING_LENGTH_AXES.has(canon) && typeof value === "string");
+    return (
+      CSS_PATCH_SPELLINGS.has(canon) ||
+      hasTokenRef(value) ||
+      (STRING_LENGTH_AXES.has(canon) && typeof value === "string") ||
+      // CSS's one percent property: "50%" is a number the clamp must see, so a
+      // string opacity routes through the normalizer like any other spelling.
+      (canon === "opacity" && typeof value === "string")
+    );
   });
 
-  if (has("overflow", "clip", "clipContent", "clipsContent")) {
-    delete out.clipContent;
-    delete out.clipsContent;
-    delete out.clip;
+  if (has("overflow", "clip")) {
+    // A shorthand REPLACES the axes it states. Leaving a longhand behind would
+    // shadow the value the patch just named, and the panel would read `Mixed`
+    // for a box the author had just set to one value.
+    delete out.overflowX;
+    delete out.overflowY;
+    delete out["overflow-x"];
+    delete out["overflow-y"];
   }
   if (has("visibility", "visible")) delete out.visible;
 
@@ -230,14 +294,36 @@ export function preparePatch(
   return { element: mergeProps(out, props), css, keys: Object.keys(props) };
 }
 
+/**
+ * Normalize a subtree the op verbs are about to write (`patch`, `replace`,
+ * `insert`).
+ *
+ * `tokens` is what makes a `$ref` in the patch mean the same thing it means in a
+ * file. Passed in rather than derived: a patch carries no document, and the
+ * modes matter — a colour token resolved in the wrong theme is a layer that
+ * changes colour the moment something re-syncs it.
+ */
 export function normalizePatchedElement(
   raw: Record<string, unknown>,
   parentLayout: AutoLayout | null,
-  vars: Variables
+  vars: Variables,
+  options: {
+    tokens?: unknown;
+    modes?: ShorthandModes;
+    onRepair?: (repair: NormalizationRepair) => void;
+  } = {}
 ): DesignElement {
   const resolved = resolveValueTokens(raw, vars).value as Record<string, unknown>;
-  const normalized = normalizeElement(resolved, "/patch", 0, [], "el_", parentLayout, true);
-  return (normalized ?? resolved) as unknown as DesignElement;
+  const tokenRepairs: NormalizationRepair[] = [];
+  const withTokens =
+    options.tokens === undefined
+      ? resolved
+      : applyTokenShorthandsToElement(resolved, options.tokens, options.modes ?? {}, "/patch", tokenRepairs);
+  // A patch has no repair channel of its own; the caller turns these into a
+  // failed outcome rather than letting a dropped declaration look applied.
+  for (const repair of tokenRepairs) options.onRepair?.(repair);
+  const normalized = normalizeElement(withTokens, "/patch", 0, [], "el_", parentLayout, true);
+  return (normalized ?? withTokens) as unknown as DesignElement;
 }
 
 /** The stored field a patch key writes, for the override vocabulary. */
@@ -271,7 +357,12 @@ function overridableKeyOf(key: string): string {
   if (canon === "box-shadow" || canon === "backdrop-filter") return "effects";
   if (canon === "filter") return "adjust";
   if (canon === "href" || canon === "link-url") return "link";
-  if (canon === "overflow" || canon === "clip") return "clipContent";
+  if (canon === "overflow-x") return "overflowX";
+  if (canon === "overflow-y") return "overflowY";
+  if (canon === "clip") return "overflow";
+  if (canon === "scroll-x" || canon === "scroll-left") return "scrollX";
+  if (canon === "scroll-y" || canon === "scroll-top") return "scrollY";
+  if (canon === "scroll-behavior") return "scrollBehavior";
   if (canon === "visibility") return "visible";
   if (canon === "mix-blend-mode" || canon === "blend") return "blendMode";
   return key;

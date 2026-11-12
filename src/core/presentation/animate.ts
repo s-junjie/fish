@@ -301,8 +301,8 @@ export function morphSlide(
     const built = list.map((el) => {
       const pair = pairs.get(el.id);
       if (pair) {
-        const x = lerp(pair.from.x, el.x, p);
-        const y = lerp(pair.from.y, el.y, p);
+        const x = lerp(pair.fromLocal.x, el.x, p);
+        const y = lerp(pair.fromLocal.y, el.y, p);
         const children = (el as { children?: DesignElement[] }).children;
         // Written only when the two halves disagree: a pair whose alpha is the
         // same on both slides has to land as the layer the author drew, not as

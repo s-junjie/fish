@@ -235,14 +235,13 @@ function diffOverridable(before: DesignElement, after: DesignElement): Component
       if (a !== b) out.push({ targetId: "", property: prop, value: b });
       continue;
     }
-    if (prop === "clipContent" || prop === "locked") {
-      const a = Boolean((before as any)[prop]);
-      const b = Boolean((after as any)[prop]);
+    if (prop === "overflow" || prop === "locked") {
+      const a = (before as any)[prop];
+      const b = (after as any)[prop];
       if (a !== b) out.push({ targetId: "", property: prop, value: b });
       continue;
     }
     if (
-      prop === "scrollOverflow" ||
       prop === "scrollX" ||
       prop === "scrollY" ||
       prop === "scrollBehavior"

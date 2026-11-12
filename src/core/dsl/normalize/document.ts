@@ -9,6 +9,7 @@ import { normalizeTextStyle } from "./text-sizing";
 import { normalizeStrokes } from "./stroke";
 import { normalizeElement } from "./element";
 import { collectVariables, resolveValueTokens } from "./resolve-values";
+import { applyTokenShorthandsToDocument } from "./token-shorthand";
 import { normalizeTokens } from "./tokens";
 
 export function normalizeFontSpecs(raw: unknown): FontSpec[] {
@@ -253,7 +254,10 @@ export function normalizeDesignDocument(input: unknown, context?: NormalizeConte
   // `fish check` rather than shipping a literal `"var(--x)"` into the engine.
   const variables = collectVariables(sourceInput.variables);
   const { value: resolvedSource, unresolved } = resolveValueTokens(sourceInput, variables);
-  const source: Record<string, unknown> = resolvedSource as Record<string, unknown>;
+  const source: Record<string, unknown> = applyTokenShorthandsToDocument(
+    resolvedSource as Record<string, unknown>,
+    repairs
+  );
   for (const hit of unresolved) {
     repairs.push({
       kind: "document",

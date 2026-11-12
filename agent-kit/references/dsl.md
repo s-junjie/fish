@@ -47,7 +47,7 @@ Two ways HTML enters a document, and only one of them produces something you can
 
 ### Layout Geometry Diagnostics (`check --geometry`)
 - **overflow**: In-flow child extends beyond container content box (commonly caused by text lacking a width mode).
-- **clipped**: a child's painted box — turn included, so a vertical label is measured by the column it occupies — is cut by a parent with `clipContent: true`.
+- **clipped**: a child's painted box — turn included, so a vertical label is measured by the column it occupies — is cut by a parent whose `overflow` clips (`hidden` or `auto`).
 - **zero-size**: Container with children and paint collapsed to 0px on an axis (`warning`).
 - **unused-space** (`info`): the mirror of overflow — a container that stacks downwards ends well short of a fixed height it was given, which is usually a pixel height written where `hug` was meant.
 
@@ -138,10 +138,28 @@ Five consequences worth knowing before authoring:
 | `fills[].stops[].tokenId` | colour token | One gradient stop follows the token; `color` stays materialised beside it. Editing that colour detaches the stop. |
 | `strokes[].tokenId` / `strokes[].paint.tokenId` | colour token | Stroke colour follows the token. |
 | `effects[].tokenId` / `effects[].tokenBindings` | colour token / number token | Shadow colour or radius follows the token. |
-| `tokenBindings: { prop: tokenId }` | number token | `borderRadius`, `gap`, `padding`, `strokeWidth`, `fontSize`, `letterSpacing`, `width`, `height`. |
+| `tokenBindings: { prop: tokenId }` | number token | `borderRadius`, the four corners `borderTopLeftRadius` / `borderTopRightRadius` / `borderBottomRightRadius` / `borderBottomLeftRadius`, `gap`, `row-gap`, `column-gap`, `padding`, `strokeWidth`, `fontSize`, `lineHeight`, `letterSpacing`, `width`, `height`. |
 | `fillStyleId` / `strokeStyleId` / `effectStyleId` / `textStyleId` | a style id | The layer uses that named style; the engine copies its values in — naming it is enough, do not spell the same declarations out on the layer as well. |
 
 - **Modes** are token configuration, not a second set of styles. See [Modes](#modes).
+
+### Token shorthand (`$name`)
+
+An id is minted (`tok_<replica>_<time>_<n>`), so a hand-written document cannot name a token by id. Write the **name** instead, in the slot the value belongs to:
+
+```jsonc
+{ "type": "frame", "display": "flex",
+  "gap": "$space-md", "padding": "$space-lg", "borderRadius": "$radius-card",
+  "background": "$color-surface", "border": "1px solid $color-border" }
+```
+
+- **What `$x` may be**: the token id, its exact `name` (`$color/surface`), or its slug — same name lower-cased with `/` and spaces folded to `-` (`$color-surface`). Id first, then name, then slug; two tokens landing on one slug is reported, never guessed.
+- **Where it is read**: colour — `background`, `backgroundColor`, `color`, `borderColor`, the colour inside `border`, and `fills[i].color` / `strokes[i].color` / `effects[i].color`. Number — `gap`, `row-gap`, `column-gap`, `padding`, `borderRadius` and the four corner radii, `strokeWidth`, `fontSize`, `lineHeight`, `letterSpacing`.
+- **What it writes**: the reference AND the value, in the active modes — the same pair the inspector writes when you bind a token (`fills[].tokenId` + `color`, `tokenBindings` + the number). The stored file never contains `$`.
+- **`tokenId` and `tokenBindings` accept a name too**, so `"tokenBindings": { "gap": "space/md" }` resolves to the same entry without you knowing its id.
+- **Not supported**: `var(--x)` (that is the document's `variables` table, a different thing — `var()` is substituted on load and creates no style), a token inside a per-side `border-top` (one colour covers every side; write it in `border`), a token inside a `boxShadow` string (write the shadow as an `effects[]` entry with `color` + `tokenId`), `width` / `height` (they belong to `sizing`), and a token inside a shape value (`padding: { "top": "$x" }`).
+- **A wrong name is an error, not a guess**: the declaration is dropped with a repair naming the reference, which fails `fish check`.
+
 - **Dangling references**: an id no `doc.tokens[]` / `doc.styles[]` entry backs still renders from the materialised literal, but it cannot be edited and every edit detaches it. `fish check` warns about one, and errors when an id is in the WRONG table.
 - **Authoring rule**: if a value repeats, or is one of a scale (spacing steps, radii, type sizes, palette), make it a token and reference it. Two layers that must change together should share an id, not two identical literals.
 
@@ -218,7 +236,7 @@ FISH reads a fixed subset of CSS. This document names the common surface and the
 - **Box Sizing**: Always **border-box** (`box-sizing: content-box` is not supported).
 - **Transforms**: write them as CSS — `rotate: "45deg"` (clockwise around the element centre), `scale: "-1 1"` to mirror horizontally / `"1 -1"` vertically, `transform: "rotateX(20deg)"` for the 3D tilt, `skewX` / `skewY` (degrees, ±89) to shear the box about its centre. `perspective` (px, default 800) sets the projection depth. These are baked to bitmap on export. A shear is applied inside the rotation, and a pair whose tangents multiply to 1 (`skewX: 45` beside `skewY: 45`) flattens the box to a line — that pair is refused with a repair rather than stored.
 - **Constraints**: For absolute or plain-frame children: `constraints: { horizontal: "left" | "right" | "center" | "stretch" | "scale", vertical: "top" | "bottom" | "center" | "stretch" | "scale" }`.
-- **Clipping & Scrolling**: clipping is CSS `overflow` — `"hidden"` clips, `"visible"` does not. A scroll container is a clipped box plus the axes that scroll, said the CSS way: `overflow: "hidden"` with `overflow-x: "scroll"` (or `overflow-y`, or both longhands). The scroll POSITION has no CSS property — a browser keeps it as DOM state — so it is `scroll-x` / `scroll-y` in px, written beside that pair. A frame that scrolls always clips; the two are one setting, not two.
+- **Clipping & Scrolling**: one property, CSS's three values. `overflow: "hidden"` cuts children at the box edge; `"auto"` clips and scrolls whichever axis actually overflows — the direction is MEASURED from the children, never written; `"visible"` is CSS's initial value and is normally omitted, so an `overflow` in the file always means someone decided to clip. To lock one axis (a vertical list that must not be dragged sideways), add the longhand: `overflow: "auto"` beside `overflow-x: "hidden"`. Never write `scroll` — it means "always paint a scrollbar" in CSS, and this engine paints none. The scroll POSITION has no CSS property — a browser keeps it as DOM state — so it is `scroll-x` / `scroll-y` in px.
 
 ### 2. Auto-Layout (Flex & Grid)
 Keys are stored flat on the container using CSS names. A nested `layout` object or a compact `layout` string is not read: write `display` plus the flat keys. Only these points differ from standard CSS:
@@ -344,11 +362,11 @@ A CSS spelling can be accepted, ignored, or stored differently:
 - **When to use**: if the same structure appears more than once (button, card, nav item, list row, badge), make it a master and place instances. Duplicating the frame is a copy, not a system: a later change costs N edits instead of one.
 - **Masters**: Defined as `type: "component"` (or grouped inside `componentSet` with `variantProperties`).
 - **Instances**: `type: "instance"`, referencing master via `componentId`. Overrides apply sparsely to master nodes.
-- **Instance Element vs. Overrides**: An instance is a first-class canvas element in its own right. Transforms (`rotate`, `scale`, `transform`), placement (`x`, `y`, `position`), opacity, and instance-level styling (`fills`, `strokes`, `borderRadius`, `clipContent`, `instanceScale`) belong directly on the instance element itself (e.g. `{ type: "instance", componentId: "icon-arrow", rotate: "90deg" }`). By contrast, `overrides[]` targets specific child layers inside the master component.
+- **Instance Element vs. Overrides**: An instance is a first-class canvas element in its own right. Transforms (`rotate`, `scale`, `transform`), placement (`x`, `y`, `position`), opacity, and instance-level styling (`fills`, `strokes`, `borderRadius`, `overflow`, `instanceScale`) belong directly on the instance element itself (e.g. `{ type: "instance", componentId: "icon-arrow", rotate: "90deg" }`). By contrast, `overrides[]` targets specific child layers inside the master component.
 - **Instance Box**: An instance carries its own `width` / `height`. An OMITTED axis is copied from the master at load; an explicit `0` stays `0` and paints no background, stroke or padding (only its children show). Use `sizeOverride: true` when the instance must keep a box that differs from the master.
 - **Hugging Masters**: If the master's axis is `fit-content` / `max-content`, the instance re-derives that axis from content and IGNORES its stored number. Pin a different instance size with `sizeOverride: true` (or declare that axis's `sizing` on the instance). This is how one master serves Standard / Tall instances without a second master.
 - **Overrides are sparse**: override only what differs inside the master (text, image, fill); leave everything else inherited. Child geometry inside the master (coordinates, rotation) is locked to preserve component integrity. A reset (`reset-instance`) is cheaper than maintaining a near-copy.
-- **Allowed Overrides**: `overrides[].property` is restricted to: `content`, `style`, `spans`, `fills`, `strokes`, `effects`, `adjust`, `borderRadius`, `cornerSmoothing`, `blendMode`, `link`, `visible`, `opacity`, `fillEnabled`, `assetId`, `locked`, `clipContent`, `componentId`, `fillStyleId`, `strokeStyleId`, `textStyleId`, `effectStyleId`, `tokenBindings`, `themeMode`, `numberMode`, `scrollOverflow`, `scrollX`, `scrollY`, `scrollBehavior`.
+- **Allowed Overrides**: `overrides[].property` is restricted to: `content`, `style`, `spans`, `fills`, `strokes`, `effects`, `adjust`, `borderRadius`, `cornerSmoothing`, `blendMode`, `link`, `visible`, `opacity`, `fillEnabled`, `assetId`, `locked`, `overflow`, `componentId`, `fillStyleId`, `strokeStyleId`, `textStyleId`, `effectStyleId`, `tokenBindings`, `themeMode`, `numberMode`, `scrollX`, `scrollY`, `scrollBehavior`.
 - Presence dictates inheritance: an absent property inherits master changes; an explicitly defined property (e.g. `fills: []`) overrides. The box follows the same rule at load — an omitted axis is copied from the master, an explicit `0` is kept.
 - **Capability boundaries** — three, and each one answers "no" rather than doing something approximate:
   - **A master must live in the same document.** `componentId` has to name a `type: "component"` node (a `componentSet` member counts). A dangling id, or one pointing at a `frame`, paints a dashed empty box; `fish check` reports it. There is no cross-file reference, because the file has to stand alone.

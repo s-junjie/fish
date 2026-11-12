@@ -49,7 +49,6 @@ const out = await page.evaluate(async (RUNS) => {
         width: 320,
         height: 200,
         fills: [{ type: "solid", color: "#1F2937" }],
-        clipContent: false,
         children: RUNS.map((content, i) => ({
           id: `run-${i}`,
           type: "text",

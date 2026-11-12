@@ -202,13 +202,13 @@ describe("geometry report", () => {
           type: "frame",
           width: 100,
           height: 100,
-          clipContent: true,
+          overflow: "hidden",
           children: [{ id: "photo", type: "rect", x: 0, y: 0, width: 140, height: 100 }]
         }
       ])
     );
     const cut = found.find((f) => f.kind === "clipped");
-    expect(cut, "a child cut by clipContent went unreported").toBeTruthy();
+    expect(cut, "a child cut by a clipping overflow went unreported").toBeTruthy();
     expect(cut!.level).toBe("info");
     expect(cut!.message).toContain("40px");
     // The fix has to name the spelling the dialect accepts, not the internal one.
@@ -226,7 +226,7 @@ describe("geometry report", () => {
           type: "frame",
           width: 400,
           height: 300,
-          clipContent: true,
+          overflow: "hidden",
           children: [
             {
               id: "vertical",
@@ -254,7 +254,7 @@ describe("geometry report", () => {
           type: "frame",
           width: 400,
           height: 300,
-          clipContent: true,
+          overflow: "hidden",
           children: [
             { id: "bar", type: "rect", x: -60, y: 50, width: 120, height: 40, rotation: 90 }
           ]
@@ -273,7 +273,7 @@ describe("geometry report", () => {
           type: "frame",
           width: 300,
           height: 200,
-          clipContent: true,
+          overflow: "hidden",
           children: [
             {
               id: "glow1",
@@ -309,7 +309,7 @@ describe("geometry report", () => {
           type: "frame",
           width: 100,
           height: 100,
-          clipContent: true,
+          overflow: "hidden",
           children: [
             { id: "a", type: "rect", x: 0, y: 0, width: 140, height: 100 },
             { id: "b", type: "rect", x: -20, y: 0, width: 40, height: 100 }

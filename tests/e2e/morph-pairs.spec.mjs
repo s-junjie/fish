@@ -92,10 +92,11 @@ check("with the cut armed", (await armedTransition()) === "none", String(await a
 await page.evaluate(() => window.__FISH_BRIDGE__.selectElement("s1"));
 await idle();
 const drawn = await lines();
-check("the morphing slide draws its pairs", Array.isArray(drawn) && drawn.length === 4, `drew ${drawn ? drawn.length : 0} lines, expected 4`);
+check("the morphing slide draws its pairs", Array.isArray(drawn) && drawn.length === 5, `drew ${drawn ? drawn.length : 0} lines, expected 5`);
 
 // Headline, Card, Image and Panel are depth 0; Dot rides inside the paired
-// Panel. Since Panel is already paired, its internal elements do not pair.
+// Panel and pairs at depth 1, because a container that pairs still hands its
+// contents their own lines.
 // Card sits at 48,210 on slide 1 (slide at 80,120) and at 150,130 on slide 2
 // (slide at 800,120), so its line runs between the two CENTRES — horizontally as
 // well as vertically, which is the case that catches a start box wandering off.
@@ -139,8 +140,9 @@ const imageLine = (drawn ?? []).find(
 );
 check("and they still draw a line between them", Boolean(imageLine), JSON.stringify(drawn));
 
-// Dot rides inside a paired Panel: since Panel already has a pair, its internal elements
-// are not paired and get no line.
+// Dot rides inside a paired Panel, so its line is the one that proves the walk
+// reaches past the top level — and that a nested pair's start box carries the
+// parent's offset without the write-back inheriting it.
 const dot = { x1: 142, y1: 452, x2: 1342, y2: 340 };
 const dotLine = (drawn ?? []).find(
   (l) =>
@@ -149,7 +151,7 @@ const dotLine = (drawn ?? []).find(
     Math.abs(l.x2 - dot.x2) < 1 &&
     Math.abs(l.y2 - dot.y2) < 1
 );
-check("an internal element inside an already-paired frame gets no line", !dotLine, JSON.stringify(drawn));
+check("a nested layer's line starts from where it actually sits", Boolean(dotLine), JSON.stringify(drawn));
 
 // Badge exists only on slide 1 and Note only on slide 2, so neither may have a
 // line: they fade where they stand instead of travelling.
@@ -170,7 +172,7 @@ await idle();
 const text = await sectionText();
 check("a top-level slide carries the section", /slide/i.test(text), JSON.stringify(text.slice(0, 120)));
 check("and arms the transition the document stores", (await armedTransition()) === "morph", String(await armedTransition()));
-check("and counts the pairs the canvas is drawing", /\b4\b/.test(text), JSON.stringify(text.slice(0, 200)));
+check("and counts the pairs the canvas is drawing", /\b5\b/.test(text), JSON.stringify(text.slice(0, 200)));
 
 // ---------------------------------------------------------------------- the switch
 // The lines are a reading of two artboards at once — wanted while deciding what
@@ -184,7 +186,7 @@ check("switching it off takes the lines off the canvas", (await lines()) === nul
 check("and is not a document edit", (await armedTransition()) === "morph", String(await armedTransition()));
 await page.click("[data-morph-lines-toggle]");
 await idle();
-check("switching it back on draws them again", (await lines())?.length === 4, JSON.stringify(await lines()));
+check("switching it back on draws them again", (await lines())?.length === 5, JSON.stringify(await lines()));
 
 // Hovering a row is the one place the line and the list name the same thing, so
 // the lit line has to be the hovered pair's — not merely "a line changed".

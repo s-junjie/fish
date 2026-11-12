@@ -18,6 +18,7 @@ import { insertClones } from "../src/core/interactions/clipboard";
 import { findElementById } from "../src/core/geometry/tree-ops";
 import { adoptTopLevelElements, getActivePage, updateActivePageElements } from "../src/core/dsl/types";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
+import { clipsContent } from "../src/core/dsl/overflow";
 
 const baseCanvas = { width: 1200, height: 800, background: { type: "solid" as const, color: "#101010" }, unit: "px" as const };
 const baseDoc: DesignDocument = {
@@ -103,7 +104,7 @@ describe("Component and Instance Engine", () => {
     expect(component!.y).toBe(30);
     expect(component!.width).toBe(80);
     expect(component!.height).toBe(40);
-    expect(component!.clipContent).toBe(false);
+    expect(clipsContent(component!)).toBe(false);
     expect(component!.fills).toBeUndefined();
 
     // The element became its only child, re-based into the frame's local space.
@@ -561,7 +562,7 @@ describe("resolveInstanceChildren ids are derived and stable", () => {
           y: 150,
           width: 180,
           height: 80,
-          clipContent: true,
+          overflow: "hidden",
           children: [
             {
               id: "card_body_text",

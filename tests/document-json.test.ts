@@ -74,7 +74,7 @@ const pageElements: DesignElement[] = [
     y: 0,
     width: 1440,
     height: 520,
-    clipContent: true,
+    overflow: "hidden",
     borderRadius: 16,
     ...flattenLayout({ mode: "flex", direction: "column", gap: 24, padding: 32, align: "start", justify: "start" }),
     fills: [

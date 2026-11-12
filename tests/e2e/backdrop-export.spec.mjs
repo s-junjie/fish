@@ -75,7 +75,7 @@ const candidate = {
           y: CARD.y,
           width: CARD.width,
           height: CARD.height,
-          clipContent: true,
+          overflow: "hidden",
           fillEnabled: false,
           children: [
             {

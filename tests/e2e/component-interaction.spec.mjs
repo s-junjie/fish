@@ -50,7 +50,6 @@ await page.evaluate(() => {
     width: 100,
     height: 40,
     fills: [{ type: "solid", color: "#3B82F6" }],
-    clipContent: false,
     ...(set || {}),
     children: [label(id, content)]
   });

@@ -112,7 +112,10 @@ export function commitCreatedShape({
         height: finalGeom.height,
         children: [],
         fills: [{ type: "solid", color: "#FFFFFF" }],
-        clipContent: false
+        // Figma's frame clips by default, so the tool says so explicitly. The
+        // FORMAT's default stays `visible`: a file that says nothing is a file
+        // where nobody decided, which is what keeps an imported page unframed.
+        overflow: "hidden"
       } as FrameElement;
     } else if (finalGeom.tool === "text") {
       const ink = newTextInkAt(docRef.current, {

@@ -1,4 +1,5 @@
 import type { DesignElement } from "./types";
+import { overflowAxes, type OverflowFields } from "./overflow";
 
 /**
  * The element keys the FILE spells differently from the runtime.
@@ -18,8 +19,9 @@ import type { DesignElement } from "./types";
 export const CSS_KEY_MAP: Readonly<Record<string, string>> = {
   borderRadius: "border-radius",
   blendMode: "mix-blend-mode",
-  clipContent: "overflow",
-  scrollOverflow: "overflow",
+  overflow: "overflow",
+  overflowX: "overflow-x",
+  overflowY: "overflow-y",
   scrollX: "scroll-x",
   scrollY: "scroll-y",
   scrollBehavior: "scroll-behavior",
@@ -82,7 +84,6 @@ function cssGridAxis(start: unknown, span: unknown): string | undefined {
 
 /** The values whose CSS vocabulary is not the stored one. */
 const CSS_VALUES: Readonly<Record<string, (value: unknown) => unknown>> = {
-  clipContent: (value) => (value === true ? "hidden" : "visible"),
   visible: (value) => (value === false ? "hidden" : "visible"),
   x: px,
   y: px,
@@ -140,14 +141,14 @@ const grouped = (keys: string[], why: string): Record<string, string> =>
 export const NO_CSS_EQUIVALENT: Readonly<Record<string, string>> = {
   ...grouped(
     [
-      "clipsContent", "layoutGrow", "pathData", "viewBox", "whiteSpace", "textColor", "linkUrl",
+      "layoutGrow", "pathData", "viewBox", "whiteSpace", "textColor", "linkUrl",
       "focalPoint", "imageCrop", "backgroundColor", "borderColor", "borderWidth",
       "borderStyle", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth",
       "boxShadow", "objectFit", "cornerRadius", "strokeWidth",
       "strokeSides", "borderSides", "strokeTopWeight", "strokeRightWeight",
       "strokeBottomWeight", "strokeLeftWeight", "strokeSide", "borderSide",
       "flexGrow", "assetId", "posterAssetId", "slide", "themeMode", "numberMode", "boxSizing",
-      "scrollLeft", "scrollTop", "overflowX", "overflowY"
+      "scrollLeft", "scrollTop"
     ],
     "an input spelling: normalize folds it into another field and never writes it back"
   ),
@@ -196,7 +197,7 @@ function flattenStyle(style: Record<string, unknown>): Record<string, unknown> {
 
 /** One element, spelled for the file. Recurses into `children`. */
 function spellElement(el: Record<string, unknown>): Record<string, unknown> {
-  const { rotation, flipX, flipY, rotateX, rotateY, skewX, skewY, borderRadius, style, sizing, "grid-area": gridArea, clipContent, scrollOverflow, scrollX, scrollY, ...rest } = el;
+  const { rotation, flipX, flipY, rotateX, rotateY, skewX, skewY, borderRadius, style, sizing, "grid-area": gridArea, overflow, overflowX, overflowY, scrollX, scrollY, ...rest } = el;
   const out: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(rest)) {
@@ -208,23 +209,16 @@ function spellElement(el: Record<string, unknown>): Record<string, unknown> {
     out[cssKey] = CSS_VALUES[key]?.(value) ?? value;
   }
 
-  // A scroll container is a clipped box plus the axes that scroll, which is how
-  // CSS says it: the shorthand carries the clip and each longhand turns one axis
-  // into a scroller. `overflow: "scroll-x"` was this file inventing a value CSS
-  // does not have, so an author reading it back learned a spelling nothing else
-  // accepts. The reader still takes it for documents already written that way.
-  if (scrollOverflow === "both") {
-    out.overflow = "hidden";
-    out["overflow-x"] = "scroll";
-    out["overflow-y"] = "scroll";
-  } else if (scrollOverflow === "vertical") {
-    out.overflow = "hidden";
-    out["overflow-y"] = "scroll";
-  } else if (scrollOverflow === "horizontal") {
-    out.overflow = "hidden";
-    out["overflow-x"] = "scroll";
-  } else if (clipContent !== undefined) {
-    out.overflow = clipContent === true ? "hidden" : "visible";
+  // CSS's own structure: one shorthand when both axes agree, two longhands when
+  // they must differ. `visible` is never written — it is the initial value, so
+  // its absence IS the value, and every `overflow` in the file means a box that
+  // was deliberately made to clip.
+  const axes = overflowAxes({ overflow, overflowX, overflowY } as OverflowFields);
+  if (axes.x === axes.y) {
+    if (axes.x !== "visible") out.overflow = axes.x;
+  } else {
+    out["overflow-x"] = axes.x;
+    out["overflow-y"] = axes.y;
   }
 
   if (typeof scrollX === "number" && scrollX > 0) {

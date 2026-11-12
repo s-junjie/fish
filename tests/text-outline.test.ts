@@ -5,6 +5,7 @@ import { outlineTextElement } from "../src/core/geometry/text-outline";
 import type { OutlineLine } from "../src/core/geometry/text-outline";
 import type { FrameElement, PathElement, TextElement } from "../src/core/dsl/types";
 import { buildTinyFont } from "./fixtures/tiny-font";
+import { clipsContent } from "../src/core/dsl/overflow";
 
 /**
  * The fixture font maps 'A'..'D' onto glyphs 1..4 and gives them extents worth
@@ -178,7 +179,7 @@ describe("the frame holds the glyphs", () => {
     const fills = [{ type: "solid", color: "#FF0000" }];
     const frame = outline({ fills });
     expect(frame.fills).toEqual([]);
-    expect(frame.clipContent).toBe(false);
+    expect(clipsContent(frame)).toBe(false);
     // On the children, so ungrouping yields letters that recolour one at a time.
     expect(childrenOf(frame).every((k) => (k as unknown as Record<string, unknown>).fills === fills)).toBe(
       true

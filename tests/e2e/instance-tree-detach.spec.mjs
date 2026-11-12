@@ -43,7 +43,6 @@ await page.evaluate(() => {
         width: 300,
         height: 200,
         fills: [{ type: "solid", color: "#2A2A2A" }],
-        clipContent: false,
         children: [
           {
             id: "LABEL",
@@ -65,7 +64,6 @@ await page.evaluate(() => {
             width: 220,
             height: 90,
             fills: [{ type: "solid", color: "#1F1F1F" }],
-            clipContent: false,
             children: [
               {
                 id: "DEEP",

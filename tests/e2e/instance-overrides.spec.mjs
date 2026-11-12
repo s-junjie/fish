@@ -56,7 +56,6 @@ const fixture = () =>
           width: 200,
           height: 80,
           fills: solid("#1F2937"),
-          clipContent: false,
           children: [
             { id: "slot", type: "instance", name: "ICON", componentId: "icon", x: 10, y: 10, width: 24, height: 24 },
             {
@@ -143,24 +142,24 @@ check(
   JSON.stringify(duplicated.map((e) => e.name))
 );
 
-// --- 3. clip is overridable -------------------------------------------------
+// --- 3. overflow is overridable ---------------------------------------------
 await fixture();
 await page.waitForTimeout(300);
 await page.evaluate(() => window.__FISH_BRIDGE__.selectElement("cardInst_slot"));
 await page.waitForTimeout(250);
-const clipBox = await page.$('[data-check-row="clip-content"]');
-check("a nested instance offers the clip switch", !!clipBox, 'no [data-check-row="clip-content"]');
-if (clipBox) {
-  // The hook is on the `sr-only` input, which is a 1px box UNDER its own label —
-  // clicking its centre hit the visible 14px chip drawn on top of it and timed out
-  // on "intercepts pointer events". Click the label instead: that is what a user
-  // clicks, and label activation is what flips the checkbox.
-  await page.locator('label:has([data-check-row="clip-content"])').click();
+const overflowField = await page.$('[data-testid="overflow"]');
+check("a nested instance offers the overflow menu", !!overflowField, 'no [data-testid="overflow"]');
+if (overflowField) {
+  await page.selectOption('[data-testid="overflow"]', "hidden");
   await page.waitForTimeout(200);
   const overrides = JSON.stringify((await el("cardInst")).overrides || []);
-  check("toggling clip writes an override on the instance", overrides.includes("clipContent") && overrides.includes("true"), overrides);
-  const masterClip = (await el("card")).clipContent;
-  check("the master is left alone", !masterClip, `master clipContent=${masterClip}`);
+  check(
+    "picking Clip writes an override on the instance",
+    overrides.includes("overflow") && overrides.includes("hidden"),
+    overrides
+  );
+  const masterOverflow = (await el("card")).overflow;
+  check("the master is left alone", !masterOverflow, `master overflow=${masterOverflow}`);
 }
 
 // --- 4. lock, hide and Delete inside an instance ----------------------------

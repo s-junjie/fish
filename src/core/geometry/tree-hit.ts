@@ -1,4 +1,5 @@
 import { ContainerElement, DesignElement } from "../dsl/types";
+import { clipsContent } from "../dsl/overflow";
 import { elementAABB, elementRotatedAABB, paintedSubtreeBounds } from "./element-bounds";
 import { Rect, transformBoundsToAABB } from "./bounds";
 import { identityMatrix, invert, multiply, transformPoint, translation, type Matrix2D } from "./matrix";
@@ -84,7 +85,7 @@ export function findFrameAtPoint(
         const worldM = multiply(parentM, elementTransformMatrix(el, pivot.x, pivot.y));
         if (!reaches(worldM, el, x, y)) continue;
         let canHitChildren = true;
-        if (el.clipContent) {
+        if (clipsContent(el)) {
           const local = invert(worldM);
           if (local) {
             const p = transformPoint(local, { x, y });
@@ -291,7 +292,7 @@ export function findElementAtPoint(
       if (!reaches(worldM, el, x, y)) continue;
       if (isContainer(el) && el.children && el.children.length > 0) {
         let canHitChildren = true;
-        if (el.clipContent) {
+        if (clipsContent(el)) {
           const local = invert(worldM);
           if (local) {
             const p = transformPoint(local, { x, y });

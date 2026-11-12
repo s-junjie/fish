@@ -52,7 +52,6 @@ const applySetup = (masterSizing, instanceSizing, instanceExtra = {}) =>
             width: 300,
             height: ch,
             fills: [{ type: "solid", color: "#1F2937" }],
-            clipContent: false,
             sizing: ms,
             ...stack,
             children: [

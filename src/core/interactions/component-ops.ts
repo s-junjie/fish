@@ -37,8 +37,7 @@ function buildComponentWrapper(el: DesignElement): FrameElement {
     y: el.y,
     width: el.width,
     height: el.height,
-    children: [],
-    clipContent: false
+    children: []
   };
 }
 
@@ -165,12 +164,7 @@ const RESET_KEYS = [
   "strokes",
   "stroke",
   "effects",
-  "clipContent",
-  // The scroll group travels together. Unchecking clip content makes
-  // `ScrollOverflowControl` write `scrollOverflow: "none"` beside it, and leaving
-  // THAT behind would shadow the master's overflow for good while `clipContent`
-  // came back — the instance reset into a state no master could produce.
-  "scrollOverflow",
+  "overflow",
   "scrollX",
   "scrollY",
   "borderRadius",
@@ -315,9 +309,19 @@ export function hasAnythingToReset(inst: InstanceElement, master?: ComponentElem
   // comparison above rather than a presence test.
   for (const key of RESET_KEYS) {
     if (key === "sizing") continue;
-    if ((inst as unknown as Record<string, unknown>)[key] !== undefined) return true;
+    if (ownFieldValue(inst, key) !== undefined) return true;
   }
   return inst.sizing !== undefined && !deepEqual(inst.sizing, master?.sizing);
+}
+
+/**
+ * One entry, three keys. The panel offers `overflow` as a single statement, so a
+ * file that pinned an axis reads as the same field being the instance's — and
+ * Reset has to give all three back together.
+ */
+function ownFieldValue(inst: InstanceElement, key: string): unknown {
+  if (key === "overflow") return inst.overflow ?? inst.overflowX ?? inst.overflowY;
+  return (inst as unknown as Record<string, unknown>)[key];
 }
 
 /**
@@ -337,7 +341,7 @@ export function instanceOwnFields(inst: InstanceElement, master?: ComponentEleme
   if (inst.sizeOverride === true) out.push("size");
   for (const key of RESET_KEYS) {
     if (key === "sizing") continue;
-    if ((inst as unknown as Record<string, unknown>)[key] !== undefined) out.push(key);
+    if (ownFieldValue(inst, key) !== undefined) out.push(key);
   }
   if (inst.sizing !== undefined && !deepEqual(inst.sizing, master?.sizing)) out.push("sizing");
   return out;
@@ -382,6 +386,13 @@ export function resetInstanceField(
     }
   } else {
     delete (nextInst as unknown as Record<string, unknown>)[field];
+    // One statement per axis: giving back `overflow` must not leave a longhand
+    // shadowing the master's value for the one axis the user did not name.
+    if (field === "overflow") {
+      delete nextInst.overflow;
+      delete nextInst.overflowX;
+      delete nextInst.overflowY;
+    }
   }
 
   const next = updateActivePageElements(
@@ -507,10 +518,9 @@ export function detachInstance(
 
   // The frame has to keep what the instance was SHOWING. Scroll is the part of
   // that look which is not in `children`: those arrived already materialised, so
-  // dropping the mode and the offset would hand back a frame whose contents sit
+  // dropping the axes and the offset would hand back a frame whose contents sit
   // where the instance's did not — scrolled back to the top with no way to say
   // it should scroll at all.
-  const scrollOverflow = box.scrollOverflow && box.scrollOverflow !== "none" ? box.scrollOverflow : undefined;
 
   const frame: FrameElement = withLayout(
     {
@@ -526,12 +536,13 @@ export function detachInstance(
       visible: instance.visible,
       fills: box.fills,
       strokes: box.strokes,
-      clipContent: box.clipContent,
+      ...(box.overflow ? { overflow: box.overflow } : {}),
+      ...(box.overflowX ? { overflowX: box.overflowX } : {}),
+      ...(box.overflowY ? { overflowY: box.overflowY } : {}),
       borderRadius: box.borderRadius,
       effects: box.effects,
       ...(themeMode ? { themeMode } : {}),
       ...(numberMode ? { numberMode } : {}),
-      ...(scrollOverflow ? { scrollOverflow } : {}),
       ...(instance.scrollX ? { scrollX: instance.scrollX } : {}),
       ...(instance.scrollY ? { scrollY: instance.scrollY } : {}),
       ...(instance.scrollBehavior ? { scrollBehavior: instance.scrollBehavior } : {}),

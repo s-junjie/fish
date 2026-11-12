@@ -1,4 +1,6 @@
 import { DEFAULT_CANVAS_BACKGROUND } from "./defaults";
+import type { Overflow } from "./overflow";
+export type { Overflow } from "./overflow";
 import type { PATTERN_ALIGNMENTS, PATTERN_MOTIFS, PATTERN_TILE_TYPES } from "./schema-enums";
 
 export type DesignElement =
@@ -832,15 +834,21 @@ export interface BaseElement {
 }
 
 
-export type ScrollOverflow = "none" | "vertical" | "horizontal" | "both";
-
 export interface FrameElement extends BaseElement, SlideHost, AutoLayoutFields {
   type: "frame";
   children: DesignElement[];
   /** Ordered background paint stack (first layer bottom-most). */
   fills?: PaintStack;
-  clipContent?: boolean;
-  scrollOverflow?: ScrollOverflow;
+  /**
+   * What happens to children that do not fit. Omitted means `visible`, which is
+   * CSS's initial value: a file that says nothing is a file where nothing was
+   * decided, and `grep overflow` therefore finds exactly the boxes that clip.
+   * The value is both axes unless a longhand below overrides one.
+   */
+  overflow?: Overflow;
+  /** Per-axis override. Only when the two axes must differ (`hidden` on one, `auto` on the other). */
+  overflowX?: Overflow;
+  overflowY?: Overflow;
   scrollX?: number;
   scrollY?: number;
   borderRadius?: CornerRadius;
@@ -901,11 +909,12 @@ export type OverridableProperty =
    */
   | "locked"
   /**
-   * Whether the layer clips what it contains. Clipping is a paint decision like
-   * `borderRadius`, not geometry: it cannot move a child, so an instance may own
-   * it. In Figma it is overridable for the same reason.
+   * Whether the layer clips what it contains, and whether a clipping box may
+   * scroll. A paint decision like `borderRadius`, not geometry: it cannot move
+   * a child, so an instance may own it. In Figma it is overridable for the same
+   * reason.
    */
-  | "clipContent"
+  | "overflow"
   /**
    * A nested instance's own master. Swapping it from the OUTSIDE (where the
    * nested node is a resolved clone) is the only way to re-point it, so this is
@@ -945,7 +954,6 @@ export type OverridableProperty =
   | "themeMode"
   /** The same, on the NUMBER axis: a compact card inside a comfortable page. */
   | "numberMode"
-  | "scrollOverflow"
   | "scrollX"
   | "scrollY"
   | "scrollBehavior"
@@ -978,7 +986,7 @@ const OVERRIDABLE_PROPERTY_MAP: Record<OverridableProperty, true> = {
   fillEnabled: true,
   assetId: true,
   locked: true,
-  clipContent: true,
+  overflow: true,
   componentId: true,
   fillStyleId: true,
   strokeStyleId: true,
@@ -987,7 +995,6 @@ const OVERRIDABLE_PROPERTY_MAP: Record<OverridableProperty, true> = {
   tokenBindings: true,
   themeMode: true,
   numberMode: true,
-  scrollOverflow: true,
   scrollX: true,
   scrollY: true,
   scrollBehavior: true
@@ -1007,8 +1014,9 @@ export interface ComponentElement extends BaseElement, SlideHost, AutoLayoutFiel
   type: "component";
   children: DesignElement[];
   fills?: PaintStack;
-  clipContent?: boolean;
-  scrollOverflow?: ScrollOverflow;
+  overflow?: Overflow;
+  overflowX?: Overflow;
+  overflowY?: Overflow;
   scrollX?: number;
   scrollY?: number;
   borderRadius?: CornerRadius;
@@ -1047,7 +1055,7 @@ export interface ComponentElement extends BaseElement, SlideHost, AutoLayoutFiel
  *
  * The box is derived from the children (`fitComponentSet`), so a set cannot be
  * resized by hand — Figma does not let you either. There is no `layout` and no
- * `clipContent`: the variants are freely positioned and stay visible outside a
+ * `overflow`: the variants are freely positioned and stay visible outside a
  * shrunken set, exactly as Figma leaves them.
  */
 export interface ComponentSetElement extends BaseElement, SlideHost {
@@ -1066,8 +1074,7 @@ export interface ComponentSetElement extends BaseElement, SlideHost {
    */
   variantGroupProperties?: Record<string, string[]>;
   /** Nothing clips a set — Figma leaves a variant visible outside a collapsed one. */
-  clipContent?: undefined;
-  scrollOverflow?: ScrollOverflow;
+  overflow?: undefined;
   scrollX?: number;
   scrollY?: number;
 }
@@ -1094,8 +1101,9 @@ export interface InstanceElement extends BaseElement {
    * definition — see `resolveInstanceBox` in `core/interactions/instance-inherit.ts`
    * for the one rule that resolves them.
    */
-  clipContent?: boolean;
-  scrollOverflow?: ScrollOverflow;
+  overflow?: Overflow;
+  overflowX?: Overflow;
+  overflowY?: Overflow;
   scrollX?: number;
   scrollY?: number;
   /**

@@ -3,6 +3,7 @@ import type { Paint } from "../src/core/dsl/types";
 import { borderWidthsOf, textStyleOf, visualStyleOf } from "../src/core/import/html-style";
 import { horizontalAlignOf, inlineMergeable } from "../src/core/import/html-text";
 import { parseObjectPosition } from "../src/core/import/css-values";
+import { clipsContent, overflowAxes } from "../src/core/dsl/overflow";
 
 /**
  * `borderWidthsOf` reads a `CSSStyleDeclaration`, but every value it wants is a
@@ -268,34 +269,37 @@ describe("visualStyleOf rotation", () => {
 });
 
 describe("visualStyleOf overflow", () => {
-  it("maps overflow: hidden to clipContent without scrollOverflow", () => {
+  it("reads a clipped pair as one shorthand", () => {
     const vs = visualStyleOf(style({ overflowX: "hidden", overflowY: "hidden" }), { width: 100, height: 100 }, () => {});
-    expect(vs.clipContent).toBe(true);
-    expect(vs.scrollOverflow).toBeUndefined();
+    expect(clipsContent(vs)).toBe(true);
+    expect(vs.overflow).toBe("hidden");
+    expect(vs.overflowX).toBeUndefined();
   });
 
-  it("maps overflow-y: auto / scroll to vertical scrollOverflow", () => {
+  it("keeps a vertical scroller's axes apart", () => {
     const vs = visualStyleOf(style({ overflowX: "hidden", overflowY: "auto" }), { width: 100, height: 100 }, () => {});
-    expect(vs.clipContent).toBe(true);
-    expect(vs.scrollOverflow).toBe("vertical");
+    expect(clipsContent(vs)).toBe(true);
+    expect(overflowAxes(vs)).toEqual({ x: "hidden", y: "auto" });
   });
 
-  it("maps overflow-x: scroll to horizontal scrollOverflow", () => {
+  it("reads CSS `scroll` as `auto` — we paint no bar", () => {
     const vs = visualStyleOf(style({ overflowX: "scroll", overflowY: "hidden" }), { width: 100, height: 100 }, () => {});
-    expect(vs.clipContent).toBe(true);
-    expect(vs.scrollOverflow).toBe("horizontal");
+    expect(clipsContent(vs)).toBe(true);
+    expect(overflowAxes(vs)).toEqual({ x: "auto", y: "hidden" });
   });
 
-  it("maps both scroll axes to both scrollOverflow", () => {
+  it("reads two scrolling axes as one shorthand", () => {
     const vs = visualStyleOf(style({ overflowX: "auto", overflowY: "scroll" }), { width: 100, height: 100 }, () => {});
-    expect(vs.clipContent).toBe(true);
-    expect(vs.scrollOverflow).toBe("both");
+    expect(clipsContent(vs)).toBe(true);
+    expect(overflowAxes(vs)).toEqual({ x: "auto", y: "auto" });
+    expect(vs.overflow).toBe("auto");
   });
 
-  it("leaves unclipped containers with clipContent undefined", () => {
+  it("leaves an unclipped container with no overflow at all", () => {
     const vs = visualStyleOf(style({ overflowX: "visible", overflowY: "visible" }), { width: 100, height: 100 }, () => {});
-    expect(vs.clipContent).toBeUndefined();
-    expect(vs.scrollOverflow).toBeUndefined();
+    expect(vs.overflow).toBeUndefined();
+    expect(vs.overflowX).toBeUndefined();
+    expect(vs.overflowY).toBeUndefined();
   });
 });
 

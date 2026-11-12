@@ -63,7 +63,7 @@ function splitCssTokens(input: string): string[] {
  * `none` / `hidden` mean "no border at all": CSS renders nothing, and a stroke
  * with a colour and no width is exactly the border the author asked to remove.
  */
-function parseBorderShorthand(raw: string): { width?: number; style?: string; color?: string; none?: boolean } | undefined {
+export function parseBorderShorthand(raw: string): { width?: number; style?: string; color?: string; none?: boolean } | undefined {
   const text = raw.trim();
   if (!text) return undefined;
   const out: { width?: number; style?: string; color?: string; none?: boolean } = {};
@@ -489,8 +489,16 @@ export function normalizeStroke(
   // The row's colour token, which is what a theme switch repaints `color` from.
   // Dropped, a token-bound stroke kept the colour it was authored with and the
   // layer quietly became a value nobody could move again.
+  //
+  // It may ride on the `border` OBJECT as well as here: `$token` shorthand lowers
+  // `borderColor: "$x"` onto `border.tokenId` instead of synthesising a row, so
+  // the CSS border's own alignment and per-side weights stay untouched.
+  const borderTokenId =
+    isPlainObject(border) && typeof border.tokenId === "string" && border.tokenId.trim()
+      ? border.tokenId.trim()
+      : undefined;
   const tokenId =
-    direct && typeof direct.tokenId === "string" && direct.tokenId ? direct.tokenId : undefined;
+    direct && typeof direct.tokenId === "string" && direct.tokenId ? direct.tokenId : borderTokenId;
   // Read by the renderer as `stroke-linecap` / `stroke-linejoin`; without this a
   // round-capped stroke reverted to butt/miter on the next save.
   const cap = direct && typeof direct.cap === "string" && LINE_CAPS.includes(direct.cap)

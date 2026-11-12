@@ -11,6 +11,7 @@
 
 import fs from "node:fs";
 import type { DesignDocument, DesignElement } from "../dsl/types";
+import { layoutOf } from "../dsl/layout-flat";
 import { parseCommentsBlock, spliceCommentsBlock } from "../data-bridge";
 import type { CommentThread, FishCommentsDocument, SuggestedMacroOp } from "../comments/types";
 import { AI_AUTHOR } from "../comments/types";
@@ -169,7 +170,10 @@ export function commentsCommand(args: string[], opts: CommentsCommandOptions = {
                 id: parent.id,
                 type: parent.type,
                 name: parent.name,
-                layout: (parent as unknown as { layout?: unknown }).layout,
+                // Layout is stored flat since fe0609e2 — the nested `layout`
+                // object this used to read is gone, so read it off the flat
+                // keys the way every other reader does.
+                layout: layoutOf(parent as unknown as Record<string, unknown>),
                 width: parent.width,
                 height: parent.height
               }

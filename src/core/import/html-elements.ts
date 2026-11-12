@@ -38,7 +38,9 @@ function styleAttrs(style: VisualStyle): Record<string, unknown> {
     ...(style.skewX !== undefined ? { skewX: style.skewX } : {}),
     ...(style.skewY !== undefined ? { skewY: style.skewY } : {}),
     ...(style.visible === false ? { visible: false } : {}),
-    ...(style.scrollOverflow ? { scrollOverflow: style.scrollOverflow } : {}),
+    ...(style.overflow ? { overflow: style.overflow } : {}),
+    ...(style.overflowX ? { overflowX: style.overflowX } : {}),
+    ...(style.overflowY ? { overflowY: style.overflowY } : {}),
     ...(style.tokenBindings ? { tokenBindings: style.tokenBindings } : {})
   };
 }
@@ -96,7 +98,6 @@ export function frameElement(
     width: box.width,
     height: box.height,
     ...styleAttrs(style),
-    clipContent: style.clipContent ?? false,
     ...(link ? { link } : {}),
     children
   } as FrameElement;
@@ -301,7 +302,6 @@ export function svgElement(
     width: box.width,
     height: box.height,
     ...styleAttrs(style),
-    clipContent: style.clipContent ?? false,
     ...(link ? { link } : {}),
     children
   } as DesignElement;

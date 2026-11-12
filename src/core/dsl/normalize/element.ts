@@ -93,7 +93,7 @@ export const CANONICAL_KEYS: ReadonlySet<string> = new Set([
   "strokeSides", "borderSides", "strokeTopWeight", "strokeRightWeight", "strokeBottomWeight", "strokeLeftWeight", "strokeSide", "borderSide",
   "from", "to", "children",
   "arrow", "arrowhead",
-  "clipContent", "clipsContent", "clip", "overflow", "scrollOverflow", "scrollX", "scrollY", "scrollLeft", "scrollTop", "scrollBehavior", "overflowX", "overflowY", "boxSizing", "flex", "layoutGrow", "flexGrow", "padding",
+  "overflow", "scrollX", "scrollY", "scrollLeft", "scrollTop", "scrollBehavior", "overflowX", "overflowY", "boxSizing", "flex", "layoutGrow", "flexGrow", "padding",
   // The flat CSS auto-layout keys: this IS the stored vocabulary, not an alias.
   "display", "flex-direction", "justify-content", "align-items", "align-content", "flex-wrap",
   "row-gap", "column-gap", "grid-template-columns", "grid-template-rows", "grid-auto-flow",

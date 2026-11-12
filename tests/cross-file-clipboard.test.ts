@@ -23,6 +23,7 @@ import {
 } from "../src/core/dsl/types";
 import { findElementById, flattenElements } from "../src/core/geometry/tree-ops";
 import { findMasterComponent } from "../src/core/interactions/component-inventory";
+import { clipsContent } from "../src/core/dsl/overflow";
 
 const baseCanvas = {
   width: 1200,
@@ -78,7 +79,7 @@ const richMaster = (id: string, child: DesignElement): ComponentElement => ({
   fills: [{ type: "solid", color: "#3B82F6" }],
   fillStyleId: "s_brand",
   borderRadius: 8,
-  clipContent: true,
+  overflow: "hidden",
   effects: [{ type: "drop-shadow", color: "#000000", offset: { x: 0, y: 2 }, blur: 4, spread: 0 }],
   ...flattenLayout({ mode: "flex", direction: "row", gap: 8, padding: 12 }),
   sizing: { width: "fit-content", height: "fixed" },
@@ -319,7 +320,7 @@ describe("pasting a fragment into a foreign document", () => {
 
     expect(master.fills).toEqual([{ type: "solid", color: "#3B82F6" }]);
     expect(master.borderRadius).toBe(8);
-    expect(master.clipContent).toBe(true);
+    expect(clipsContent(master)).toBe(true);
     expect(master.effects).toHaveLength(1);
     expect(layoutOf(master)).toMatchObject({ mode: "flex", direction: "row" });
     expect(master.sizing).toMatchObject({ width: "fit-content" });

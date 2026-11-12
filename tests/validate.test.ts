@@ -7,7 +7,7 @@ import { resolveDynamicLineHeight } from "../src/core/layout/text-sizing";
 import type { AutoLayout, DesignDocument, FrameElement, PathElement, TextElement } from "../src/core/dsl/types";
 
 function frame(id: string, x: number, y: number, w: number, h: number, children: DesignElement[] = []): FrameElement {
-  return { id, type: "frame", name: id, x, y, width: w, height: h, children, clipContent: false };
+  return { id, type: "frame", name: id, x, y, width: w, height: h, children };
 }
 
 function doc(elements: DesignElement[], background: DesignDocument["canvas"]["background"] = { type: "solid", color: "#FFFFFF" }): DesignDocument {

@@ -19,9 +19,14 @@ import {
   syncDualStorage
 } from "./style-sync";
 import { styleTables, StyleTables } from "./style-tables";
+import { DEFAULT_THEME, numberModeOf, themeOf } from "../dsl/token-value";
 
-/** The default theme if none is specified on the document. */
-export const DEFAULT_THEME = "default";
+/**
+ * The default theme if none is specified on the document. Defined in the DSL
+ * beside the value arithmetic, because the normalize-time `$token` resolver
+ * needs the same fallback this module uses.
+ */
+export { DEFAULT_THEME };
 
 /** The default modes built into every new document. Starts with a single primary mode named "Default". */
 export const DEFAULT_MODES: DocumentMode[] = [
@@ -64,7 +69,7 @@ function axisModes(doc: DesignDocument, axis: ModeAxis): DocumentMode[] {
 
 /** Returns the active theme identifier of the document. */
 export function getActiveTheme(doc: DesignDocument): string {
-  return doc.activeTheme || getDocumentModes(doc)[0]?.id || DEFAULT_THEME;
+  return themeOf(doc);
 }
 
 /**
@@ -77,7 +82,7 @@ export function getActiveTheme(doc: DesignDocument): string {
  * an old file keeps its per-mode numbers without this reader guessing.
  */
 export function getActiveNumberMode(doc: DesignDocument): string {
-  return doc.activeNumberMode || getDocumentNumberModes(doc)[0]?.id || DEFAULT_THEME;
+  return numberModeOf(doc);
 }
 
 /** Returns the available theme modes for the document, falling back to default. */

@@ -50,7 +50,6 @@ await page.evaluate(
           width: 420,
           height: 320,
           fills: [{ type: "solid", color: "#2A2A2A" }],
-          clipContent: false,
           children: [
             {
               id: "LABEL",
@@ -73,7 +72,6 @@ await page.evaluate(
               width: 190,
               height: 150,
               fills: [{ type: "solid", color: "#1F1F1F" }],
-              clipContent: false,
               children: [makeLeaf("DEEP", 30, 30, 60, 40, "#10B981")]
             }
           ]

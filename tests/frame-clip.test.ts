@@ -23,7 +23,7 @@ describe("frame and instance clipPath with corner smoothing", () => {
       height: 470,
       borderRadius: 67,
       cornerSmoothing: 0.95,
-      clipContent: true,
+      overflow: "hidden",
       children: []
     };
 
@@ -46,7 +46,7 @@ describe("frame and instance clipPath with corner smoothing", () => {
       width: 200,
       height: 200,
       borderRadius: 20,
-      clipContent: true,
+      overflow: "hidden",
       children: []
     };
 
@@ -71,7 +71,7 @@ describe("frame and instance clipPath with corner smoothing", () => {
       height: 200,
       borderRadius: 40,
       cornerSmoothing: 0.6,
-      clipContent: true,
+      overflow: "hidden",
       children: []
     };
 
@@ -105,7 +105,7 @@ describe("frame and instance clipPath with corner smoothing", () => {
       height: 200,
       borderRadius: 40,
       cornerSmoothing: 0.6,
-      clipContent: true,
+      overflow: "hidden",
       children: []
     };
 
@@ -141,7 +141,7 @@ describe("frame and instance clipPath with corner smoothing", () => {
       height: 200,
       borderRadius: 40,
       cornerSmoothing: 0.6,
-      clipContent: true,
+      overflow: "hidden",
       children: []
     };
 

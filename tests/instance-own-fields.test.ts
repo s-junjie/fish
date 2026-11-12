@@ -80,17 +80,15 @@ describe("an instance's own fields are listed one by one", () => {
   it("counts the scroll group, and gives every one of them back", () => {
     const inst: InstanceElement = {
       ...pristine(),
-      clipContent: false,
-      scrollOverflow: "none",
+      overflow: "hidden",
       scrollX: 12,
       scrollY: 40
     };
-    expect(instanceOwnFields(inst, master)).toEqual(["clipContent", "scrollOverflow", "scrollX", "scrollY"]);
+    expect(instanceOwnFields(inst, master)).toEqual(["overflow", "scrollX", "scrollY"]);
     expect(hasAnythingToReset(inst, master), "Reset is offered for them").toBe(true);
 
     const after = resetInstanceOverrides(inst, master);
-    expect(after.clipContent, "the master's clipping is back").toBeUndefined();
-    expect(after.scrollOverflow, "and its overflow — `none` must not survive the reset").toBeUndefined();
+    expect(after.overflow, "the master's clipping is back").toBeUndefined();
     expect([after.scrollX, after.scrollY], "the pan was this instance's and goes with it").toEqual([
       undefined,
       undefined
@@ -145,9 +143,9 @@ describe("one field at a time goes back to the master", () => {
   });
 
   it("gives back the overflow without touching the pan", () => {
-    const inst: InstanceElement = { ...pristine(), scrollOverflow: "none", scrollY: 40 };
-    const after = read(resetInstanceField(docWith(inst), "inst", "scrollOverflow")!);
-    expect(after.scrollOverflow, "the master's overflow again").toBeUndefined();
+    const inst: InstanceElement = { ...pristine(), overflow: "hidden", scrollY: 40 };
+    const after = read(resetInstanceField(docWith(inst), "inst", "overflow")!);
+    expect(after.overflow, "the master's overflow again").toBeUndefined();
     expect(after.scrollY, "the pan is a different statement").toBe(40);
   });
 

@@ -1,4 +1,5 @@
 import { DesignElement, Paint, RectElement } from "../../core/dsl/types";
+import { clipsContent, type OverflowFields } from "../../core/dsl/overflow";
 import { cornerRadiiOf, ellipseToPathData, rectToPathData } from "../../core/geometry/shape-path";
 import { parseFloodColor } from "../../core/geometry/color-utils";
 
@@ -110,7 +111,7 @@ function paintsOpaque(el: DesignElement): boolean {
 function containerBox(el: DesignElement): RectElement | null {
   const type = el.type;
   if (type !== "frame" && type !== "component" && type !== "componentSet") return null;
-  if (!(el as { clipContent?: boolean }).clipContent) return null;
+  if (!clipsContent(el as OverflowFields)) return null;
   if (!paintsInterior(el)) return null;
   if (!(el.width > 0) || !(el.height > 0)) return null;
   return { ...el, type: "rect", borderRadius: (el as any).borderRadius } as RectElement;

@@ -48,7 +48,7 @@ const candidate = {
           y: 20,
           width: 200,
           height: 200,
-          clipContent: true,
+          overflow: "hidden",
           fills: [{ type: "solid", color: "#2A2AFF" }],
           effects: [
             { id: "panelShadow", type: "drop-shadow", enabled: true, color: "#00000080", offset: { x: 0, y: 10 }, blur: 20, spread: 0 }

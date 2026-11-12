@@ -461,7 +461,7 @@ function mapElement(
     const content = { x: r2(absoluteContent.x - parentAbs.x), y: r2(absoluteContent.y - parentAbs.y), width: r2(absoluteContent.width), height: r2(absoluteContent.height) };
 
     const ink = textInkRect(el, state);
-    const plainLeaf = !padded && !hasPaint(style) && !style.clipContent;
+    const plainLeaf = !padded && !hasPaint(style) && !style.overflow && !style.overflowX && !style.overflowY;
     /* A vertical line is reproduced by turning the text a quarter turn. Without
        a wrapper the element itself carries it; with one, the frame stays the
        page's box and only the text inside turns. `vertical-lr` stacks its later

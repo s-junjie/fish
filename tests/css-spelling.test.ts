@@ -28,7 +28,7 @@ const fixture = {
       y: 0,
       width: 300,
       height: 200,
-      clipContent: true,
+      overflow: "hidden",
       borderRadius: 8,
       blendMode: "multiply",
       visible: false,
@@ -51,7 +51,7 @@ describe("the exported dialect is CSS", () => {
     expect(el["mix-blend-mode"]).toBe("multiply");
     expect(el.visibility).toBe("hidden");
     expect(el.children[0]["fill-rule"]).toBe("evenodd");
-    for (const gone of ["borderRadius", "clipContent", "blendMode", "visible", "fillRule"]) {
+    for (const gone of ["borderRadius", "blendMode", "visible", "fillRule"]) {
       expect(el, gone).not.toHaveProperty(gone);
     }
   });

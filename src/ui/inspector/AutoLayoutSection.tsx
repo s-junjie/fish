@@ -137,7 +137,7 @@ export function AutoLayoutSection({
   );
 
   // A resolved instance child owns no layout of its own — geometry and stack
-  // belong to the master. `clipContent` is the one layout-adjacent property that
+  // belong to the master. `overflow` is the one layout-adjacent property that
   // IS override-capable, so everything else reduces to a disabled box the user
   // can still READ: where the layer sits and how big it came out are things one
   // asks this panel, and a panel that answers "nothing here" answers worse.

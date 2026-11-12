@@ -3,6 +3,7 @@ import { getActivePage } from "../src/core/dsl/types";
 import { describe, expect, it } from "vitest";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
 import type { DesignDocument, DesignElement } from "../src/core/dsl/types";
+import { clipsContent, overflowAxes } from "../src/core/dsl/overflow";
 
 /**
  * The dialect's canonical spellings, and the Figma/CSS spellings the normalizer
@@ -74,34 +75,33 @@ describe("page.children is the canonical page list", () => {
   });
 });
 
-describe("clipContent absorbs Figma and CSS spellings", () => {
-  it("reads Figma `clipsContent` without calling it a repair", () => {
-    const el = first(page([frame({ clipsContent: true })]));
-    expect(prop(el, "clipContent")).toBe(true);
-    expect(repaired(page([frame({ clipsContent: true })]), "clipsContent")).toBe(false);
+describe("overflow speaks CSS's shorthand and longhands", () => {
+  it("reads a shorthand for both axes", () => {
+    const doc = page([frame({ overflow: "hidden" })]);
+    expect(clipsContent(first(doc) as never)).toBe(true);
+    expect(repaired(doc, "overflow")).toBe(false);
   });
 
-  it("reads CSS `overflow: \"hidden\"` as a first-class spelling", () => {
-    // `overflow` is what the writer emits, so a document that round-trips
-    // through the workbench must come back with no repairs at all.
-    const el = first(page([frame({ overflow: "hidden" })]));
-    expect(prop(el, "clipContent")).toBe(true);
-    expect(repaired(page([frame({ overflow: "hidden" })]), "overflow")).toBe(false);
+  it("reads two values as x then y, and stores the pair once they differ", () => {
+    const el = first(page([frame({ overflow: "hidden auto" })]));
+    expect(overflowAxes(el as never)).toEqual({ x: "hidden", y: "auto" });
   });
 
-  it("reads a bare `clip` boolean", () => {
-    const el = first(page([frame({ clip: true })]));
-    expect(prop(el, "clipContent")).toBe(true);
+  it("reads the longhands", () => {
+    const el = first(page([frame({ "overflow-x": "auto", "overflow-y": "hidden" })]));
+    expect(overflowAxes(el as never)).toEqual({ x: "auto", y: "hidden" });
   });
 
-  it("does not turn a visible overflow into clipping", () => {
+  it("stores nothing for `visible`: absence IS the initial value", () => {
     const el = first(page([frame({ overflow: "visible" })]));
-    expect(prop(el, "clipContent")).not.toBe(true);
+    expect(clipsContent(el as never)).toBe(false);
+    expect(prop(el, "overflow")).toBeUndefined();
   });
 
-  it("reports two spellings that disagree rather than picking silently", () => {
-    expect(repaired(page([frame({ overflow: "visible", clipContent: true })]), "overflow")).toBe(true);
-    expect(prop(first(page([frame({ overflow: "visible", clipContent: true })])), "clipContent")).toBe(true);
+  it("clips a `visible` axis beside a clipping one, and says so", () => {
+    const doc = page([frame({ overflow: "hidden", "overflow-y": "visible" })]);
+    expect(repaired(doc, "overflow-y")).toBe(true);
+    expect(overflowAxes(first(doc) as never)).toEqual({ x: "hidden", y: "hidden" });
   });
 });
 

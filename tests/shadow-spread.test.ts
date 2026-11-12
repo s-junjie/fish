@@ -165,7 +165,6 @@ describe("spread drawn from the element's outline", () => {
       y: 0,
       width: 200,
       height: 100,
-      clipContent: false,
       children: [],
       fills: [{ type: "solid", color: "#ffffff" }],
       effects: [drop(20)]
@@ -260,7 +259,7 @@ describe("feMorphology spread against Chromium's device-pixel cap", () => {
       y: 0,
       width: 155,
       height: 155,
-      clipContent: true,
+      overflow: "hidden",
       borderRadius: 30,
       cornerSmoothing: 0.6,
       children: [],

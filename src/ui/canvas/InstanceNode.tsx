@@ -19,6 +19,7 @@ import { isGradientPaint } from "../../core/geometry/gradient-utils";
 import { resolveSolidPaintBlend } from "./SvgShapeNode";
 import { CANVAS_MEASURE, CANVAS_ON_SELECT, withAlpha } from "./canvas-colors";
 import { childScrollOffset } from "../../core/geometry/scroll-bounds";
+import { clipsAxes, resolveOverflow } from "../../core/dsl/overflow";
 
 export interface InstanceNodeProps {
   el: InstanceElement;
@@ -315,22 +316,22 @@ export function InstanceNode({
       {(() => {
         const sx = (el.scrollX !== undefined ? el.scrollX : box?.scrollX) || 0;
         const sy = (el.scrollY !== undefined ? el.scrollY : box?.scrollY) || 0;
-        const mode = box?.scrollOverflow ?? el.scrollOverflow ?? "none";
-        const hasScroll = (sx !== 0 || sy !== 0) && Boolean(box?.clipContent);
-        const containerLike = { ...el, scrollOverflow: mode } as any;
+        const clipped = clipsAxes(resolveOverflow(el, box ?? null));
+        const clipUrl = clipped ? `url(#clip_${el.id})` : undefined;
+        const hasScroll = (sx !== 0 || sy !== 0) && clipped;
         return (
           <g
             transform={`translate(${el.x}, ${el.y})`}
-            clipPath={box?.clipContent ? `url(#clip_${el.id})` : undefined}
-            data-clip-chain={box?.clipContent ? `url(#clip_${el.id})` : undefined}
-            data-clip-span={box?.clipContent ? String(Math.max(box?.width ?? el.width, box?.height ?? el.height)) : undefined}
+            clipPath={clipUrl}
+            data-clip-chain={clipUrl}
+            data-clip-span={clipped ? String(Math.max(box?.width ?? el.width, box?.height ?? el.height)) : undefined}
           >
             {(() => {
               if (!hasScroll) {
                 return renderChildren(resolvedChildren);
               }
               const hasPinned = resolvedChildren.some((c) => {
-                const { offsetX, offsetY } = childScrollOffset(c, containerLike, sx, sy, master);
+                const { offsetX, offsetY } = childScrollOffset(c, el as any, sx, sy, master);
                 return offsetX !== -sx || offsetY !== -sy;
               });
               if (!hasPinned) {
@@ -341,7 +342,7 @@ export function InstanceNode({
                 );
               }
               return resolvedChildren.map((c, i) => {
-                const { offsetX, offsetY } = childScrollOffset(c, containerLike, sx, sy, master);
+                const { offsetX, offsetY } = childScrollOffset(c, el as any, sx, sy, master);
                 if (offsetX === 0 && offsetY === 0) {
                   return renderChildren([c]);
                 }

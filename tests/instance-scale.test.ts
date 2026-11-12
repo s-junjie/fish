@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { overflowAxes } from "../src/core/dsl/overflow";
 import {
   ComponentElement,
   DesignDocument,
@@ -431,13 +432,13 @@ describe("the canvas gesture and detach agree with the model", () => {
   it("detaches a scrolled instance still scrolled, and still scrolling", () => {
     const master: ComponentElement = {
       ...darkMaster(),
-      clipContent: true,
-      scrollOverflow: "vertical",
+      overflowX: "hidden",
+      overflowY: "auto",
       cornerSmoothing: 0.6
     };
     const instance = instanceOf("cmp/page", { scrollX: 6, scrollY: 40, scrollBehavior: "fixed" });
     const { frame } = detachInstance(documentOf([master, instance]), "inst/page");
-    expect(frame!.scrollOverflow, "the mode the instance rendered under").toBe("vertical");
+    expect(overflowAxes(frame!), "the axes the instance rendered under").toEqual({ x: "hidden", y: "auto" });
     expect([frame!.scrollX, frame!.scrollY], "and where it was scrolled to").toEqual([6, 40]);
     expect(frame!.cornerSmoothing, "the corner the box was painted with").toBe(0.6);
     expect(frame!.scrollBehavior, "and what it does inside ITS parent").toBe("fixed");
@@ -446,7 +447,8 @@ describe("the canvas gesture and detach agree with the model", () => {
   it("writes no scroll state onto a frame that has none", () => {
     const doc = documentOf([darkMaster(), instanceOf("cmp/page")]);
     const { frame } = detachInstance(doc, "inst/page");
-    expect(frame!.scrollOverflow).toBeUndefined();
+    expect(frame!.overflow).toBeUndefined();
+    expect(frame!.overflowX).toBeUndefined();
     expect(frame!.scrollX).toBeUndefined();
     expect(frame!.scrollY).toBeUndefined();
   });

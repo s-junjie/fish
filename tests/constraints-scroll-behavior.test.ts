@@ -26,7 +26,7 @@ const inner: DesignElement = {
   y: 0,
   width: 100,
   height: 100,
-  clipContent: true,
+  overflow: "hidden",
   children: [child]
 } as unknown as DesignElement;
 
@@ -38,8 +38,8 @@ const master: ComponentElement = {
   y: 0,
   width: 200,
   height: 200,
-  clipContent: true,
-  scrollOverflow: "vertical",
+  overflowX: "hidden",
+  overflowY: "auto",
   children: [inner]
 };
 const instance: InstanceElement = {
@@ -85,18 +85,18 @@ describe("the parent of a selection", () => {
 
 describe("what the parent does with what it holds", () => {
   it("is inherited from the master, on an instance that never said otherwise", () => {
-    expect(parentScrollOf(doc, instance)).toEqual({ clipContent: true, scrollOverflow: "vertical" });
+    expect(parentScrollOf(doc, instance)).toEqual({ clips: true, scrolls: true });
   });
 
   it("is the instance's own answer where it has one", () => {
-    const off = { ...instance, clipContent: false, scrollOverflow: "none" } as InstanceElement;
-    expect(parentScrollOf(doc, off)).toEqual({ clipContent: false, scrollOverflow: "none" });
+    const off = { ...instance, overflow: "hidden" } as InstanceElement;
+    expect(parentScrollOf(doc, off)).toEqual({ clips: true, scrolls: false });
   });
 
   it("is read straight off a plain frame", () => {
-    expect(parentScrollOf(doc, frame)).toEqual({ clipContent: false, scrollOverflow: "none" });
-    const scroller = { ...frame, clipContent: true, scrollOverflow: "both" } as DesignElement;
-    expect(parentScrollOf(doc, scroller)).toEqual({ clipContent: true, scrollOverflow: "both" });
+    expect(parentScrollOf(doc, frame)).toEqual({ clips: false, scrolls: false });
+    const scroller = { ...frame, overflow: "auto" } as DesignElement;
+    expect(parentScrollOf(doc, scroller)).toEqual({ clips: true, scrolls: true });
   });
 });
 

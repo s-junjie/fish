@@ -121,7 +121,7 @@ export function elementRotatedAABB(el: DesignElement): Rect {
 
 /**
  * Union of an element's own AABB and every descendant's. A frame with
- * `clipContent: false` can paint children outside its own box, so culling must
+ * With `overflow: visible` a frame can paint children outside its own box, so culling must
  * test the subtree — testing the frame alone makes overflowing children vanish
  * whenever the frame itself leaves the viewport. Cached by element identity.
  */

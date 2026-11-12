@@ -23,29 +23,31 @@ import type {
   InstanceElement,
   RectElement
 } from "../src/core/dsl/types";
+import { clipsContent, overflowAxes } from "../src/core/dsl/overflow";
 
 describe("frame scroll capabilities", () => {
   describe("normalization & persistence", () => {
-    it("normalizes overflow scroll keywords to clipContent and scrollOverflow", () => {
+    it("normalizes every CSS spelling onto the three stored values", () => {
       const doc = normalizeDesignDocument({
         version: LATEST_DOCUMENT_VERSION,
         name: "Scroll Test",
         elements: [
           { id: "f1", type: "frame", x: 0, y: 0, width: 200, height: 200, overflow: "scroll" },
-          { id: "f2", type: "frame", x: 0, y: 0, width: 200, height: 200, overflow: "scroll-y" },
-          { id: "f3", type: "frame", x: 0, y: 0, width: 200, height: 200, overflow: "scroll-x" }
+          { id: "f2", type: "frame", x: 0, y: 0, width: 200, height: 200, overflow: "hidden auto" },
+          { id: "f3", type: "frame", x: 0, y: 0, width: 200, height: 200, overflowX: "auto", overflowY: "hidden" }
         ]
       }).document;
 
       const [f1, f2, f3] = doc.pages[0].children as FrameElement[];
-      expect(f1.clipContent).toBe(true);
-      expect(f1.scrollOverflow).toBe("both");
+      // `scroll` is CSS's "a bar is always there". We paint none, so it is `auto`.
+      expect(f1.overflow).toBe("auto");
+      expect(f1.overflowX).toBeUndefined();
 
-      expect(f2.clipContent).toBe(true);
-      expect(f2.scrollOverflow).toBe("vertical");
+      // Two values are read x then y, and a differing pair is stored as longhands.
+      expect(overflowAxes(f2)).toEqual({ x: "hidden", y: "auto" });
+      expect(f2.overflow).toBeUndefined();
 
-      expect(f3.clipContent).toBe(true);
-      expect(f3.scrollOverflow).toBe("horizontal");
+      expect(overflowAxes(f3)).toEqual({ x: "auto", y: "hidden" });
     });
 
     it("normalizes scroll offsets and alias spellings", () => {
@@ -60,7 +62,7 @@ describe("frame scroll capabilities", () => {
             y: 0,
             width: 200,
             height: 200,
-            scrollOverflow: "both",
+            overflow: "auto",
             scrollLeft: 42,
             scrollTop: 84
           },
@@ -71,7 +73,8 @@ describe("frame scroll capabilities", () => {
             y: 0,
             width: 200,
             height: 200,
-            scrollOverflow: "vertical",
+            overflowX: "hidden",
+            overflowY: "auto",
             scrollX: -10,
             scrollY: 100
           }
@@ -95,8 +98,8 @@ describe("frame scroll capabilities", () => {
         y: 0,
         width: 300,
         height: 300,
-        clipContent: true,
-        scrollOverflow: "vertical",
+        overflowX: "hidden",
+        overflowY: "auto",
         scrollX: 0,
         scrollY: 150,
         children: []
@@ -105,9 +108,11 @@ describe("frame scroll capabilities", () => {
       const doc = { pages: [{ id: "p1", children: [frame] }] };
       const spelledDoc = applyCssSpelling(doc as any) as any;
       const spelled = spelledDoc.pages[0].children[0];
-      expect(spelled.overflow).toBe("hidden");
-      expect(spelled["overflow-y"]).toBe("scroll");
-      expect(spelled["overflow-x"]).toBeUndefined();
+      // A pair that differs is written as two longhands, with no shorthand to
+      // contradict them; `auto` replaces CSS's `scroll` because we paint no bar.
+      expect(spelled.overflow).toBeUndefined();
+      expect(spelled["overflow-x"]).toBe("hidden");
+      expect(spelled["overflow-y"]).toBe("auto");
       expect(spelled["scroll-y"]).toBe("150px");
       expect(spelled["scroll-x"]).toBeUndefined();
 
@@ -119,8 +124,7 @@ describe("frame scroll capabilities", () => {
       }).document;
 
       const roundTripEl = roundTripDoc.pages[0].children[0] as FrameElement;
-      expect(roundTripEl.clipContent).toBe(true);
-      expect(roundTripEl.scrollOverflow).toBe("vertical");
+      expect(overflowAxes(roundTripEl)).toEqual({ x: "hidden", y: "auto" });
       expect(roundTripEl.scrollY).toBe(150);
     });
   });
@@ -135,8 +139,7 @@ describe("frame scroll capabilities", () => {
         width: 300,
         height: 200,
         padding: [10, 20, 30, 40], // top, right, bottom, left
-        scrollOverflow: "both",
-        clipContent: true,
+        overflow: "auto",
         children: [
           { id: "r1", type: "rect", x: 0, y: 0, width: 400, height: 100 },
           { id: "r2", type: "rect", x: 100, y: 150, width: 100, height: 250 }
@@ -152,7 +155,7 @@ describe("frame scroll capabilities", () => {
       expect(bounds.maxScrollY).toBe(230);
     });
 
-    it("clamps scroll offsets according to scrollOverflow mode", () => {
+    it("clamps scroll offsets according to the axes", () => {
       const container: FrameElement = {
         id: "c",
         type: "frame",
@@ -160,8 +163,8 @@ describe("frame scroll capabilities", () => {
         y: 0,
         width: 200,
         height: 200,
-        scrollOverflow: "vertical",
-        clipContent: true,
+        overflowX: "hidden",
+        overflowY: "auto",
         children: [{ id: "r", type: "rect", x: 0, y: 0, width: 500, height: 500 }]
       };
 
@@ -187,8 +190,8 @@ describe("frame scroll capabilities", () => {
         y: 0,
         width: 200,
         height: 200,
-        scrollOverflow: "vertical",
-        clipContent: true,
+        overflowX: "hidden",
+        overflowY: "auto",
         scrollY: 100,
         children: [{ id: "r", type: "rect", x: 0, y: 0, width: 200, height: 400 }]
       };
@@ -214,8 +217,7 @@ describe("frame scroll capabilities", () => {
         y: 100,
         width: 200,
         height: 200,
-        scrollOverflow: "both",
-        clipContent: true,
+        overflow: "auto",
         scrollX: 40,
         scrollY: 60,
         children: [child]
@@ -240,8 +242,8 @@ describe("frame scroll capabilities", () => {
         y: 100,
         width: 200,
         height: 200,
-        clipContent: true,
-        scrollOverflow: "vertical",
+        overflowX: "hidden",
+        overflowY: "auto",
         scrollX: 0,
         scrollY: 30,
         children: [child]
@@ -277,7 +279,8 @@ describe("frame scroll capabilities", () => {
         y: 20,
         width: 150,
         height: 150,
-        scrollOverflow: "vertical",
+        overflowX: "hidden",
+        overflowY: "auto",
         children: [{ id: "btn", type: "rect", x: 10, y: 10, width: 50, height: 30 }]
       };
       const outer: FrameElement = {
@@ -287,7 +290,7 @@ describe("frame scroll capabilities", () => {
         y: 50,
         width: 300,
         height: 300,
-        scrollOverflow: "both",
+        overflow: "auto",
         children: [inner]
       };
 
@@ -331,8 +334,8 @@ describe("frame scroll capabilities", () => {
         y: 100,
         width: 200,
         height: 200,
-        scrollOverflow: "vertical",
-        clipContent: true,
+        overflowX: "hidden",
+        overflowY: "auto",
         scrollY: 80,
         children: [content, header, footer]
       };
@@ -399,8 +402,8 @@ describe("frame scroll capabilities", () => {
         y: 0,
         width: 100,
         height: 200,
-        scrollOverflow: "vertical",
-        clipContent: true,
+        overflowX: "hidden",
+        overflowY: "auto",
         children: [fixedHeader, stickySection, normalChild]
       };
 
@@ -445,8 +448,8 @@ describe("frame scroll capabilities", () => {
         y: 0,
         width: 100,
         height: 200,
-        scrollOverflow: "vertical",
-        clipContent: true,
+        overflowX: "hidden",
+        overflowY: "auto",
         display: "flex",
         "flex-direction": "column",
         children: [first]
@@ -454,7 +457,7 @@ describe("frame scroll capabilities", () => {
 
       expect(childScrollOffset(first, stacked, 0, 60)).toEqual({ offsetX: -0, offsetY: -60 });
       // An instance stores no layout of its own: the recipe is the master's.
-      const master = { id: "m", type: "component", display: "flex", clipContent: true, children: [] };
+      const master = { id: "m", type: "component", display: "flex", overflow: "hidden", children: [] };
       const instance = { id: "i", type: "instance", componentId: "m", x: 0, y: 0, width: 100, height: 200 };
       expect(childScrollOffset(first, instance as never, 0, 60, master)).toEqual({
         offsetX: -0,
@@ -463,8 +466,8 @@ describe("frame scroll capabilities", () => {
     });
 
     it("reads a sticky child's axis off the master when the container is an instance", () => {
-      // The mode is inherited: an instance that never overrode it carries no
-      // `scrollOverflow` of its own, so asking the instance said "vertical" for a
+      // The axes are inherited: an instance that never overrode them carries no
+      // `overflow` of its own, so asking the instance said "vertical" for a
       // horizontal scroller and the child slid out of view instead of sticking.
       const sticky: RectElement = {
         id: "sticky",
@@ -479,8 +482,8 @@ describe("frame scroll capabilities", () => {
         id: "m",
         type: "component",
         display: "flex",
-        clipContent: true,
-        scrollOverflow: "horizontal",
+        overflow: "auto",
+        overflowY: "hidden",
         children: [sticky]
       } as unknown as ComponentElement;
       const instance = {
@@ -513,8 +516,8 @@ describe("frame scroll capabilities", () => {
       y: 0,
       width: 200,
       height: 200,
-      clipContent: true,
-      scrollOverflow: "vertical",
+      overflowX: "hidden",
+      overflowY: "auto",
       scrollX: 50,
       scrollY: 100,
       children: []
@@ -529,7 +532,7 @@ describe("frame scroll capabilities", () => {
       ]
     };
 
-    it("instance inherits scrollOverflow from master, but does NOT inherit scroll position", () => {
+    it("instance inherits overflow from master, but does NOT inherit scroll position", () => {
       const inst: InstanceElement = {
         id: "inst1",
         type: "instance",
@@ -540,7 +543,7 @@ describe("frame scroll capabilities", () => {
         height: 200
       };
       const box = resolveInstanceBox(inst, master);
-      expect(box.scrollOverflow).toBe("vertical");
+      expect(overflowAxes(box)).toEqual({ x: "hidden", y: "auto" });
       expect(box.scrollX).toBe(0);
       expect(box.scrollY).toBe(0);
     });
@@ -558,7 +561,7 @@ describe("frame scroll capabilities", () => {
         scrollY: 25
       };
       const box = resolveInstanceBox(inst, master);
-      expect(box.scrollOverflow).toBe("vertical");
+      expect(overflowAxes(box)).toEqual({ x: "hidden", y: "auto" });
       expect(box.scrollX).toBe(10);
       expect(box.scrollY).toBe(25);
     });
@@ -577,7 +580,7 @@ describe("frame scroll capabilities", () => {
 
       const instWithNoneOverride: InstanceElement = {
         ...instWithoutOverride,
-        scrollOverflow: "none"
+        overflow: "hidden"
       };
       expect(isScrollableContainer(instWithNoneOverride, doc)).toBe(false);
     });
@@ -616,8 +619,8 @@ describe("frame scroll capabilities", () => {
       y: 0,
       width: 200,
       height: 200,
-      clipContent: true,
-      scrollOverflow: "vertical",
+      overflowX: "hidden",
+      overflowY: "auto",
       children: [header, body]
     };
     const instance: InstanceElement = {
@@ -655,8 +658,8 @@ describe("frame scroll capabilities", () => {
         y: 20,
         width: 400,
         height: 400,
-        scrollOverflow: "vertical",
-        clipContent: true,
+        overflowX: "hidden",
+        overflowY: "auto",
         scrollY: 60,
         children: [{ ...instance, x: 40, y: 30, scrollY: 0, scrollBehavior: "fixed" } as InstanceElement]
       };
@@ -681,8 +684,8 @@ describe("frame scroll capabilities", () => {
       width: 100,
       height: 100,
       padding: 10,
-      clipContent: true,
-      scrollOverflow: "vertical",
+      overflowX: "hidden",
+      overflowY: "auto",
       children: [tall]
     };
     const instance = (scale?: { x: number; y: number }): InstanceElement => ({

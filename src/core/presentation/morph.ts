@@ -12,6 +12,16 @@ export interface MorphPair {
   from: Rect;
   to: Rect;
   /**
+   * The start point the way the target ELEMENT stores it: local to its own
+   * parent, not to the slide.
+   *
+   * `from` carries the parent's offset so the overlay can draw a line across the
+   * canvas, but a pair is written back as a local coordinate — using `from`
+   * there displaced every nested layer by its parent's `x`/`y`, which is why
+   * nested pairs were once switched off altogether.
+   */
+  fromLocal: { x: number; y: number };
+  /**
    * Resolved opacities, so a pair the author also faded interpolates like a box.
    *
    * There is deliberately no `type`: the two halves need not agree on one, and a
@@ -52,7 +62,7 @@ export interface MorphSolo {
    *
    * Carried because `box` is absolute within the slide and an injected layer has
    * to be put back inside the parent that clips it — lifted to the top level it
-   * escapes a container's `clipContent` and, worse, lands in a list where it
+   * escapes a container's `overflow` and, worse, lands in a list where it
    * paints above everything instead of where the author left it.
    */
   parentId: string | null;
@@ -164,6 +174,12 @@ function partition(list: DesignElement[]): Partition {
  * travel from, so claiming a pair for it would animate it out of a container
  * that never moved.
  *
+ * A container that pairs still hands its CHILDREN their own pairs: a stage frame
+ * that is the same on both slides is the frame the cards inside it move within,
+ * and freezing them made the whole fan pop at the first frame. Each child
+ * interpolates in its own parent's space, so the two motions compose instead of
+ * competing.
+ *
  * The walk descends into whichever side is a container, because the two halves
  * may not be the same kind of thing: a group that becomes a rect has children
  * that can only leave, and a rect that becomes a group has children that can
@@ -180,8 +196,7 @@ export function matchSlides(from: DesignElement, to: DesignElement): MorphMatch 
     depth: number,
     fromShift: { x: number; y: number },
     toShift: { x: number; y: number },
-    parentId: string | null,
-    canPair: boolean
+    parentId: string | null
   ) => {
     const fromSplit = partition(fromChildren);
     const toSplit = partition(toChildren);
@@ -203,37 +218,32 @@ export function matchSlides(from: DesignElement, to: DesignElement): MorphMatch 
       for (let i = 0; i < shared; i++) {
         const a = fromList[i].el;
         const b = toList[i].el;
-        if (canPair) {
-          pairs.push({
-            name: a.name!.trim(),
-            fromId: a.id,
-            toId: b.id,
-            from: boxOf(a, fromShift),
-            to: boxOf(b, toShift),
-            fromOpacity: opacityOf(a),
-            toOpacity: opacityOf(b),
-            depth,
-            oneLine: a.type === "text" && b.type === "text" && textPaintsOneLine(a) && textPaintsOneLine(b),
-            fromEl: a,
-            toEl: b
-          });
-        }
+        pairs.push({
+          name: a.name!.trim(),
+          fromId: a.id,
+          toId: b.id,
+          from: boxOf(a, fromShift),
+          to: boxOf(b, toShift),
+          fromLocal: { x: a.x, y: a.y },
+          fromOpacity: opacityOf(a),
+          toOpacity: opacityOf(b),
+          depth,
+          oneLine: a.type === "text" && b.type === "text" && textPaintsOneLine(a) && textPaintsOneLine(b),
+          fromEl: a,
+          toEl: b
+        });
         // Either side may be a container on its own: a pair of different types
         // still has children, and they are not pairs — they only leave or only
         // arrive, so walking them with an empty list on the other side is what
         // gives them a fade instead of a pop.
-        // When both sides are containers and can pair, the container itself pairs,
-        // but any elements inside it must not pair anymore (canPair becomes false).
         if (isContainer(a) || isContainer(b)) {
-          const nextCanPair = canPair && !(isContainer(a) && isContainer(b));
           walk(
             isContainer(a) ? a.children || [] : [],
             isContainer(b) ? b.children || [] : [],
             depth + 1,
             { x: fromShift.x + a.x, y: fromShift.y + a.y },
             { x: toShift.x + b.x, y: toShift.y + b.y },
-            a.id,
-            nextCanPair
+            a.id
           );
         }
       }
@@ -250,7 +260,7 @@ export function matchSlides(from: DesignElement, to: DesignElement): MorphMatch 
   };
 
   if (isContainer(from) && isContainer(to)) {
-    walk(from.children || [], to.children || [], 0, ZERO, ZERO, null, true);
+    walk(from.children || [], to.children || [], 0, ZERO, ZERO, null);
   }
   return { pairs, exits, enters };
 }

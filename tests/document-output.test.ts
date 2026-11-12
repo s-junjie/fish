@@ -27,7 +27,7 @@ const elements: DesignElement[] = [
     y: 10,
     width: 200,
     height: 120,
-    clipContent: true,
+    overflow: "hidden",
     borderRadius: 12,
     fills: [{ type: "solid", color: "#1c1c1c" }],
     children: [

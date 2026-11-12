@@ -184,7 +184,7 @@ check("cross-file paste selects the import", await selected(pageB), [imported]);
 // ---------- 3. a component instance pasted into another file stays an instance ----------
 // The regression: the payload used to be flattened into a plain frame, so an
 // instance lost its master link AND its own appearance (the hand-written field
-// list dropped fills/layout/borderRadius/effects/clipContent).
+// list dropped fills/layout/borderRadius/effects/overflow).
 const applyComponentSetup = (page) =>
   page.evaluate(() => {
     const bridge = window.__FISH_BRIDGE__;

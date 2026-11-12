@@ -1,4 +1,5 @@
-import type { ContainerElement, DesignDocument, DesignElement, InstanceElement, ScrollOverflow } from "../dsl/types";
+import type { ContainerElement, DesignDocument, DesignElement, InstanceElement } from "../dsl/types";
+import { resolveOverflow, type OverflowAxes, type OverflowFields } from "../dsl/overflow";
 import { resolvePadding } from "../layout/box";
 import { layoutOf } from "../dsl/layout-flat";
 import { findElementAtPoint } from "./tree-hit";
@@ -15,11 +16,26 @@ export interface ScrollBounds {
 }
 
 /**
+ * The axes a container paints and scrolls with. An instance stores only what it
+ * owns, so anything it does not declare comes from the master it projects —
+ * which is also the element whose auto layout decides whether a child is in the
+ * flow.
+ */
+function axesFor(
+  el: OverflowFields & { type?: string; componentId?: string },
+  doc?: DesignDocument
+): OverflowAxes {
+  const master =
+    el.type === "instance" && el.componentId && doc ? findMasterComponent(doc, el.componentId) : null;
+  return resolveOverflow(el, master as OverflowFields | null);
+}
+
+/**
  * Returns the effective translation offset for a child element inside a scrolling container,
  * respecting the child's constraint pins (e.g. fixed top/bottom headers or position: absolute).
  *
  * `layoutHost` is the element whose auto layout decides whether the child is in
- * the flow, and whose scroll fields are the real ones when the container is an
+ * the flow, and whose overflow fields are the real ones when the container is an
  * INSTANCE — it stores no layout and, until the user overrides it, no overflow
  * of its own, so both belong to the master it projects.
  */
@@ -34,18 +50,13 @@ export function childScrollOffset(
     return { offsetX: 0, offsetY: 0 };
   }
 
-  const host = layoutHost as
-    | { scrollOverflow?: ScrollOverflow; clipContent?: boolean }
-    | null
-    | undefined;
-  const overflow: ScrollOverflow = container.scrollOverflow ?? host?.scrollOverflow ?? "none";
+  const axes = resolveOverflow(container as OverflowFields, layoutHost as OverflowFields | null);
   // Both renderers offset a container's children only while it clips, and that is
-  // the whole test they make — the mode decides whether the user MAY scroll, not
-  // whether an offset already stored is painted. A reader that moved the box for
-  // an offset nothing paints is the offset frame the selection shows for a node
-  // that sits still; so this one mirrors the renderer exactly.
-  const clips = container.clipContent ?? host?.clipContent;
-  if (!clips) {
+  // the whole test they make — the axis value decides whether the user MAY scroll,
+  // not whether an offset already stored is painted. A reader that moved the box
+  // for an offset nothing paints is the offset frame the selection shows for a
+  // node that sits still; so this one mirrors the renderer exactly.
+  if (axes.x === "visible" && axes.y === "visible") {
     return { offsetX: 0, offsetY: 0 };
   }
   const behavior = child.scrollBehavior;
@@ -55,10 +66,7 @@ export function childScrollOffset(
   }
 
   if (behavior === "sticky") {
-    const offsetX =
-      child.x - scrollX <= 0 && (overflow === "horizontal" || overflow === "both")
-        ? -child.x
-        : -scrollX;
+    const offsetX = child.x - scrollX <= 0 && axes.x === "auto" ? -child.x : -scrollX;
     const offsetY = child.y - scrollY <= 0 ? -child.y : -scrollY;
     return { offsetX, offsetY };
   }
@@ -143,14 +151,14 @@ export function computeContainerScrollBounds(
 }
 
 /**
- * Clamps nextScrollX and nextScrollY to [0, maxScroll] according to the
- * container's scrollOverflow mode ("none" | "vertical" | "horizontal" | "both").
+ * Clamps a next offset to what the declared axes can actually reveal. An axis
+ * set to `auto` still has to have room — the direction a wheel may travel is
+ * measured, never stored.
  */
 export function clampScrollOffset(
-  el: {
+  el: OverflowFields & {
     type?: string;
     componentId?: string;
-    scrollOverflow?: ScrollOverflow;
     width: number;
     height: number;
     padding?: any;
@@ -161,22 +169,17 @@ export function clampScrollOffset(
   resolvedChildren?: DesignElement[],
   doc?: DesignDocument
 ): { scrollX: number; scrollY: number } {
-  let mode = el.scrollOverflow;
-  if (!mode && el.type === "instance" && el.componentId && doc) {
-    const master = findMasterComponent(doc, el.componentId);
-    mode = master?.scrollOverflow;
-  }
-  mode = mode ?? "none";
-  if (mode === "none") {
+  const axes = axesFor(el, doc);
+  // Nothing scrolls and the children do not need measuring: this runs on every
+  // wheel tick, and the scan below is proportional to the subtree.
+  if (axes.x !== "auto" && axes.y !== "auto") {
     return { scrollX: 0, scrollY: 0 };
   }
   const { maxScrollX, maxScrollY } = computeContainerScrollBounds(el as any, resolvedChildren, doc);
-  const canX = mode === "horizontal" || mode === "both";
-  const canY = mode === "vertical" || mode === "both";
 
   return {
-    scrollX: canX ? Math.max(0, Math.min(nextScrollX, maxScrollX)) : 0,
-    scrollY: canY ? Math.max(0, Math.min(nextScrollY, maxScrollY)) : 0
+    scrollX: axes.x === "auto" ? Math.max(0, Math.min(nextScrollX, maxScrollX)) : 0,
+    scrollY: axes.y === "auto" ? Math.max(0, Math.min(nextScrollY, maxScrollY)) : 0
   };
 }
 
@@ -184,20 +187,9 @@ export function isScrollableContainer(
   el: DesignElement,
   doc?: DesignDocument
 ): el is ContainerElement | InstanceElement {
-  if (el.type === "frame" || el.type === "component") {
-    return el.scrollOverflow !== undefined && el.scrollOverflow !== "none";
-  }
-  if (el.type === "instance") {
-    const inst = el as InstanceElement;
-    if (inst.scrollOverflow !== undefined) {
-      return inst.scrollOverflow !== "none";
-    }
-    if (doc) {
-      const master = findMasterComponent(doc, inst.componentId);
-      return master?.scrollOverflow !== undefined && master.scrollOverflow !== "none";
-    }
-  }
-  return false;
+  if (el.type !== "frame" && el.type !== "component" && el.type !== "instance") return false;
+  const axes = axesFor(el as ContainerElement | InstanceElement, doc);
+  return axes.x === "auto" || axes.y === "auto";
 }
 
 export function canContainerScroll(
@@ -207,17 +199,16 @@ export function canContainerScroll(
   doc?: DesignDocument,
   resolvedChildren?: DesignElement[]
 ): boolean {
-  let mode = container.scrollOverflow;
-  if (!mode && container.type === "instance" && doc) {
-    const master = findMasterComponent(doc, (container as InstanceElement).componentId);
-    mode = master?.scrollOverflow;
-  }
-  if (!mode || mode === "none") return false;
+  const axes = axesFor(container, doc);
+  const scrollableX = axes.x === "auto";
+  const scrollableY = axes.y === "auto";
+  if (!scrollableX && !scrollableY) return false;
+
   const { maxScrollX, maxScrollY } = computeContainerScrollBounds(container, resolvedChildren, doc);
   const curX = container.scrollX ?? 0;
   const curY = container.scrollY ?? 0;
-  const canX = (mode === "horizontal" || mode === "both") && maxScrollX > 0;
-  const canY = (mode === "vertical" || mode === "both") && maxScrollY > 0;
+  const canX = scrollableX && maxScrollX > 0;
+  const canY = scrollableY && maxScrollY > 0;
 
   if (canX && deltaX !== 0) {
     if (deltaX > 0 && curX < maxScrollX) return true;
@@ -230,14 +221,16 @@ export function canContainerScroll(
   return false;
 }
 
-export function findScrollableContainersAtPoint(
+/**
+ * The scrollable containers a hit sits in, innermost first — the chain a wheel
+ * asks in order, because the closest one that can still move is the one that
+ * scrolls.
+ */
+export function scrollableAncestors(
   elements: DesignElement[],
-  x: number,
-  y: number,
+  hit: DesignElement | null,
   doc?: DesignDocument
 ): (ContainerElement | InstanceElement)[] {
-  const hit = findElementAtPoint(elements, x, y, { includeLocked: true });
-  if (!hit) return [];
   const candidates: (ContainerElement | InstanceElement)[] = [];
   let curr: DesignElement | null = hit;
   while (curr) {
@@ -247,4 +240,26 @@ export function findScrollableContainersAtPoint(
     curr = findParentById(elements, curr.id);
   }
   return candidates;
+}
+
+export function findScrollableContainersAtPoint(
+  elements: DesignElement[],
+  x: number,
+  y: number,
+  doc?: DesignDocument
+): (ContainerElement | InstanceElement)[] {
+  return scrollableAncestors(elements, findElementAtPoint(elements, x, y, { includeLocked: true }), doc);
+}
+
+/** Whether a declared `auto` axis actually has room left. */
+export function hasScrollableOverflow(
+  container: ContainerElement | InstanceElement,
+  doc?: DesignDocument
+): boolean {
+  const { maxScrollX, maxScrollY } = computeContainerScrollBounds(container, undefined, doc);
+  const axes = axesFor(container, doc);
+  return (
+    (axes.x === "auto" && maxScrollX > 0) ||
+    (axes.y === "auto" && maxScrollY > 0)
+  );
 }

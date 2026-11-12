@@ -4,8 +4,7 @@ import { isLaidOut, relayoutDocumentTree } from "../../core/compile";
 import { flattenElements } from "../../core/geometry/tree-ops";
 import { mapElements } from "../../core/geometry/tree-edit";
 import { findElementAtPoint } from "../../core/geometry/tree-hit";
-import { canContainerScroll, clampScrollOffset, computeContainerScrollBounds, findScrollableContainersAtPoint } from "../../core/geometry/scroll-bounds";
-import { findMasterComponent } from "../../core/interactions/component-inventory";
+import { canContainerScroll, clampScrollOffset, findScrollableContainersAtPoint, hasScrollableOverflow } from "../../core/geometry/scroll-bounds";
 import { contentBounds } from "../../core/geometry/element-bounds";
 import { formatZoomPercent, zoomStep } from "../../core/geometry/viewport";
 import { presentationFrames } from "../../core/presentation/frames";
@@ -260,18 +259,7 @@ export function ViewerShell({ doc, docRef, readOnly = false }: ViewerShellProps)
             }
           }
         }
-        const hasOverflow = candidates.some((cand) => {
-          const { maxScrollX, maxScrollY } = computeContainerScrollBounds(cand, undefined, doc);
-          const mode =
-            cand.scrollOverflow ??
-            (cand.type === "instance"
-              ? findMasterComponent(doc, (cand as InstanceElement).componentId)?.scrollOverflow
-              : "none");
-          return (
-            ((mode === "horizontal" || mode === "both") && maxScrollX > 0) ||
-            ((mode === "vertical" || mode === "both") && maxScrollY > 0)
-          );
-        });
+        const hasOverflow = candidates.some((cand) => hasScrollableOverflow(cand, doc));
         if (hasOverflow) {
           return true;
         }

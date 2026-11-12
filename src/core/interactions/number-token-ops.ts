@@ -14,22 +14,18 @@ import {
 } from "../dsl/types";
 import { getActivePage } from "../dsl/types";
 import { createId } from "../id";
-import { parseCornerRadii } from "../geometry/rounded-box";
+import { bindNumberToken, CORNER_SLOTS, numberTokenPropValue } from "../dsl/token-bindings";
+
+/**
+ * The write shape and the two constants live in the DSL: a `$token` shorthand
+ * and the inspector's bind command must produce the same layer, so the lowering
+ * is one function rather than two. Re-exported here because every existing
+ * caller (and the sync pass) reads them from this module.
+ */
+export { CORNER_SLOTS, numberTokenPropValue };
 
 export function isNumberToken(token: DesignToken): token is NumberToken {
   return token.type === "number";
-}
-
-/**
- * A token value spelled the way the DSL stores the bound property.
- *
- * Tokens are px (`NumberToken`'s contract), and every bound property keeps px
- * as a bare number — except `lineHeight`, where the DSL follows CSS and a bare
- * number is a MULTIPLE. Binding a px token there without spelling the unit
- * turns `1` into `1×` leading, which the inspector then shows as `100%`.
- */
-export function numberTokenPropValue(prop: string, value: number): number | `${number}px` {
-  return prop === "lineHeight" ? (`${value}px` as const) : value;
 }
 
 export function createNumberToken(
@@ -141,64 +137,13 @@ export function reorderNumberTokens(
   return next;
 }
 
-export const CORNER_SLOTS: Record<string, number> = {
-  topLeftRadius: 0,
-  borderTopLeftRadius: 0,
-  topRightRadius: 1,
-  borderTopRightRadius: 1,
-  bottomRightRadius: 2,
-  borderBottomRightRadius: 2,
-  bottomLeftRadius: 3,
-  borderBottomLeftRadius: 3
-};
-
 export function bindNumberTokenToElement(
   el: DesignElement,
   property: string,
   tokenId: string,
   value: number
 ): DesignElement {
-  const nextBindings = { ...(el.tokenBindings || {}), [property]: tokenId };
-  const next: any = { ...el, tokenBindings: nextBindings };
-
-  const cornerSlot = CORNER_SLOTS[property];
-  if (cornerSlot !== undefined) {
-    delete nextBindings.borderRadius;
-    for (const [alias, s] of Object.entries(CORNER_SLOTS)) {
-      if (s === cornerSlot && alias !== property) {
-        delete nextBindings[alias];
-      }
-    }
-    const currentRadii = parseCornerRadii((el as any).borderRadius);
-    const nextRadii = [...currentRadii] as [number, number, number, number];
-    nextRadii[cornerSlot] = value;
-    next.borderRadius = nextRadii;
-  } else if (property === "borderRadius") {
-    for (const cornerProp of Object.keys(CORNER_SLOTS)) {
-      delete nextBindings[cornerProp];
-    }
-    if ("borderRadius" in el && Array.isArray((el as any).borderRadius)) {
-      next.borderRadius = [value, value, value, value];
-    } else {
-      next.borderRadius = value;
-    }
-  } else if (property === "strokeWidth") {
-    if (Array.isArray(next.strokes)) {
-      next.strokes = next.strokes.map((s: any) => ({ ...s, width: value }));
-    }
-  } else if (property === "padding") {
-    if (Array.isArray(next.padding)) {
-      next.padding = [value, value, value, value];
-    } else {
-      next.padding = value;
-    }
-  } else if (property === "fontSize" || property === "lineHeight" || property === "letterSpacing") {
-    next.style = { ...(next.style || {}), [property]: numberTokenPropValue(property, value) };
-  } else {
-    next[property] = value;
-  }
-
-  return next as DesignElement;
+  return bindNumberToken(el as unknown as Record<string, unknown>, property, tokenId, value) as unknown as DesignElement;
 }
 
 export function unbindNumberTokenFromElement(

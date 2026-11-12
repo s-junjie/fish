@@ -33,6 +33,7 @@ import {
   reparentOnCanvasDrop
 } from "../src/core/geometry/tree-ops";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
+import { clipsContent } from "../src/core/dsl/overflow";
 
 const canvas = {
   width: 1200,
@@ -114,7 +115,7 @@ function master(overrides: Partial<ComponentElement> = {}): ComponentElement {
     fills: masterFills,
     strokes: masterStrokes,
     borderRadius: 8,
-    clipContent: true,
+    overflow: "hidden",
     effects: masterEffects,
     children: [],
     ...overrides
@@ -147,7 +148,7 @@ describe("instance box inheritance", () => {
     expect(box.fillsActive).toBe(true);
     expect(box.strokes).toEqual(masterStrokes);
     expect(box.borderRadius).toBe(8);
-    expect(box.clipContent).toBe(true);
+    expect(clipsContent(box)).toBe(true);
     expect(box.effects).toEqual(masterEffects);
     expect(box.width).toBe(200);
     expect(box.height).toBe(100);
@@ -174,8 +175,9 @@ describe("instance box inheritance", () => {
         strokes: [],
         effects: ownEffects,
         borderRadius: 0,
-        clipContent: false,
-        width: 320
+        width: 320,
+        // The instance's own answer: the master clips, this one does not.
+        overflow: "visible"
       }),
       master()
     );
@@ -183,7 +185,7 @@ describe("instance box inheritance", () => {
     expect(box.strokes).toEqual([]);
     expect(box.effects).toEqual(ownEffects);
     expect(box.borderRadius).toBe(0);
-    expect(box.clipContent).toBe(false);
+    expect(clipsContent(box)).toBe(false);
     expect(box.width).toBe(320);
     expect(box.height).toBe(100);
   });
@@ -243,7 +245,7 @@ describe("instance overrides survive normalization", () => {
           fills: own,
           strokes: [{ color: "#123456", width: 2 }],
           borderRadius: 4,
-          clipContent: true,
+          overflow: "hidden",
           effects: ownEffects
         })
       ])
@@ -254,7 +256,7 @@ describe("instance overrides survive normalization", () => {
     expect(inst.strokes![0].color).toBe("#123456");
     expect(inst.strokes![0].width).toBe(2);
     expect(inst.borderRadius).toBe(4);
-    expect(inst.clipContent).toBe(true);
+    expect(clipsContent(inst)).toBe(true);
     expect(inst.effects).toHaveLength(1);
     expect(inst.effects![0].type).toBe("layer-blur");
     expect((inst.effects![0] as { blur?: number }).blur).toBe(5);
@@ -650,7 +652,7 @@ describe("detaching transfers the resolved box", () => {
     expect(detached).toBeTruthy();
     expect(detached!.effects).toEqual(masterEffects);
     expect(detached!.fills).toEqual(masterFills);
-    expect(detached!.clipContent).toBe(true);
+    expect(clipsContent(detached!)).toBe(true);
     expect(detached!.borderRadius).toBe(8);
     expect(doc.pages![0].children[1].type).toBe("frame");
   });

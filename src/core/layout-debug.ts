@@ -4,6 +4,7 @@ import { measureDocument, type MeasuredNode } from "./measure";
 import type { Rect } from "./geometry/bounds";
 import { resolvePadding } from "./layout/box";
 import { layoutOf } from "./dsl/layout-flat";
+import { scrollsAxis, type OverflowFields } from "./dsl/overflow";
 
 /**
  * Every auto-layout container, with the number it was laid out at beside the number
@@ -94,6 +95,11 @@ function collect(
         const [padTop, , padBottom] = resolvePadding(layoutOf(stack)?.padding);
         const contentBoxHeight = local.height - padTop - padBottom;
         const delta = content.height - contentBoxHeight;
+        // A container that scrolls its own height is TALLER than its content by
+        // design — that is what the scrollbar is for — so the vertical delta is
+        // a decision, not a mis-measurement. The horizontal axis is not measured
+        // here, so only the vertical scroll needs the exemption.
+        const scrollsY = scrollsAxis(stack as unknown as OverflowFields, "y");
         out.push({
           id: el.id,
           name: el.name || el.id,
@@ -108,7 +114,7 @@ function collect(
           content,
           contentBoxHeight,
           delta: Math.round(delta * 100) / 100,
-          overflow: delta > 2
+          overflow: delta > 2 && !scrollsY
         });
       }
     }

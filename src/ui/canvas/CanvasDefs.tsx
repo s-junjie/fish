@@ -1,4 +1,5 @@
 import { DesignDocument, DesignElement, ComponentElement, InstanceElement, PaintStack, AssetRef, TextElement, PathElement, RectElement, EllipseElement, PolygonElement, getActivePage } from "../../core/dsl/types";
+import { clipsContent, clipsAxes, resolveOverflow } from "../../core/dsl/overflow";
 import { getShapeLocalPath, isGradientPaint } from "../../core/geometry/gradient-utils";
 import { GradientDef } from "./GradientDef";
 import { imagePaintImage } from "./image-paint-attrs";
@@ -383,7 +384,7 @@ function useRenderUriRevision(): number {
  */
 function emitsDefs(el: DesignElement): boolean {
   if (el.isMask) return true;
-  if (isContainer(el) && el.clipContent) return true;
+  if (isContainer(el) && clipsContent(el)) return true;
   // An instance takes its clip, its fills and its strokes from its master.
   if (el.type === "instance") return true;
   if (el.type === "text" && (el as TextElement).onPath?.pathId) return true;
@@ -454,10 +455,10 @@ export function renderElementDefs(props: ElementDefsProps) {
   let clip = false;
   let clipPathD = "";
   if (isContainer(el)) {
-    clip = Boolean(el.clipContent);
+    clip = clipsContent(el);
     if (clip) clipPathD = getShapeLocalPath(el);
   } else if (el.type === "instance") {
-    clip = Boolean(box?.clipContent);
+    clip = clipsAxes(resolveOverflow(el, box ?? null));
     if (clip) {
       clipPathD = rectToPathData({
         width: box ? box.width : el.width,

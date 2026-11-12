@@ -7,7 +7,7 @@ import type {
   InnerShadowEffect,
   Paint,
   PaintStack,
-  ScrollOverflow,
+  Overflow,
   Stroke,
   TextStyle
 } from "../dsl/types";
@@ -67,8 +67,9 @@ export interface VisualStyle {
   adjust?: ColorFilter;
   opacity?: number;
   blendMode?: BlendMode;
-  clipContent?: boolean;
-  scrollOverflow?: ScrollOverflow;
+  overflow?: Overflow;
+  overflowX?: Overflow;
+  overflowY?: Overflow;
   rotation?: number;
   /** Shear on x by y, degrees — a `skewX()` / `skew()` the page drew with. */
   skewX?: number;
@@ -460,28 +461,29 @@ function fillsFrom(
   };
 }
 
-function clipFrom(
-  cs: CSSStyleDeclaration,
-  sink: UnmappedSink
-): { clip: boolean; scrollOverflow?: ScrollOverflow } | undefined {
-  const x = cs.overflowX;
-  const y = cs.overflowY;
-  const clips = (v: string) => v === "hidden" || v === "clip" || v === "auto" || v === "scroll";
-  if (!clips(x) && !clips(y)) return undefined;
-
-  const scrollsX = x === "auto" || x === "scroll";
-  const scrollsY = y === "auto" || y === "scroll";
-
-  let scrollOverflow: ScrollOverflow | undefined;
-  if (scrollsX && scrollsY) {
-    scrollOverflow = "both";
-  } else if (scrollsY) {
-    scrollOverflow = "vertical";
-  } else if (scrollsX) {
-    scrollOverflow = "horizontal";
-  }
-
-  return { clip: true, scrollOverflow };
+/**
+ * What the stylesheet says about children that do not fit, in the three values
+ * this engine can paint. The longhands are read one axis at a time — folding
+ * them into one boolean is what made `overflow-x: hidden` on a carousel import
+ * as "clip both axes".
+ *
+ * A `visible` axis beside a clipping one is read as `hidden`: CSS promotes it to
+ * `auto`, but we draw no scrollbar, so `hidden` is the same paint without the
+ * promise.
+ */
+function overflowFrom(cs: CSSStyleDeclaration): {
+  overflow?: Overflow;
+  overflowX?: Overflow;
+  overflowY?: Overflow;
+} {
+  const map = (v: string): Overflow | undefined =>
+    v === "hidden" || v === "clip" ? "hidden" : v === "auto" || v === "scroll" ? "auto" : v === "visible" ? "visible" : undefined;
+  const x = map(cs.overflowX);
+  const y = map(cs.overflowY);
+  if (x === undefined || y === undefined || (x === "visible" && y === "visible")) return {};
+  const fx = x === "visible" ? "hidden" : x;
+  const fy = y === "visible" ? "hidden" : y;
+  return fx === fy ? { overflow: fx } : { overflowX: fx, overflowY: fy };
 }
 
 export function visualStyleOf(
@@ -599,11 +601,7 @@ export function visualStyleOf(
   if (filter.filter) style.adjust = filter.filter;
   if (opacity !== undefined && opacity < 1) style.opacity = opacity;
   if (blendMode) style.blendMode = blendMode;
-  const clip = clipFrom(cs, sink);
-  if (clip) {
-    style.clipContent = true;
-    if (clip.scrollOverflow) style.scrollOverflow = clip.scrollOverflow;
-  }
+  Object.assign(style, overflowFrom(cs));
   if (rotation !== undefined && Math.abs(rotation) > 1e-6) style.rotation = round2(rotation);
   if (skewX !== undefined && Math.abs(skewX) > 1e-6) style.skewX = round2(skewX);
   if (skewY !== undefined && Math.abs(skewY) > 1e-6) style.skewY = round2(skewY);
