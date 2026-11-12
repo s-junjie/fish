@@ -31,7 +31,7 @@
  */
 
 import type { DesignDocument, DesignElement, TextElement, TextStyleDefinition } from "../dsl/types";
-import { getActivePage } from "../dsl/types";
+import { getActivePage } from "../dsl/document-ops";
 import { flattenElements } from "../geometry/tree-ops";
 import { clearTextMeasureCache, notifyAsyncFontLoaded } from "../geometry/text-measure";
 import { cssFamilyName, declaresFallback, firstNamedFamily } from "../font-stack";

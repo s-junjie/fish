@@ -1,5 +1,5 @@
 import type { DesignDocument } from "./dsl/types";
-import { adoptTopLevelElements } from "./dsl/types";
+import { adoptTopLevelElements } from "./dsl/document-ops";
 import { normalizeDesignDocument } from "./dsl/normalize";
 import { applyCssSpelling } from "./dsl/css-spelling";
 import { syncDocumentBindings } from "./interactions/style-ops";

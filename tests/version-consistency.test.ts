@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import versions from "../src/core/dsl/versions.json";
 import schema from "../src/core/dsl/fish.schema.json";
 import { LATEST_DOCUMENT_VERSION } from "../src/core/dsl/version";
-import { OVERRIDABLE_PROPERTIES } from "../src/core/dsl/types";
+import { OVERRIDABLE_PROPERTIES } from "../src/core/dsl/constants";
 import { normalizeDesignDocument, CANONICAL_KEYS } from "../src/core/dsl/normalize";
 import { canonicalKey, camelCase, FIT_ALIASES } from "../src/core/dsl/normalize/shared";
 import { ADJUST_KEYS } from "../src/core/dsl/color-filter";

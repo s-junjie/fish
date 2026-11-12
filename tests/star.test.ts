@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import { polygonToPathData, rectToPathData, starToPathData } from "../src/core/geometry/shape-path";
 import { circularHandleFactor } from "../src/core/geometry/corner-smoothing";
 import { parsePathData } from "../src/core/geometry/path-data";

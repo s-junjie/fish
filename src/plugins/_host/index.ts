@@ -14,7 +14,7 @@
 import type * as Preact from "preact";
 import type * as PreactHooks from "preact/hooks";
 import type * as JsxRuntime from "preact/jsx-runtime";
-import type * as DslTypes from "../../core/dsl/types";
+import type * as DocOps from "../../core/dsl/document-ops";
 import type * as TreeEdit from "../../core/geometry/tree-edit";
 import type * as ImageFill from "../../core/dsl/image-fill";
 import type * as IdModule from "../../core/id";
@@ -32,8 +32,8 @@ export interface FishHostBridge {
   hooks: HooksModule;
   jsxRuntime: JsxModule;
   doc: {
-    getActivePage: typeof DslTypes.getActivePage;
-    updateActivePageElements: typeof DslTypes.updateActivePageElements;
+    getActivePage: typeof DocOps.getActivePage;
+    updateActivePageElements: typeof DocOps.updateActivePageElements;
     /** Deep map over the page tree — a nested selection is not a top-level child. */
     mapElements: typeof TreeEdit.mapElements;
     firstImagePaint: typeof ImageFill.firstImagePaint;

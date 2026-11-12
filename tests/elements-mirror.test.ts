@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { DesignDocument } from "../src/core/dsl/types";
-import { adoptTopLevelElements, getActivePage } from "../src/core/dsl/types";
+import { adoptTopLevelElements, getActivePage } from "../src/core/dsl/document-ops";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
 import { serializeSelf } from "../src/core/data-bridge";
 

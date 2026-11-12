@@ -1,15 +1,6 @@
-import {
-  ComponentElement,
-  ComponentOverride,
-  DesignDocument,
-  DesignElement,
-  InstanceElement,
-  Page,
-  TextElement,
-  OVERRIDABLE_PROPERTIES,
-  getActivePage,
-  updateActivePageElements
-} from "../dsl/types";
+import { ComponentElement, ComponentOverride, DesignDocument, DesignElement, InstanceElement, Page, TextElement } from "../dsl/types";
+import { getActivePage, updateActivePageElements } from "../dsl/document-ops";
+import { OVERRIDABLE_PROPERTIES } from "../dsl/constants";
 import { effectiveStrokes } from "../dsl/paint-stack";
 import { deepEqual } from "../deep-equal";
 import { relayoutDocumentTree } from "../compile";

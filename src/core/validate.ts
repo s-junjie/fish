@@ -1,5 +1,5 @@
 import type { DesignDocument, DesignElement, ContainerElement, Paint, ComponentElement, TextElement, InstanceElement } from "./dsl/types";
-import { adoptTopLevelElements, getActivePage } from "./dsl/types";
+import { adoptTopLevelElements, getActivePage } from "./dsl/document-ops";
 import type { CompileDiagnostic } from "./compile";
 import { relayoutDocumentTree, resolveDynamicLineHeight, resolvePadding, gridColumnCount, gridRowCount } from "./compile";
 import { flattenElements, isContainer } from "./geometry/tree-ops";

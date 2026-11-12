@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import schema from "../src/core/dsl/fish.schema.json";
 import { FLAT_LAYOUT_KEYS, flattenLayout, layoutOf, withLayout } from "../src/core/dsl/layout-flat";
 import { FLAT_ROUTED_KEYS, FLAT_TO_FIELD } from "../src/core/dsl/normalize/flat-layout";

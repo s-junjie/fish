@@ -1,15 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { overflowAxes } from "../src/core/dsl/overflow";
-import {
-  ComponentElement,
-  DesignDocument,
-  DesignElement,
-  DesignStyle,
-  FrameElement,
-  InstanceElement,
-  TextElement,
-  getActivePage
-} from "../src/core/dsl/types";
+import { ComponentElement, DesignDocument, DesignElement, DesignStyle, FrameElement, InstanceElement, TextElement } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import { propagateMasterSize, resolveInstanceBox, resolveInstanceTheme } from "../src/core/interactions/instance-inherit";
 import { resolveInstanceContent, resolveInstanceChildren } from "../src/core/interactions/instance-resolve";
 import { instanceSizeResolver } from "../src/core/interactions/instance-size";

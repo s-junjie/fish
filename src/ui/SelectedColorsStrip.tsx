@@ -1,13 +1,6 @@
 import { useMemo, useRef, useState } from "preact/hooks";
-import {
-  DesignElement,
-  DesignDocument,
-  Paint,
-  ColorToken,
-  PaintStyle,
-  getActivePage,
-  updateActivePageElements
-} from "../core/dsl/types";
+import { DesignElement, DesignDocument, Paint, ColorToken, PaintStyle } from "../core/dsl/types";
+import { getActivePage, updateActivePageElements } from "../core/dsl/document-ops";
 import {
   boundFillStyleFor,
   applyPaintToSelection,

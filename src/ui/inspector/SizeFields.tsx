@@ -1,5 +1,5 @@
 import { DesignElement, DesignDocument, SizeMode } from "../../core/dsl/types";
-import { getActivePage } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
 import { isLineElement } from "../../core/geometry/element-bounds";
 import { setLineSize } from "../../core/interactions/line-ops";
 import { findParentById } from "../../core/geometry/tree-ops";

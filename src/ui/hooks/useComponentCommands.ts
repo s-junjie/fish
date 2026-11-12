@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "preact/hooks";
-import { getActivePage } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
 import { ComponentSetElement, DesignDocument, DesignElement, InstanceElement } from "../../core/dsl/types";
 import { flattenElements } from "../../core/geometry/tree-ops";
 import {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import { ellipseToPathData } from "../src/core/compile";
 import { ellipseToVectorPath } from "../src/core/geometry/path-convert";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";

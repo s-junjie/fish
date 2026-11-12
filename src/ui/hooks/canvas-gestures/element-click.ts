@@ -1,5 +1,5 @@
 import type { ContainerElement, DesignDocument, DesignElement, TextElement } from "../../../core/dsl/types";
-import { getActivePage, updateActivePageElements } from "../../../core/dsl/types";
+import { getActivePage, updateActivePageElements } from "../../../core/dsl/document-ops";
 import { createId } from "../../../core/id";
 import { DEFAULT_FONT_FAMILY } from "../../../core/font-stack";
 import {

@@ -1,16 +1,6 @@
-import {
-  DesignDocument,
-  DesignElement,
-  EllipseElement,
-  FrameElement,
-  LineElement,
-  PolygonElement,
-  RectElement,
-  StarElement,
-  TextElement,
-  updateActivePageElements
-} from "../../../core/dsl/types";
-import { getActivePage } from "../../../core/dsl/types";
+import { DesignDocument, DesignElement, EllipseElement, FrameElement, LineElement, PolygonElement, RectElement, StarElement, TextElement } from "../../../core/dsl/types";
+import { updateActivePageElements } from "../../../core/dsl/document-ops";
+import { getActivePage } from "../../../core/dsl/document-ops";
 import type { ToolType } from "../../../core/tools";
 import { DEFAULT_ELEMENT_COLOR, DEFAULT_STROKE_COLOR } from "../../../core/dsl/defaults";
 import { DEFAULT_FONT_FAMILY } from "../../../core/font-stack";

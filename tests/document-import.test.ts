@@ -3,7 +3,7 @@ import { mergeDocumentPages, documentJsonFileName } from "../src/core/document-i
 import { normalizeDesignDocument } from "../src/core/dsl/normalize/document";
 import { LATEST_DOCUMENT_VERSION } from "../src/core/dsl/version";
 import type { DesignDocument, DesignElement, Page } from "../src/core/dsl/types";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 
 const canvas = {
   width: 1440,

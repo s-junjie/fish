@@ -1,5 +1,6 @@
 import { useCallback } from "preact/hooks";
-import { DesignDocument, DesignElement, getActivePage } from "../../core/dsl/types";
+import { DesignDocument, DesignElement } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
 import { worldMatrixOf } from "../../core/interactions/component-swap";
 import { elementAABB, contentBounds } from "../../core/geometry/element-bounds";
 import { transformBoundsToAABB, type Rect } from "../../core/geometry/bounds";

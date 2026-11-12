@@ -1,13 +1,5 @@
-import {
-  AssetRef,
-  ComponentElement,
-  DesignDocument,
-  DesignElement,
-  DesignStyle,
-  DesignToken,
-  InstanceElement,
-  STYLE_BINDING_FIELDS
-} from "../dsl/types";
+import { AssetRef, ComponentElement, DesignDocument, DesignElement, DesignStyle, DesignToken, InstanceElement } from "../dsl/types";
+import { STYLE_BINDING_FIELDS } from "../dsl/constants";
 import { paintLayers } from "../dsl/image-fill";
 import { findMasterComponent } from "./component-inventory";
 import { heldMaster } from "./detached-masters";

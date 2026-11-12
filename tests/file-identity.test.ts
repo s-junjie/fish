@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import type { DesignDocument } from "../src/core/dsl/types";
 import { fakeDocumentElement, stubDocument } from "./helpers/fake-document";
 import {

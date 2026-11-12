@@ -1,5 +1,5 @@
 import { useMemo } from "preact/hooks";
-import { getActivePage } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
 import { DesignDocument, DesignElement, Paint, RectElement, TextElement } from "../../core/dsl/types";
 import { cornerRadiiOf } from "../../core/geometry/shape-path";
 import { GuideLine } from "../../core/geometry/snap-guides";

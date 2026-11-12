@@ -1,4 +1,5 @@
-import { DEFAULT_DASH, Stroke, StrokeSide } from "../dsl/types";
+import { Stroke, StrokeSide } from "../dsl/types";
+import { DEFAULT_DASH } from "../dsl/constants";
 
 export interface ResolvedStrokeWeights {
   top: number;

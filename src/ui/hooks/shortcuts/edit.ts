@@ -1,4 +1,4 @@
-import { updateActivePageElements } from "../../../core/dsl/types";
+import { updateActivePageElements } from "../../../core/dsl/document-ops";
 import { mapElements } from "../../../core/geometry/tree-ops";
 import type { ArrowDirection } from "../../../core/interactions/alignment";
 import { nudgeElements, reorderInAutoLayout, reorderZIndex } from "../../../core/interactions/alignment";

@@ -218,6 +218,46 @@ function figmaFlip(node: FigmaNode): { flipX: boolean; flipY: boolean } {
 }
 
 /**
+ * The transform fields the DSL will draw for a node, read off its matrix ONCE.
+ *
+ * `relativeTransform` is a general affine, and the DSL holds four numbers for it
+ * — `rotation`, `skewX`, `skewY`, plus the mirror flags read elsewhere. The
+ * decomposition is therefore what decides BOTH the angle and the shear: reading
+ * the angle off the matrix's first column (`atan2(c, a)`) is right for a turn
+ * and wrong for a bare `skewY`, which that formula reports as the very rotation
+ * that `readAffine` calls zero. One reading, so the two cannot disagree.
+ *
+ * `undefined` when the matrix carries something these fields cannot hold — a
+ * mirror, a scale — and the caller falls back to the angle alone.
+ *
+ * The box is still placed from the unrotated size for a sheared node: any linear
+ * map sends a rectangle to a centrally symmetric quad, so its bound is centred
+ * on the same point and the drawn shear about that centre reproduces Figma's.
+ */
+interface FigmaTransform {
+  rotation: number;
+  skewX?: number;
+  skewY?: number;
+}
+
+function figmaTransform(node: FigmaNode): FigmaTransform | undefined {
+  const m = node.relativeTransform;
+  if (!Array.isArray(m) || !Array.isArray(m[0]) || !Array.isArray(m[1])) return undefined;
+  const [[a, b], [c, d]] = m;
+  if (![a, b, c, d].every((v) => typeof v === "number" && Number.isFinite(v))) return undefined;
+  // Figma writes rows, SVG columns: the same map, transposed.
+  const fields = readAffine({ a, b: c, c: b, d, e: 0, f: 0 });
+  if (!fields) return undefined;
+  // A hair of shear is numeric noise, and storing it would put a `skewX: 0.0001`
+  // on every rotated layer in the file.
+  return {
+    rotation: normalizeDeg(fields.rotation),
+    ...(Math.abs(fields.skewX) > 0.01 ? { skewX: fields.skewX } : {}),
+    ...(Math.abs(fields.skewY) > 0.01 ? { skewY: fields.skewY } : {})
+  };
+}
+
+/**
  * An element's rotation in degrees.
  *
  * `relativeTransform` is the authoritative source for layer orientation: in screen
@@ -226,8 +266,14 @@ function figmaFlip(node: FigmaNode): { flipX: boolean; flipY: boolean } {
  * It is also exactly `-node.rotation`, mirrored layers included, so the matrix
  * never has to be reconciled with the field. When `relativeTransform` is absent,
  * fall back to `declaredRotationDeg`.
+ *
+ * When the matrix also carries a shear, the angle comes from the decomposition
+ * instead — see `figmaTransform` — because for a bare `skewY` the two answers
+ * differ by the whole shear.
  */
 function nodeRotationDeg(node: FigmaNode): number | undefined {
+  const fields = figmaTransform(node);
+  if (fields) return fields.rotation;
   const m = node.relativeTransform;
   if (Array.isArray(m) && Array.isArray(m[0]) && Array.isArray(m[1])) {
     const [a, b] = m[0];
@@ -240,41 +286,14 @@ function nodeRotationDeg(node: FigmaNode): number | undefined {
 }
 
 /**
- * The shear a node's matrix carries, if any.
- *
- * Figma has no skew CONTROL — no field on the node, nothing in the UI — but
- * `relativeTransform` is a general affine and a plugin, or a shape pasted in
- * from an SVG, can put a shear in it. The matrix is then the only place the
- * shear exists, so it is where one is read from; the rotation beside it comes
- * off the same numbers, which is why the two cannot disagree.
- */
-function figmaSkew(node: FigmaNode): { skewX?: number; skewY?: number } {
-  const m = node.relativeTransform;
-  if (!Array.isArray(m) || !Array.isArray(m[0]) || !Array.isArray(m[1])) return {};
-  const [[a, b], [c, d]] = m;
-  if (![a, b, c, d].every((v) => typeof v === "number" && Number.isFinite(v))) return {};
-  // Figma writes rows, SVG columns: the same map, transposed.
-  const fields = readAffine({ a, b: c, c: b, d, e: 0, f: 0 });
-  if (!fields) return {};
-
-  // The element's own rotation is read elsewhere, from `nodeRotationDeg`. A
-  // shear is only carried when this decomposition agrees with it — a standalone
-  // `skewY` reads as a turn plus a shear in this field set, and applying both
-  // would draw a transform the node never had.
-  const rotation = normalizeDeg(nodeRotationDeg(node) ?? deg(Math.atan2(c, a)));
-  const drift = ((fields.rotation - rotation + 540) % 360) - 180;
-  if (Math.abs(drift) > 0.01) return {};
-
-  return {
-    ...(fields.skewX ? { skewX: fields.skewX } : {}),
-    ...(fields.skewY ? { skewY: fields.skewY } : {})
-  };
-}
-
-/**
- * Figma's box is already absolute; zero-sized nodes mean the field is absent.
+ * Whether the node's canvas bound is something other than its own box — a turn,
+ * or a shear. A bare shear counts even though its rotation is 0: the bound of a
+ * sheared rectangle is wider (or taller) than the rectangle, so reading the
+ * bound as the box would stretch the layer.
  */
 const isRotated = (node: FigmaNode): boolean => {
+  const fields = figmaTransform(node);
+  if (fields && (fields.skewX !== undefined || fields.skewY !== undefined)) return true;
   const rot = nodeRotationDeg(node);
   return typeof rot === "number" && Math.abs(((rot % 360) + 360) % 360) > 0.01;
 };
@@ -643,9 +662,17 @@ function base(node: FigmaNode, rect: Rect, parentX: number, parentY: number): Dr
     const flip = figmaFlip(node);
     if (flip.flipX) out.flipX = true;
     if (flip.flipY) out.flipY = true;
-    const skew = figmaSkew(node);
-    if (skew.skewX !== undefined) out.skewX = skew.skewX;
-    if (skew.skewY !== undefined) out.skewY = skew.skewY;
+    // Both halves of the shear, from the one decomposition that also supplies
+    // the angle. A bare `skewY` HAS a rotation in these fields — zero — so when
+    // a shear is present the angle is stated here and `carryRotation` keeps its
+    // hands off it; applying the matrix's first-column angle instead would draw
+    // the shear twice.
+    const fields = figmaTransform(node);
+    if (fields && (fields.skewX !== undefined || fields.skewY !== undefined)) {
+      if (fields.skewX !== undefined) out.skewX = fields.skewX;
+      if (fields.skewY !== undefined) out.skewY = fields.skewY;
+      if (Math.abs(fields.rotation) > 0.01) out.rotation = round2(fields.rotation);
+    }
   }
   // `isMask`, not `mask`: the short name matches nothing in a real response, so
   // every mask layer would have imported as an ordinary one.

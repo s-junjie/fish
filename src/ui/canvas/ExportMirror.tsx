@@ -1,4 +1,5 @@
-import { DesignDocument, getActivePage } from "../../core/dsl/types";
+import { DesignDocument } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
 import { flattenElements } from "../../core/geometry/tree-ops";
 import { buildOnPathGuides } from "../../core/geometry/on-path";
 import { CanvasDefs } from "./CanvasDefs";

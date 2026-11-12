@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "preact/hooks";
-import { DesignDocument, DesignElement, Page, getActivePage, updateActivePageElements } from "../../core/dsl/types";
+import { DesignDocument, DesignElement, Page } from "../../core/dsl/types";
+import { getActivePage, updateActivePageElements } from "../../core/dsl/document-ops";
 import { collectDescendantIds, findElementById, isContainer, mapElements } from "../../core/geometry/tree-ops";
 import { relayoutDocumentTree } from "../../core/compile";
 import { layoutOf } from "../../core/dsl/layout-flat";

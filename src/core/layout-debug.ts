@@ -1,4 +1,5 @@
-import { getActivePage, type ContainerElement, type DesignDocument, type DesignElement } from "./dsl/types";
+import { type ContainerElement, type DesignDocument, type DesignElement } from "./dsl/types";
+import { getActivePage } from "./dsl/document-ops";
 import { elementAABB } from "./geometry/element-bounds";
 import { measureDocument, type MeasuredNode } from "./measure";
 import type { Rect } from "./geometry/bounds";

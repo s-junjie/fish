@@ -1,10 +1,5 @@
-import {
-  DesignDocument,
-  DesignElement,
-  ImageCrop,
-  Paint,
-  getActivePage
-} from "../../../core/dsl/types";
+import { DesignDocument, DesignElement, ImageCrop, Paint } from "../../../core/dsl/types";
+import { getActivePage } from "../../../core/dsl/document-ops";
 import { findElementById } from "../../../core/geometry/tree-ops";
 import { worldMatrixOf } from "../../../core/interactions/component-swap";
 import { writeNodeEdit } from "../../../core/interactions/instance-overrides";

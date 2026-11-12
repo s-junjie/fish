@@ -1,5 +1,5 @@
 import { DesignDocument, DesignElement, ComponentElement, ComponentSetElement, InstanceElement } from "../../core/dsl/types";
-import { getActivePage } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
 import { createComponentFromElement, detachInstance, hasAnythingToReset, instanceOwnFields, resetInstance, resetInstanceField, type InstanceOwnField } from "../../core/interactions/component-ops";
 import { canBecomeComponent, canCreateComponentHere, collectComponents, findComponentSet, findMasterComponent, findVariantMember, variantHoles, variantOptionsFor } from "../../core/interactions/component-inventory";
 import { componentSwapOptions, swapInstanceComponent } from "../../core/interactions/component-swap";

@@ -1,4 +1,5 @@
-import { DesignDocument, DesignElement, ComponentElement, InstanceElement, PaintStack, AssetRef, TextElement, PathElement, RectElement, EllipseElement, PolygonElement, getActivePage } from "../../core/dsl/types";
+import { DesignDocument, DesignElement, ComponentElement, InstanceElement, PaintStack, AssetRef, TextElement, PathElement, RectElement, EllipseElement, PolygonElement } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
 import { clipsContent, clipsAxes, resolveOverflow } from "../../core/dsl/overflow";
 import { getShapeLocalPath, isGradientPaint } from "../../core/geometry/gradient-utils";
 import { GradientDef } from "./GradientDef";

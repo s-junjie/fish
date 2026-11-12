@@ -16,7 +16,7 @@ import { swapInstanceComponent } from "../src/core/interactions/component-swap";
 import { importComponentsFromDocument, parseFishDocument } from "../src/core/interactions/import-components";
 import { insertClones } from "../src/core/interactions/clipboard";
 import { findElementById } from "../src/core/geometry/tree-ops";
-import { adoptTopLevelElements, getActivePage, updateActivePageElements } from "../src/core/dsl/types";
+import { adoptTopLevelElements, getActivePage, updateActivePageElements } from "../src/core/dsl/document-ops";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
 import { clipsContent } from "../src/core/dsl/overflow";
 

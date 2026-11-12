@@ -1,5 +1,5 @@
 import { flattenLayout } from "../src/core/dsl/layout-flat";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import { describe, it, expect } from "vitest";
 import { relayoutDocumentTree, resizeStackWithPins } from "../src/core/compile";
 import { resizeContainerWithConstraints } from "../src/core/geometry/constraints";

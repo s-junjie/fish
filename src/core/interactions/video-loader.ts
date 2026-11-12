@@ -1,5 +1,5 @@
 import { AssetRef, DesignDocument, DesignElement, VideoElement } from "../dsl/types";
-import { getActivePage } from "../dsl/types";
+import { getActivePage } from "../dsl/document-ops";
 import { createId } from "../id";
 import { flattenElements } from "../geometry/tree-ops";
 import { externalFetch } from "../net/external-fetch";

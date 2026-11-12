@@ -4,7 +4,8 @@ import { layoutDebug, layoutDefects } from "../src/core/layout-debug";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
 import { relayoutDocumentTree } from "../src/core/layout/auto-layout";
 import { instanceSizeResolver } from "../src/core/interactions/instance-size";
-import { getActivePage, updateActivePageElements, type DesignDocument, type DesignElement } from "../src/core/dsl/types";
+import { type DesignDocument, type DesignElement } from "../src/core/dsl/types";
+import { getActivePage, updateActivePageElements } from "../src/core/dsl/document-ops";
 
 /**
  * The container's box beside the space its children occupy. The two are equal in

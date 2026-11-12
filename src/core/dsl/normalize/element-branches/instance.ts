@@ -1,4 +1,4 @@
-import { OVERRIDABLE_PROPERTIES } from "../../types";
+import { OVERRIDABLE_PROPERTIES } from "../../constants";
 import { asBoolean, asNumber, isPlainObject, normalizeOverflow, normalizeScrollOffset } from "../shared";
 import { normalizeFillStack } from "../paint";
 import { cornerRadiusInput, normalizeCornerRadius, normalizeStrokes } from "../stroke";

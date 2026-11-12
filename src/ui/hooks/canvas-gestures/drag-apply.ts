@@ -1,9 +1,5 @@
-import {
-  DesignDocument,
-  DesignElement,
-  getActivePage,
-  updateActivePageElements
-} from "../../../core/dsl/types";
+import { DesignDocument, DesignElement } from "../../../core/dsl/types";
+import { getActivePage, updateActivePageElements } from "../../../core/dsl/document-ops";
 import { relayoutDocumentTree, computeDropSlot, computeAppendSlot, DropSlot } from "../../../core/compile";
 import { layoutOf } from "../../../core/dsl/layout-flat";
 import { calculateSnapping, GuideLine } from "../../../core/geometry/snap-guides";

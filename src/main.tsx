@@ -17,7 +17,8 @@ capturePristine();
 // global at module evaluation, and has no other way to reach Preact.
 installHostBridge();
 console.info(`FISH runtime v${APP_VERSION}`);
-import { DesignElement, PathElement, getActivePage, updateActivePageElements } from "./core/dsl/types";
+import { DesignElement, PathElement } from "./core/dsl/types";
+import { getActivePage, updateActivePageElements } from "./core/dsl/document-ops";
 import { t } from "./i18n";
 import { collectComponents, findComponentOwnerPageId } from "./core/interactions/component-inventory";
 import { resolveInstanceSelection, resolvedEditChangesNode, commitInstanceOverrides } from "./core/interactions/instance-resolve";

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createDragApply } from "../src/ui/hooks/canvas-gestures/drag-apply";
-import { DesignDocument, DesignElement, FrameElement, getActivePage } from "../src/core/dsl/types";
+import { DesignDocument, DesignElement, FrameElement } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 
 /**
  * The drop-target probe of a MULTI-selection drag.

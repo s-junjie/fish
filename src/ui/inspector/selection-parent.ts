@@ -1,6 +1,6 @@
 import type { DesignDocument, DesignElement, InstanceElement } from "../../core/dsl/types";
 import { clipsAxes, overflowAxes, type OverflowFields } from "../../core/dsl/overflow";
-import { getActivePage } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
 import { layoutOf } from "../../core/dsl/layout-flat";
 import { findParentById } from "../../core/geometry/tree-ops";
 import { ancestorChain } from "../../core/interactions/component-swap";

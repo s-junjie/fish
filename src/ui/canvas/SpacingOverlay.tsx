@@ -1,4 +1,5 @@
-import { DesignDocument, getActivePage } from "../../core/dsl/types";
+import { DesignDocument } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
 import { spacingBands } from "../../core/geometry/spacing-bands";
 import { findElementById } from "../../core/geometry/tree-ops";
 import { worldMatrixOf, worldOriginOf } from "../../core/interactions/component-swap";

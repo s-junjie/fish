@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import type { DesignDocument, DesignElement, InstanceElement } from "../src/core/dsl/types";
 import { detachInstance } from "../src/core/interactions/component-ops";
 import { findMasterComponent } from "../src/core/interactions/component-inventory";

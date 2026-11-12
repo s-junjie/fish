@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import { applyOps } from "../src/core/ops/apply-ops";
 import { checkVerdict } from "../src/core/check-verdict";
 import { TOKEN_SHORTHAND_BINDINGS, TOKEN_SHORTHAND_KEYS, parseTokenRef } from "../src/core/dsl/normalize/token-shorthand";

@@ -12,14 +12,8 @@
  * viewport, which are the parts that need a live editor.
  */
 
-import {
-  AssetRef,
-  DesignDocument,
-  DesignElement,
-  getActivePage,
-  updateActivePageElements,
-  type Page
-} from "../dsl/types";
+import { AssetRef, DesignDocument, DesignElement, type Page } from "../dsl/types";
+import { getActivePage, updateActivePageElements } from "../dsl/document-ops";
 import { createId } from "../id";
 import { remintFragment } from "../interactions/clipboard-fragment";
 import { FISH_CLIPBOARD_TAG } from "../interactions/clipboard-payload";

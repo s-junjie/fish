@@ -1,4 +1,5 @@
-import { DesignDocument, DesignElement, hasCornerSmoothing, isBorderRadiusHolder } from "../../core/dsl/types";
+import { DesignDocument, DesignElement } from "../../core/dsl/types";
+import { hasCornerSmoothing, isBorderRadiusHolder } from "../../core/dsl/document-ops";
 import { parseCornerRadii } from "../../core/geometry/rounded-box";
 import { ScrubInput } from "../ScrubInput";
 import { resolveAcross } from "./mixed";

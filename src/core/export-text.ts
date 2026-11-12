@@ -13,7 +13,8 @@
  * inside a component looked up as "not found" — and was deleted.
  */
 
-import { DesignDocument, HtmlEmbedElement, TextElement, getActivePage } from "./dsl/types";
+import { DesignDocument, HtmlEmbedElement, TextElement } from "./dsl/types";
+import { getActivePage } from "./dsl/document-ops";
 import { emitEmbedPlaceholder } from "./export-embed-placeholder";
 import { textDecorationCss } from "./dsl/text-decoration";
 import { findElementById } from "./geometry/tree-ops";

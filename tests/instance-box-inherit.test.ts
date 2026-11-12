@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
-import { getActivePage, type DesignElement, type InstanceElement } from "../src/core/dsl/types";
+import { type DesignElement, type InstanceElement } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import { validateDocument } from "../src/core/validate";
 
 const canvas = { width: 800, height: 600, unit: "px" as const, background: { type: "solid" as const, color: "#ffffff" } };

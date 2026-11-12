@@ -1,4 +1,5 @@
-import { DesignDocument, DesignElement, getActivePage, updateActivePageElements } from "../../../core/dsl/types";
+import { DesignDocument, DesignElement } from "../../../core/dsl/types";
+import { getActivePage, updateActivePageElements } from "../../../core/dsl/document-ops";
 import { calculateVisibleViewport } from "../../../core/geometry/cull";
 import { calculateResizeSnapping, GuideLine, ResizeHandleType } from "../../../core/geometry/snap-guides";
 import { snapCandidates } from "../../../core/geometry/snap-candidates";

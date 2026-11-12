@@ -1,11 +1,5 @@
-import {
-  ComponentElement,
-  ComponentSetElement,
-  DesignDocument,
-  DesignElement,
-  getActivePage,
-  updateActivePageElements
-} from "../dsl/types";
+import { ComponentElement, ComponentSetElement, DesignDocument, DesignElement } from "../dsl/types";
+import { getActivePage, updateActivePageElements } from "../dsl/document-ops";
 import {
   findComponentSetNode,
   flattenElements,

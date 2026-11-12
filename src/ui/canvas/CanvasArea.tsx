@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
-import { DesignDocument, DesignElement, TextElement, PathElement, getActivePage } from "../../core/dsl/types";
+import { DesignDocument, DesignElement, TextElement, PathElement } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
 import { GuideLine } from "../../core/geometry/snap-guides";
 import type { TextEditRange } from "../../core/interactions/text-spans";
 import { DocumentStage } from "./DocumentStage";

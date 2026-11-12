@@ -426,6 +426,34 @@ describe("frame scroll capabilities", () => {
       expect(childScrollOffset(normalChild, container, 0, 150)).toEqual({ offsetX: -0, offsetY: -150 });
     });
 
+    it("sticks on the axis that can scroll, and only on that one", () => {
+      // overflowX: auto / overflowY: hidden — the Y offset has nowhere to stick
+      // to, so a child already above the top edge travels with the content
+      // instead of being pinned there. The X half is the mirror case and sticks.
+      const sticky: RectElement = {
+        id: "sticky",
+        type: "rect",
+        x: -10,
+        y: -20,
+        width: 100,
+        height: 30,
+        scrollBehavior: "sticky"
+      };
+      const container: FrameElement = {
+        id: "c",
+        type: "frame",
+        x: 0,
+        y: 0,
+        width: 200,
+        height: 200,
+        overflowX: "auto",
+        overflowY: "hidden",
+        children: [sticky]
+      };
+
+      expect(childScrollOffset(sticky, container, 40, 30)).toEqual({ offsetX: 10, offsetY: -30 });
+    });
+
     it("leaves the children of an auto-layout container in the flow", () => {
       // A layout parent owns its children's boxes, so a constraint cannot pin one.
       // The test used to read a top-level `layout` object the document no longer

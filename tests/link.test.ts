@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import { normalizeLink } from "../src/core/dsl/link";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
 import versions from "../src/core/dsl/versions.json";

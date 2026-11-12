@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
-import {
-  DesignDocument,
-  TextElement,
-  TextSpan,
-  getActivePage,
-  updateActivePageElements
-} from "../../core/dsl/types";
+import { DesignDocument, TextElement, TextSpan } from "../../core/dsl/types";
+import { getActivePage, updateActivePageElements } from "../../core/dsl/document-ops";
 import { EditorStore } from "../../core/store/editor-store";
 import { mapElements, findElementById } from "../../core/geometry/tree-ops";
 import { useVectorPathEditing } from "./useVectorPathEditing";

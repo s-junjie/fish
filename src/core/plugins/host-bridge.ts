@@ -26,7 +26,7 @@
 import * as preact from "preact";
 import * as hooks from "preact/hooks";
 import * as jsxRuntime from "preact/jsx-runtime";
-import { getActivePage, updateActivePageElements } from "../dsl/types";
+import { getActivePage, updateActivePageElements } from "../dsl/document-ops";
 import { mapElements } from "../geometry/tree-edit";
 import { firstImagePaint } from "../dsl/image-fill";
 import { createId } from "../id";

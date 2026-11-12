@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "preact/hooks";
-import { getActivePage } from "../../core/dsl/types";
-import { DesignDocument, DesignElement, TextElement, ContainerElement, Paint, updateActivePageElements } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
+import { DesignDocument, DesignElement, TextElement, ContainerElement, Paint } from "../../core/dsl/types";
+import { updateActivePageElements } from "../../core/dsl/document-ops";
 import { applyAutoLayout, relayoutDocumentTree, sortChildrenByLayoutOrder, applyDropSlot, DropSlot } from "../../core/compile";
 import { layoutOf } from "../../core/dsl/layout-flat";
 import { GuideLine } from "../../core/geometry/snap-guides";

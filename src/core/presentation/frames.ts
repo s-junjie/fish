@@ -1,4 +1,5 @@
-import { DesignDocument, DesignElement, Page, getActivePage } from "../dsl/types";
+import { DesignDocument, DesignElement, Page } from "../dsl/types";
+import { getActivePage } from "../dsl/document-ops";
 import { Rect } from "../geometry/bounds";
 import { contentBounds, elementRotatedAABB } from "../geometry/element-bounds";
 import { readingOrder } from "../geometry/reading-order";

@@ -15,7 +15,7 @@ import {
   DesignStyle,
   InstanceElement
 } from "../../core/dsl/types";
-import { getActivePage } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
 import { paintLayers } from "../../core/dsl/image-fill";
 import { findMasterComponent } from "../../core/interactions/component-inventory";
 import { heldMaster } from "../../core/interactions/detached-masters";

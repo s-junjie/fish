@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import type { DesignDocument } from "../src/core/dsl/types";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize/document";
 import { withActivePageViewport } from "../src/core/interactions/page-ops";
 import { MAX_ZOOM } from "../src/core/geometry/viewport";

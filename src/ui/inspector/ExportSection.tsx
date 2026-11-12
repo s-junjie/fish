@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "preact/hooks";
 import { flushSync } from "preact/compat";
-import { DesignDocument, DesignElement, getActivePage } from "../../core/dsl/types";
+import { DesignDocument, DesignElement } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
 import { exportCanvasAsBlob, exportCanvasAsSvgBlob, ExportBounds } from "../../core/export";
 import { exportBounds } from "./export-bounds";
 import { exportNames, exportUnits, paintedElements } from "./export-units";

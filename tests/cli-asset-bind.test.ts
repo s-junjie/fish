@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import { bindAssetFill, dropUnreferencedAssets, embedLocalDocumentAssets, imageAssetIdsOn } from "../src/core/cli/fish-assets";
 import fs from "node:fs";
 import path from "node:path";

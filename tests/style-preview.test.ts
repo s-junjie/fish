@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { DesignDocument, PaintStyle, RectElement, TextElement } from "../src/core/dsl/types";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import {
   createPaintStyle,
   createTextStyle,

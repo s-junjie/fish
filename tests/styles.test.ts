@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import { DesignDocument, DesignStyle, PaintStyle, StrokeStyle, TextStyleDefinition, RectElement, TextElement, InstanceElement } from "../src/core/dsl/types";
 import { createPaintStyle, createStrokeStyle, createTextStyle, createEffectStyle, addStyleToDoc, updateStyleInDoc, removeStyleFromDoc, removeTokenFromDoc, updateTokenInDoc, reorderStyles, bindFillStyle, unbindFillStyle, bindCompositeStrokeStyle, unbindCompositeStrokeStyle, bindTextStyle, unbindEffectStyle } from "../src/core/interactions/style-ops";
 import { buildReferenceRegistry } from "../src/ui/canvas/reference-registry";

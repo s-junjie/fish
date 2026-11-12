@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "preact/hooks";
 import { AlertTriangle, X } from "lucide-react";
 import { t } from "../i18n";
 import type { DesignDocument, DesignElement } from "../core/dsl/types";
-import { getActivePage } from "../core/dsl/types";
+import { getActivePage } from "../core/dsl/document-ops";
 import { fontStatusSnapshot, textFontStatus, subscribeFontStatus, refreshFontStatus } from "../core/fonts/font-status";
 import type { FontUsage } from "../core/fonts/font-status";
 import { replaceFontFamily } from "../core/interactions/font-replace";

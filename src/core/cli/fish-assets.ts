@@ -8,7 +8,7 @@ import { lucideProvider, remixProvider } from "../../plugins/_shared/assets/icon
 import { dataUriBytes, embedImageBytes, embedImageUri, formatBytes } from "./image-embed";
 import type { EmbeddedImage } from "./image-embed";
 import type { AssetRef, DesignDocument, DesignElement, ImagePaint, Paint } from "../dsl/types";
-import { getActivePage, updateActivePageElements } from "../dsl/types";
+import { getActivePage, updateActivePageElements } from "../dsl/document-ops";
 import { pageRoots, referencedAssetIds } from "../dsl/asset-usage";
 import { DOC_BLOCK_RE, readDocument } from "./doc-source";
 import type { Source } from "./doc-source";

@@ -9,7 +9,7 @@
  * ends up "valid" in one reader and dropped in another.
  */
 
-import { OVERRIDABLE_PROPERTIES } from "../dsl/types";
+import { OVERRIDABLE_PROPERTIES } from "../dsl/constants";
 import type { ComponentElement, DesignDocument, DesignElement, OverridableProperty } from "../dsl/types";
 import { findElementById } from "../geometry/tree-query";
 import { findMasterComponent } from "./component-inventory";

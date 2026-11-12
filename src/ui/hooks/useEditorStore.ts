@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { EditorStore } from "../../core/store/editor-store";
-import { DesignDocument, getActivePage } from "../../core/dsl/types";
+import { DesignDocument } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
 import { loadInitialDocument } from "../../core/data-bridge";
 import { subscribeAsyncFontLoaded, textMeasureRevision } from "../../core/geometry/text-measure";
 

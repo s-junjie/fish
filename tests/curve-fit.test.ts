@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getActivePage, updateActivePageElements } from "../src/core/dsl/types";
+import { getActivePage, updateActivePageElements } from "../src/core/dsl/document-ops";
 import { fitRingToEdges } from "../src/core/geometry/curve-fit";
 import {
   rectRing,

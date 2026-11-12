@@ -1,18 +1,5 @@
-import {
-  ComponentElement,
-  ComponentOverride,
-  ContainerElement,
-  DesignDocument,
-  DesignElement,
-  FrameElement,
-  InstanceElement,
-  type Overflow,
-  Paint,
-  Stroke,
-  TextElement,
-  TextSpan,
-  getActivePage
-} from "../dsl/types";
+import { ComponentElement, ComponentOverride, ContainerElement, DesignDocument, DesignElement, FrameElement, InstanceElement, type Overflow, Paint, Stroke, TextElement, TextSpan } from "../dsl/types";
+import { getActivePage } from "../dsl/document-ops";
 import { isContainer, findElementById } from "../geometry/tree-ops";
 import { resolveInstanceBox, resolveInstanceNumberMode, resolveInstanceTheme } from "./instance-inherit";
 import { applyConstraintsToChildren } from "../geometry/constraints";

@@ -1,4 +1,5 @@
-import { DesignDocument, DesignElement, getActivePage, updateActivePageElements } from "../dsl/types";
+import { DesignDocument, DesignElement } from "../dsl/types";
+import { getActivePage, updateActivePageElements } from "../dsl/document-ops";
 import { mapElements } from "../geometry/tree-ops";
 import { commitInstanceOverrides, isStoredNode, resolveInstanceSelection } from "./instance-resolve";
 

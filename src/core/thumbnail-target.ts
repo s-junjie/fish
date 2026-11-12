@@ -1,5 +1,5 @@
 import type { DesignDocument, DesignElement, FrameElement } from "./dsl/types";
-import { getActivePage } from "./dsl/types";
+import { getActivePage } from "./dsl/document-ops";
 
 function searchFrame(elements: readonly DesignElement[], predicate: (el: FrameElement) => boolean): FrameElement | null {
   for (const el of elements) {

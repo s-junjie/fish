@@ -1,5 +1,5 @@
 import type { CornerRadius, Stroke, StrokeSide, StrokeSideWeights } from "../types";
-import { DEFAULT_DASH } from "../types";
+import { DEFAULT_DASH } from "../constants";
 import { topLayer } from "../paint-stack";
 import { asNumber, canonicalKey, isPlainObject, lengthUnit, pxLength, NormalizationRepair } from "./shared";
 import { normalizePaint } from "./paint";

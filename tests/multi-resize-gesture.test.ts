@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMultiResizeGesture } from "../src/ui/hooks/canvas-gestures/multi-resize-gesture";
-import { DesignDocument, DesignElement, RectElement, getActivePage } from "../src/core/dsl/types";
+import { DesignDocument, DesignElement, RectElement } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import { GuideLine } from "../src/core/geometry/snap-guides";
 
 /**

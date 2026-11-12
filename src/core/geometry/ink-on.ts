@@ -18,7 +18,8 @@
  * this path does not have.
  */
 
-import { DesignDocument, DesignElement, getActivePage } from "../dsl/types";
+import { DesignDocument, DesignElement } from "../dsl/types";
+import { getActivePage } from "../dsl/document-ops";
 import { DEFAULT_CANVAS_BACKGROUND, DEFAULT_TEXT_INK_ON_DARK, DEFAULT_TEXT_INK_ON_LIGHT } from "../dsl/defaults";
 import { topPaint } from "../dsl/paint-stack";
 import { contrastRatio, parseColorAlpha } from "./color-utils";

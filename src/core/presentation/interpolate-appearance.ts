@@ -79,14 +79,41 @@ function lerpStops(
 }
 
 /**
+ * A nested object of numbers at `p`, when both sides carry one.
+ *
+ * `tile` and `spacing` are records rather than scalars, and `lerpNumbers` works
+ * on the fields of one: this is that function applied to a child object, with
+ * the target's shape as the base so a key only one side states keeps the
+ * target's answer instead of vanishing.
+ */
+function lerpNested(
+  out: Record<string, unknown>,
+  key: string,
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+  keys: readonly string[],
+  p: number
+): void {
+  const oa = a[key] as Record<string, unknown> | undefined;
+  const ob = b[key] as Record<string, unknown> | undefined;
+  if (typeof oa !== "object" || oa === null || typeof ob !== "object" || ob === null) return;
+  const next = { ...ob };
+  lerpNumbers(next, oa, ob, keys, p);
+  out[key] = next;
+}
+
+/**
  * Whether two paints describe the same thing, so their FIELDS can be merged.
  *
- * A solid against a gradient has no field in common, and a different bitmap has
- * nothing to melt into — those cross-fade instead (see `interpolatePaints`).
+ * A solid against a gradient has no field in common, a different bitmap has
+ * nothing to melt into, and a pattern's identity IS its motif — a stripe grid
+ * and a dot grid have no halfway — so all three cross-fade instead (see
+ * `interpolatePaints`).
  */
 function mergeable(a: Paint, b: Paint): boolean {
   if (a.type !== b.type) return false;
   if (a.type === "image" && b.type === "image") return a.assetId === b.assetId;
+  if (a.type === "pattern" && b.type === "pattern") return a.motif === b.motif;
   return true;
 }
 
@@ -121,8 +148,34 @@ function lerpPaint(a: Paint, b: Paint, p: number): Paint {
     return out as unknown as Paint;
   }
 
-  out.from = lerpColor(pa.from as string, pb.from as string, p);
-  out.to = lerpColor(pa.to as string, pb.to as string, p);
+  if (b.type === "pattern") {
+    // One motif's cell: its ink, its size and the gap between copies. The motif
+    // itself is discrete and `mergeable` has already refused a change of one.
+    if (typeof pa.foreground === "string" && typeof pb.foreground === "string") {
+      out.foreground = lerpColor(pa.foreground, pb.foreground, p);
+    }
+    if (typeof pa.background === "string" && typeof pb.background === "string") {
+      out.background = lerpColor(pa.background, pb.background, p);
+    } else if (pa.background !== pb.background) {
+      // One side has no backing colour, which is an absence rather than a value:
+      // it switches at the midpoint instead of fading toward nothing.
+      out.background = pick(pa.background as string | undefined, pb.background as string | undefined, p);
+    }
+    lerpNumbers(out, pa, pb, ["scale", "weight", "angle"], p);
+    lerpNested(out, "tile", pa, pb, ["width", "height"], p);
+    lerpNested(out, "spacing", pa, pb, ["x", "y"], p);
+    return out as unknown as Paint;
+  }
+
+  // A gradient's endpoints are only a PAIR when both sides state them: a ramp
+  // carried by `stops` alone has no `from` / `to` of its own, and writing the
+  // black default into it turned every such slide black at the midpoint.
+  if (typeof pa.from === "string" && typeof pb.from === "string") {
+    out.from = lerpColor(pa.from, pb.from, p);
+  }
+  if (typeof pa.to === "string" && typeof pb.to === "string") {
+    out.to = lerpColor(pa.to, pb.to, p);
+  }
   lerpNumbers(out, pa, pb, ["fromOffset", "toOffset", "angle", "radius", "rx", "ry"], p);
   lerpPoint(out, "start", pa, pb, p);
   lerpPoint(out, "end", pa, pb, p);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import { importFigmaFile } from "../src/core/import/figma-import";
 import { landFigmaImport } from "../src/core/import/figma-landing";
 import { findMasterComponent } from "../src/core/interactions/component-inventory";

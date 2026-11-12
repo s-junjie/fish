@@ -1,4 +1,4 @@
-import { getActivePage } from "./types";
+import { getActivePage } from "./document-ops";
 import type { DesignDocument, DesignElement, Page } from "./types";
 
 /** A document's element trees, whichever shape it arrived in. */

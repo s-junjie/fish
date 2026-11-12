@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { DesignDocument, FrameElement, ComponentElement, InstanceElement, getActivePage, updateActivePageElements, updatePageCanvas } from "../src/core/dsl/types";
+import { DesignDocument, FrameElement, ComponentElement, InstanceElement } from "../src/core/dsl/types";
+import { getActivePage, updateActivePageElements, updatePageCanvas } from "../src/core/dsl/document-ops";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
 import { validateDocument } from "../src/core/validate";
 import { findMasterComponent } from "../src/core/interactions/component-inventory";

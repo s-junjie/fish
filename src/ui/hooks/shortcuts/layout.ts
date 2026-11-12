@@ -1,6 +1,6 @@
 import { applyAutoLayout } from "../../../core/compile";
 import type { FrameElement } from "../../../core/dsl/types";
-import { updateActivePageElements } from "../../../core/dsl/types";
+import { updateActivePageElements } from "../../../core/dsl/document-ops";
 import { layoutOf, withLayout } from "../../../core/dsl/layout-flat";
 import { mapElements, isContainer } from "../../../core/geometry/tree-ops";
 import { runEditorCommand } from "../../commands/editor-commands";

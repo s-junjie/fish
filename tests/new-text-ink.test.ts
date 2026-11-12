@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { DesignDocument, DesignElement } from "../src/core/dsl/types";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import { inkForBackground, newTextInkAt } from "../src/core/geometry/ink-on";
 import { contrastRatio, relativeLuminance } from "../src/core/geometry/color-utils";
 import { computeShapeDraftBounds } from "../src/core/geometry/shape-creation";

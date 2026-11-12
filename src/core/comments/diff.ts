@@ -1,5 +1,5 @@
 import type { DesignDocument, DesignElement, Paint } from "../dsl/types";
-import { getActivePage } from "../dsl/types";
+import { getActivePage } from "../dsl/document-ops";
 import { findElementById } from "../geometry/tree-ops";
 import { applyOps } from "../ops/apply-ops";
 import { normalizeMacroOps } from "./suggested-ops";

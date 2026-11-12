@@ -7,7 +7,7 @@ import type {
   ElementSizing,
   InstanceElement
 } from "../src/core/dsl/types";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import {
   componentSwapOptions,
   findSwapTargetAtPoint,

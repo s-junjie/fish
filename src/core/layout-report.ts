@@ -15,7 +15,7 @@
 
 import { relayoutDocumentTree } from "./layout/auto-layout";
 import { instanceSizeResolver } from "./interactions/instance-size";
-import { getActivePage, updateActivePageElements } from "./dsl/types";
+import { getActivePage, updateActivePageElements } from "./dsl/document-ops";
 import { layoutOf } from "./dsl/layout-flat";
 import type { CompileDiagnostic } from "./compile";
 import type { DesignDocument, DesignElement } from "./dsl/types";

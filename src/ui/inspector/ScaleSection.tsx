@@ -1,5 +1,6 @@
 import { useRef, useState } from "preact/hooks";
-import { DesignDocument, DesignElement, getActivePage } from "../../core/dsl/types";
+import { DesignDocument, DesignElement } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
 import { ScrubInput } from "../ScrubInput";
 import { useDismiss } from "../hooks/useDismiss";
 import { t } from "../../i18n";

@@ -1,15 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import {
-  ColorToken,
-  DesignElement,
-  DesignDocument,
-  ImagePaint,
-  Paint,
-  PaintStyle,
-  TextElement,
-  getActivePage,
-  updateActivePageElements
-} from "../../core/dsl/types";
+import { ColorToken, DesignElement, DesignDocument, ImagePaint, Paint, PaintStyle, TextElement } from "../../core/dsl/types";
+import { getActivePage, updateActivePageElements } from "../../core/dsl/document-ops";
 import { mapElements } from "../../core/geometry/tree-ops";
 import { moveStackRow, stackRows } from "../../core/dsl/paint-stack";
 import { DEFAULT_ELEMENT_COLOR } from "../../core/dsl/defaults";

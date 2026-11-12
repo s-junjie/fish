@@ -1,12 +1,5 @@
-import {
-  ContainerElement,
-  DesignDocument,
-  DesignElement,
-  HtmlEmbedElement,
-  TextElement,
-  getActivePage,
-  updateActivePageElements
-} from "../../core/dsl/types";
+import { ContainerElement, DesignDocument, DesignElement, HtmlEmbedElement, TextElement } from "../../core/dsl/types";
+import { getActivePage, updateActivePageElements } from "../../core/dsl/document-ops";
 import { computeParentOrigin, findElementById, isContainer, mapElements } from "../../core/geometry/tree-ops";
 import { newTextInkAt } from "../../core/geometry/ink-on";
 import { centerInRect } from "../../core/geometry/viewport";

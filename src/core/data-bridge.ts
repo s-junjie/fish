@@ -1,4 +1,5 @@
-import { DesignDocument, getActivePage, updateActivePageElements } from "./dsl/types";
+import { DesignDocument } from "./dsl/types";
+import { getActivePage, updateActivePageElements } from "./dsl/document-ops";
 import { DEFAULT_CANVAS_BACKGROUND } from "./dsl/defaults";
 import { mintDocId } from "./id";
 import { parseLenientJson } from "./dsl/lenient-json";

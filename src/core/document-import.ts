@@ -6,7 +6,7 @@ import type {
   InstanceElement,
   Page
 } from "./dsl/types";
-import { adoptTopLevelElements, getActivePage } from "./dsl/types";
+import { adoptTopLevelElements, getActivePage } from "./dsl/document-ops";
 import { relayoutDocumentTree } from "./compile";
 import { documentStem } from "./document-title";
 import { createId } from "./id";

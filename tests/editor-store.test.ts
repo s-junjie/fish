@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { getActivePage, updateActivePageElements } from "../src/core/dsl/types";
+import { getActivePage, updateActivePageElements } from "../src/core/dsl/document-ops";
 import { EditorStore } from "../src/core/store/editor-store";
 import { DesignDocument, DesignElement, RectElement } from "../src/core/dsl/types";
 import { relayoutDocumentTree } from "../src/core/compile";

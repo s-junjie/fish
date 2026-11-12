@@ -1,13 +1,5 @@
-import {
-  DesignDocument,
-  DesignElement,
-  ComponentElement,
-  InstanceElement,
-  AssetRef,
-  Paint,
-  getActivePage,
-  updateActivePageElements
-} from "../dsl/types";
+import { DesignDocument, DesignElement, ComponentElement, InstanceElement, AssetRef, Paint } from "../dsl/types";
+import { getActivePage, updateActivePageElements } from "../dsl/document-ops";
 import { paintLayers } from "../dsl/image-fill";
 import { normalizeDesignDocument } from "../dsl/normalize";
 import { createId } from "../id";

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { strokeDashAttrs } from "../src/core/geometry/stroke-utils";
-import { DEFAULT_DASH, DesignElement } from "../src/core/dsl/types";
+import { DesignElement } from "../src/core/dsl/types";
+import { DEFAULT_DASH } from "../src/core/dsl/constants";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
 
 /** Normalizes one element by running it through a throwaway one-page document. */

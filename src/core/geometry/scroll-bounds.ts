@@ -66,8 +66,11 @@ export function childScrollOffset(
   }
 
   if (behavior === "sticky") {
+    // Each axis sticks only if it can scroll: a `hidden` axis has no offset to
+    // hold a child against, and reading its position as "reached the edge" is
+    // what pinned a Y-sticky child inside a horizontally-scrolling frame.
     const offsetX = child.x - scrollX <= 0 && axes.x === "auto" ? -child.x : -scrollX;
-    const offsetY = child.y - scrollY <= 0 ? -child.y : -scrollY;
+    const offsetY = child.y - scrollY <= 0 && axes.y === "auto" ? -child.y : -scrollY;
     return { offsetX, offsetY };
   }
 

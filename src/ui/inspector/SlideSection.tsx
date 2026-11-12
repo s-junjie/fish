@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from "preact/hooks";
-import { DesignDocument, DesignElement, SlideSpec, SlideTransition, getActivePage } from "../../core/dsl/types";
+import { DesignDocument, DesignElement, SlideSpec, SlideTransition } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
 import { isContainer } from "../../core/geometry/tree-ops";
 import { matchSlides } from "../../core/presentation/morph";
 import { presentationFrames, nextSlideOf } from "../../core/presentation/frames";

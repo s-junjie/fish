@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { DesignElement } from "../src/core/dsl/types";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import {
   rectRing,
   ellipseRing,
@@ -9,7 +9,8 @@ import {
   performBooleanOperation,
   elementToRings
 } from "../src/core/geometry/boolean-ops";
-import { DesignDocument, updateActivePageElements } from "../src/core/dsl/types";
+import { DesignDocument } from "../src/core/dsl/types";
+import { updateActivePageElements } from "../src/core/dsl/document-ops";
 import { createEmptyDocument } from "../src/core/data-bridge";
 
 type Pts = [number, number][];

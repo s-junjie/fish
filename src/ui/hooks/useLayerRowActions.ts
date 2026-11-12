@@ -1,5 +1,6 @@
 import { useCallback } from "preact/hooks";
-import { DesignDocument, getActivePage, updateActivePageElements } from "../../core/dsl/types";
+import { DesignDocument } from "../../core/dsl/types";
+import { getActivePage, updateActivePageElements } from "../../core/dsl/document-ops";
 import { mapElements } from "../../core/geometry/tree-ops";
 import { setElementLocked } from "../../core/geometry/lock";
 import { overrideDerivedNodes } from "../../core/interactions/instance-overrides";

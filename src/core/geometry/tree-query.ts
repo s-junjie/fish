@@ -1,4 +1,5 @@
-import { ComponentSetElement, ContainerElement, DesignDocument, DesignElement, getActivePage } from "../dsl/types";
+import { ComponentSetElement, ContainerElement, DesignDocument, DesignElement } from "../dsl/types";
+import { getActivePage } from "../dsl/document-ops";
 
 export function isContainer(el: DesignElement): el is ContainerElement {
   return el.type === "frame" || el.type === "component" || el.type === "componentSet";

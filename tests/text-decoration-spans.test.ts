@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
 import { convertForeignObjectsToSvg } from "../src/core/export-text";
 import { normalizeTextDecoration, textDecorationCss, toggledDecoration } from "../src/core/dsl/text-decoration";

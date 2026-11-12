@@ -2,7 +2,7 @@ import { useEffect } from "preact/hooks";
 import type { DesignDocument } from "../../core/dsl/types";
 import { normalizeDesignDocument } from "../../core/dsl/normalize";
 import { parseLenientJson } from "../../core/dsl/lenient-json";
-import { getActivePage } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
 import { parseReportRequest, screenshotPlan } from "../../core/export-request";
 import { measureElement } from "../../core/measure";
 import { validateDocument } from "../../core/validate";

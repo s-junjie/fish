@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "preact/hooks";
-import {
-  DesignDocument,
-  DesignElement,
-  FrameElement,
-  TextElement,
-  getActivePage,
-  updateActivePageElements
-} from "../../core/dsl/types";
+import { DesignDocument, DesignElement, FrameElement, TextElement } from "../../core/dsl/types";
+import { getActivePage, updateActivePageElements } from "../../core/dsl/document-ops";
 import { createId } from "../../core/id";
 import { elementAABB } from "../../core/geometry/element-bounds";
 import { editableIds, setElementsLocked } from "../../core/geometry/lock";

@@ -24,7 +24,7 @@
 
 import type { CompileDiagnostic } from "./compile";
 import type { DesignDocument, DesignElement, TextElement } from "./dsl/types";
-import { getActivePage } from "./dsl/types";
+import { getActivePage } from "./dsl/document-ops";
 import { flattenElements } from "./geometry/tree-ops";
 import { DEFAULT_FONT_FAMILY, declaresFallback, splitFontStack } from "./font-stack";
 

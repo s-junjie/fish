@@ -13,7 +13,7 @@
  */
 
 import type { DesignDocument, DesignElement } from "../../core/dsl/types";
-import { getActivePage } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
 import {
   authoredAlignmentOf,
   pickGroupAnchor,

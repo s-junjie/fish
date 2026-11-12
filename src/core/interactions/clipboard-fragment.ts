@@ -1,16 +1,6 @@
-import {
-  AssetRef,
-  ComponentElement,
-  ContainerElement,
-  DesignDocument,
-  DesignElement,
-  DesignStyle,
-  DesignToken,
-  InstanceElement,
-  STYLE_BINDING_FIELDS,
-  getActivePage,
-  updateActivePageElements
-} from "../dsl/types";
+import { AssetRef, ComponentElement, ContainerElement, DesignDocument, DesignElement, DesignStyle, DesignToken, InstanceElement } from "../dsl/types";
+import { getActivePage, updateActivePageElements } from "../dsl/document-ops";
+import { STYLE_BINDING_FIELDS } from "../dsl/constants";
 import { createId } from "../id";
 import {
   isContainer,

@@ -1,5 +1,6 @@
 import { useEffect } from "preact/hooks";
-import { DesignDocument, updateActivePageElements, getActivePage, HtmlEmbedElement, AssetRef } from "../../core/dsl/types";
+import { DesignDocument, HtmlEmbedElement, AssetRef } from "../../core/dsl/types";
+import { updateActivePageElements, getActivePage } from "../../core/dsl/document-ops";
 import { createId } from "../../core/id";
 
 /**

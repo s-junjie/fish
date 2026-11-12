@@ -1,5 +1,5 @@
 import type { DesignDocument, DesignElement, ContainerElement } from "../dsl/types";
-import { getActivePage } from "../dsl/types";
+import { getActivePage } from "../dsl/document-ops";
 import { findElementById, findParentById } from "../geometry/tree-ops";
 import type { FishCommentsDocument, CommentThread } from "./types";
 

@@ -1,5 +1,6 @@
-import { ContainerElement, DesignDocument, DesignElement, updateActivePageElements } from "../dsl/types";
-import { getActivePage } from "../dsl/types";
+import { ContainerElement, DesignDocument, DesignElement } from "../dsl/types";
+import { updateActivePageElements } from "../dsl/document-ops";
+import { getActivePage } from "../dsl/document-ops";
 import { relayoutDocumentTree } from "../compile";
 import { instanceSizeResolver } from "./instance-size";
 import { containerSizesAxis, resolveAxis } from "../geometry/resolve-axis";

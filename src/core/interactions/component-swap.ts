@@ -1,14 +1,5 @@
-import {
-  ComponentElement,
-  ComponentOverride,
-  ContainerElement,
-  DesignDocument,
-  DesignElement,
-  ElementSizing,
-  InstanceElement,
-  getActivePage,
-  updateActivePageElements
-} from "../dsl/types";
+import { ComponentElement, ComponentOverride, ContainerElement, DesignDocument, DesignElement, ElementSizing, InstanceElement } from "../dsl/types";
+import { getActivePage, updateActivePageElements } from "../dsl/document-ops";
 import {
   childrenOf,
   computeParentOrigin,

@@ -7,7 +7,7 @@ import {
   InstanceElement,
   NumberToken
 } from "../dsl/types";
-import { getActivePage } from "../dsl/types";
+import { getActivePage } from "../dsl/document-ops";
 import { composeColorAlpha, parseColorAlpha } from "../geometry/color-utils";
 import { isContainer } from "../geometry/tree-ops";
 import { relayoutDocumentTree } from "../layout/auto-layout";

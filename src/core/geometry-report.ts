@@ -1,5 +1,5 @@
 import { relayoutDocumentTree, resolvePadding } from "./compile";
-import { getActivePage } from "./dsl/types";
+import { getActivePage } from "./dsl/document-ops";
 import { DEFAULT_FLEX_DIRECTION, layoutOf, type FlatAutoLayout } from "./dsl/layout-flat";
 import { elementRotatedAABB } from "./geometry/element-bounds";
 import type { AutoLayout, DesignDocument, DesignElement, LayoutGuide } from "./dsl/types";

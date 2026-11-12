@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "preact/hooks";
-import { getActivePage } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
 import { useEditorCommands } from "./useEditorCommands";
 import { handleShortcut } from "./shortcuts/dispatch";
 import type { ShortcutContext, UseShortcutsOptions, ZoomCommands } from "./shortcuts/types";

@@ -1,5 +1,5 @@
 import { useCallback, useRef } from "preact/hooks";
-import { getActivePage } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
 import type { DesignDocument, DesignElement } from "../../core/dsl/types";
 import { figmaImportErrorMessage, readFigmaImportFile } from "../../core/import/figma-file-read";
 import type { ImportFigmaFileOutcome } from "../../core/import/figma-import";

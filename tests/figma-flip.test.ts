@@ -55,10 +55,34 @@ const linear = (m: number[][]): number[][] => [
   [m[1][0], m[1][1]]
 ];
 
-/** Entry by entry, with a tolerance: `cos 225°` is one ulp off `-cos 45°`. */
-function expectSameMatrix(actual: number[][], expected: number[][]): void {
+/**
+ * The matrix the renderer builds for a sheared element: `rotate(rotation)` around
+ * the box centre with `skew(skewX, skewY)` inside it — `elementTransformMatrix`'s
+ * linear part (`R · S` in SVG's column-vector layout, so `[a c; b d]`).
+ */
+function composeShear(el: { rotation?: number; skewX?: number; skewY?: number }): number[][] {
+  const r = ((el.rotation ?? 0) * Math.PI) / 180;
+  const cos = Math.cos(r);
+  const sin = Math.sin(r);
+  const sx = Math.tan(((el.skewX ?? 0) * Math.PI) / 180);
+  const sy = Math.tan(((el.skewY ?? 0) * Math.PI) / 180);
+  return [
+    [cos - sin * sy, cos * sx - sin],
+    [sin + cos * sy, sin * sx + cos]
+  ];
+}
+
+/**
+ * Entry by entry, with a tolerance: `cos 225°` is one ulp off `-cos 45°`.
+ *
+ * A shear case passes a looser `digits`: the fields store degrees rounded to
+ * three decimals, so `tan(stored)` cannot reproduce Figma's tangent better than
+ * about 1e-7 — the angle is the stored fact and the matrix is the reconstructed
+ * one, not the other way round.
+ */
+function expectSameMatrix(actual: number[][], expected: number[][], digits = 9): void {
   for (let row = 0; row < 2; row++) {
-    for (let col = 0; col < 2; col++) expect(actual[row][col]).toBeCloseTo(expected[row][col], 9);
+    for (let col = 0; col < 2; col++) expect(actual[row][col]).toBeCloseTo(expected[row][col], digits);
   }
 }
 
@@ -278,8 +302,9 @@ describe("a flip, which Figma writes only as a negative scale", () => {
  * Figma has no skew control — no field on the node, nothing in the UI — so a
  * shear only exists inside `relativeTransform`, which a plugin (or a shape
  * pasted in from an SVG) can leave there. The matrix is then the only place it
- * can be read from, and it is read only when the decomposition agrees with the
- * rotation the element is already given.
+ * can be read from, and BOTH fields it decomposes into are written: the angle
+ * comes from the same decomposition, because a bare `skewY` reads as a non-zero
+ * `atan2(c, a)` and writing that as a rotation would apply the shear twice.
  */
 describe("a shear, which Figma has no field for", () => {
   it("carries a skewX a plugin left in the matrix", async () => {
@@ -299,21 +324,42 @@ describe("a shear, which Figma has no field for", () => {
     expect(el.rotation ?? 0).toBe(0);
   });
 
-  it("refuses one the rotation reading disagrees with, rather than doubling it", async () => {
-    // A standalone `skewY` reads as a turn PLUS a shear in these fields, and the
-    // element's rotation comes from `nodeRotationDeg` — applying both would draw
-    // a transform the node never had.
-    const elements = await importNodes([
-      layer("8:1", "Drop", 0, 1, 1, {
-        relativeTransform: [
-          [1, 0, 0],
-          [0.176327, 1, 0],
-          [0, 0, 1]
-        ]
-      })
-    ]);
+  it("carries a bare skewY as a shear, not as the turn it resembles", async () => {
+    // y' = y + tan(10°)·x. `atan2(c, a)` reads this as a 10° rotation, and the
+    // element's rotation used to be taken from exactly that — the shear then
+    // "disagreed" with it and was refused, so the layer arrived turned instead.
+    const node = layer("8:1", "Drop", 0, 1, 1, {
+      relativeTransform: [
+        [1, 0, 0],
+        [0.176327, 1, 0],
+        [0, 0, 1]
+      ]
+    });
+    const elements = await importNodes([node]);
     const el = byId(elements, "8_1");
+    expect(el.rotation ?? 0).toBe(0);
     expect(el.skewX).toBeUndefined();
-    expect(el.skewY).toBeUndefined();
+    expect(el.skewY).toBeCloseTo(10, 2);
+    // The claim that matters: compose the element the way the renderer does and
+    // Figma's matrix comes back — the shear is neither lost nor doubled.
+    expectSameMatrix(composeShear(el), linear(node.relativeTransform), 6);
+  });
+
+  it("keeps the turn when the shear rides on top of it", async () => {
+    // R(30°) · skewX(20°), the one reading that holds both.
+    const r = (30 * Math.PI) / 180;
+    const t = Math.tan((20 * Math.PI) / 180);
+    const node = layer("9:1", "Leaning", 0, 1, 1, {
+      relativeTransform: [
+        [Math.cos(r), Math.cos(r) * t - Math.sin(r), 0],
+        [Math.sin(r), Math.sin(r) * t + Math.cos(r), 0],
+        [0, 0, 1]
+      ]
+    });
+    const elements = await importNodes([node]);
+    const el = byId(elements, "9_1");
+    expect(el.rotation).toBeCloseTo(30, 2);
+    expect(el.skewX).toBeCloseTo(20, 2);
+    expectSameMatrix(composeShear(el), linear(node.relativeTransform), 6);
   });
 });

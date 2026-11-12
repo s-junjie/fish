@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize/document";
 import { validateTokenRefs } from "../src/core/validate-tokens";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import type {
   DesignDocument,
   DesignElement,

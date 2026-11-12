@@ -1,5 +1,5 @@
 import { flattenLayout, layoutOf } from "../src/core/dsl/layout-flat";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import { describe, it, expect } from "vitest";
 import { applyAutoLayout, gridCellRects, gridRowCount, sortChildrenByLayoutOrder } from "../src/core/compile";
 import { resolveDynamicLineHeight } from "../src/core/layout/text-sizing";

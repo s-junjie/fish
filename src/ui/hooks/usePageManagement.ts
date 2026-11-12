@@ -1,10 +1,6 @@
 import { useCallback } from "preact/hooks";
-import {
-  DesignDocument,
-  Page,
-  getActivePage,
-  updateActivePage
-} from "../../core/dsl/types";
+import { DesignDocument, Page } from "../../core/dsl/types";
+import { getActivePage, updateActivePage } from "../../core/dsl/document-ops";
 import { isLaidOut, relayoutDocumentTree as relayoutDocument } from "../../core/compile";
 import { createId } from "../../core/id";
 import { duplicatePage } from "../../core/interactions/page-ops";

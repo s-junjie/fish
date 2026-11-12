@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "preact/hooks";
 import { useWindowKeydown } from "../hooks/useWindowKeydown";
-import { DesignDocument, PathElement, getActivePage } from "../../core/dsl/types";
+import { DesignDocument, PathElement } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
 import { findElementById } from "../../core/geometry/tree-ops";
 import {
   parsePathData,

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
-import { getActivePage } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
 import { DesignDocument } from "../../core/dsl/types";
 import { EditorStore } from "../../core/store/editor-store";
 import {

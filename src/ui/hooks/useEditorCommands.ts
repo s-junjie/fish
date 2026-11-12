@@ -1,15 +1,6 @@
 import { useEffect, useRef } from "preact/hooks";
-import {
-  ComponentElement,
-  ContainerElement,
-  DesignDocument,
-  DesignElement,
-  HtmlEmbedElement,
-  InstanceElement,
-  TextElement,
-  getActivePage,
-  updateActivePageElements
-} from "../../core/dsl/types";
+import { ComponentElement, ContainerElement, DesignDocument, DesignElement, HtmlEmbedElement, InstanceElement, TextElement } from "../../core/dsl/types";
+import { getActivePage, updateActivePageElements } from "../../core/dsl/document-ops";
 import {
   computeParentOrigin,
   findElementById,

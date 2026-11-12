@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { FLAT_TEXT_KEYS } from "../src/core/dsl/normalize/css-absorb";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
 import { compactDocumentJson } from "../src/core/document-json";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import type { TextElement } from "../src/core/dsl/types";
 
 /**

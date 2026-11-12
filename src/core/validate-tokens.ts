@@ -29,9 +29,9 @@
  */
 
 import type { CompileDiagnostic } from "./compile";
-import { getActivePage } from "./dsl/types";
+import { getActivePage } from "./dsl/document-ops";
 import type { DesignDocument, DesignElement, DesignStyle, Effect, TextElement } from "./dsl/types";
-import { STYLE_BINDING_FIELDS } from "./dsl/types";
+import { STYLE_BINDING_FIELDS } from "./dsl/constants";
 import { flattenElements } from "./geometry/tree-ops";
 
 const BASE_MODE = "default";

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import { matchSlides } from "../src/core/presentation/morph";
 import { morphSlide, slidePaint, enterShift, leaveShift, CARRIED_FIELDS, NOT_CARRIED } from "../src/core/presentation/animate";
 import { createSlideClock, easeAt, resolveSlide, resolveStep, reverseDirection, DEFAULT_SLIDE_MS } from "../src/core/presentation/slide";

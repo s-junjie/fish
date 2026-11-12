@@ -1,5 +1,6 @@
 import { useCallback } from "preact/hooks";
-import { AssetRef, DesignDocument, DesignElement, getActivePage, updateActivePageElements } from "../../core/dsl/types";
+import { AssetRef, DesignDocument, DesignElement } from "../../core/dsl/types";
+import { getActivePage, updateActivePageElements } from "../../core/dsl/document-ops";
 import { loadImageFromFile, loadImageFromUrl, embedExternalAsset, isSvg } from "../../core/interactions/image-loader";
 import { loadVideoFromFile, loadVideoFromUrl, embedExternalVideoAsset, createVideoElement, isVideoAsset, isVideoFile } from "../../core/interactions/video-loader";
 import { loadHtmlFromEmbedCode, loadHtmlFromFile, loadHtmlFromUrl } from "../../core/interactions/html-embed-loader";

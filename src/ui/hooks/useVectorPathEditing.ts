@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
-import {
-  DesignDocument,
-  DesignElement,
-  PathElement,
-  getActivePage,
-  updateActivePageElements
-} from "../../core/dsl/types";
+import { DesignDocument, DesignElement, PathElement } from "../../core/dsl/types";
+import { getActivePage, updateActivePageElements } from "../../core/dsl/document-ops";
 import { EditorStore } from "../../core/store/editor-store";
 import { findElementById, mapElements } from "../../core/geometry/tree-ops";
 import { convertShapeToPathElement } from "../../core/geometry/path-convert";

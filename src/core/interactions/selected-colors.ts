@@ -1,4 +1,5 @@
-import { ColorToken, DesignDocument, DesignElement, InstanceElement, Paint, PaintStyle, Stroke, getActivePage } from "../dsl/types";
+import { ColorToken, DesignDocument, DesignElement, InstanceElement, Paint, PaintStyle, Stroke } from "../dsl/types";
+import { getActivePage } from "../dsl/document-ops";
 import { effectiveStrokes, topLayer, topPaint } from "../dsl/paint-stack";
 import { parseColorAlpha } from "../geometry/color-utils";
 import { buildCssGradient, isGradientPaint } from "../geometry/gradient-utils";

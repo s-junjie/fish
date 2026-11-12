@@ -1,4 +1,5 @@
-import { ContainerElement, DesignDocument, DesignElement, getActivePage } from "../../../core/dsl/types";
+import { ContainerElement, DesignDocument, DesignElement } from "../../../core/dsl/types";
+import { getActivePage } from "../../../core/dsl/document-ops";
 import { worldMatrixOf } from "../../../core/interactions/component-swap";
 import { elementAABB } from "../../../core/geometry/element-bounds";
 import { transformBoundsToAABB, type Rect } from "../../../core/geometry/bounds";

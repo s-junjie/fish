@@ -1,5 +1,5 @@
 import { flattenLayout } from "../src/core/dsl/layout-flat";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import { describe, expect, it } from "vitest";
 import { geometryReport } from "../src/core/geometry-report";
 import { relayoutDocumentTree } from "../src/core/compile";

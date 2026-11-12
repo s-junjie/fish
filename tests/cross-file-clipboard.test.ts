@@ -10,17 +10,8 @@ import {
   pasteFragmentIntoDoc,
   remintFragment
 } from "../src/core/interactions/clipboard-fragment";
-import {
-  AssetRef,
-  ComponentElement,
-  ComponentSetElement,
-  DesignDocument,
-  DesignElement,
-  DesignStyle,
-  FrameElement,
-  InstanceElement,
-  getActivePage
-} from "../src/core/dsl/types";
+import { AssetRef, ComponentElement, ComponentSetElement, DesignDocument, DesignElement, DesignStyle, FrameElement, InstanceElement } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import { findElementById, flattenElements } from "../src/core/geometry/tree-ops";
 import { findMasterComponent } from "../src/core/interactions/component-inventory";
 import { clipsContent } from "../src/core/dsl/overflow";

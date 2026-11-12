@@ -1,7 +1,7 @@
 import { JSX } from "preact";
 import { useMemo } from "preact/hooks";
 import type { ComponentElement, DesignDocument, FrameElement, LayoutGuide } from "../../core/dsl/types";
-import { getActivePage } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
 import { flattenElements } from "../../core/geometry/tree-edit";
 import { worldMatrixOf } from "../../core/interactions/component-swap";
 import { matrixToSvg } from "../../core/geometry/matrix";

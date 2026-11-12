@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from "preact/hooks";
 import { memo } from "../memo";
 import { tabClass } from "../panel-tabs-style";
-import { DesignElement, DesignDocument, ElementType, InstanceElement, TextElement, updateActivePageElements } from "../../core/dsl/types";
+import { DesignElement, DesignDocument, ElementType, InstanceElement, TextElement } from "../../core/dsl/types";
+import { updateActivePageElements } from "../../core/dsl/document-ops";
 import { findMasterComponent } from "../../core/interactions/component-inventory";
 import { resolveInstanceBox } from "../../core/interactions/instance-inherit";
 import { resolveInstanceContent } from "../../core/interactions/instance-resolve";

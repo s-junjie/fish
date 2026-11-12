@@ -1,11 +1,6 @@
 import { useCallback, useMemo, useState } from "preact/hooks";
-import {
-  DesignDocument,
-  Page,
-  PathElement,
-  getActivePage,
-  updateActivePageElements
-} from "../../core/dsl/types";
+import { DesignDocument, Page, PathElement } from "../../core/dsl/types";
+import { getActivePage, updateActivePageElements } from "../../core/dsl/document-ops";
 import { createId } from "../../core/id";
 import { DEFAULT_STROKE_COLOR } from "../../core/dsl/defaults";
 import { nextPenMode, PenMode, ToolType } from "../../core/tools";

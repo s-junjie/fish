@@ -1,5 +1,6 @@
-import { DesignElement, DesignDocument, updateActivePageElements } from "../../core/dsl/types";
-import { getActivePage } from "../../core/dsl/types";
+import { DesignElement, DesignDocument } from "../../core/dsl/types";
+import { updateActivePageElements } from "../../core/dsl/document-ops";
+import { getActivePage } from "../../core/dsl/document-ops";
 import { elementAABB, isLineElement } from "../../core/geometry/element-bounds";
 import { mirrorElement } from "../../core/interactions/line-ops";
 import { findParentById, mapElements } from "../../core/geometry/tree-ops";

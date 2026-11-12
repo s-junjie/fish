@@ -1,13 +1,7 @@
 import { useCallback, useRef, useState } from "preact/hooks";
 import type { VNode } from "preact";
-import {
-  DesignDocument,
-  DesignElement,
-  DesignStyle,
-  StyleType,
-  getActivePage,
-  updateActivePageElements
-} from "../../core/dsl/types";
+import { DesignDocument, DesignElement, DesignStyle, StyleType } from "../../core/dsl/types";
+import { getActivePage, updateActivePageElements } from "../../core/dsl/document-ops";
 import { mapElements } from "../../core/geometry/tree-ops";
 import { addStyleToDoc, updateStyleInDoc } from "../../core/interactions/style-ops";
 import { StylePickerPopover, type CurrentSelectionPreview } from "../inspector/StylePickerPopover";

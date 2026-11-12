@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import { h } from "preact";
 import { maskAlphaFilterDef, maskBackdropClip, maskClipDef, maskCoveragePaint, maskIsClip, maskLayerDef, MaskDefOptions } from "../src/ui/canvas/mask-defs";
 import { renderNodeList } from "../src/ui/canvas/SvgElementRenderer";

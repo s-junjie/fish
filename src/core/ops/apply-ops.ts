@@ -8,7 +8,7 @@
  */
 
 import type { ComponentElement, DesignDocument, DesignElement } from "../dsl/types";
-import { getActivePage, updateActivePageElements } from "../dsl/types";
+import { getActivePage, updateActivePageElements } from "../dsl/document-ops";
 import { resolveInstanceSelection, type InstanceSelection } from "../interactions/instance-resolve";
 import {
   findElementById,
@@ -45,6 +45,25 @@ import { isObj, mintId, num, str, type OpOutcome } from "./op-primitives";
 import { scaleElementGeometry } from "../geometry/scale-geometry";
 
 export type { OpOutcome } from "./op-primitives";
+
+/**
+ * Whether anything in a subtree is written in a spelling only the normalizer
+ * reads — a CSS alias, or a length as a string.
+ *
+ * The gate in `insert` used to look at the top level alone, which was enough
+ * while every inserted node was a leaf. A frame carries children, and a child
+ * using `background` or `padding` was stored verbatim: the frame normalized,
+ * its children did not, and the layer landed with a key nothing paints from.
+ */
+function needsNormalization(el: Record<string, unknown>): boolean {
+  for (const [key, value] of Object.entries(el)) {
+    const canon = canonicalKey(key);
+    if (CSS_PATCH_SPELLINGS.has(canon)) return true;
+    if (STRING_LENGTH_AXES.has(canon) && typeof value === "string") return true;
+  }
+  const children = el.children;
+  return Array.isArray(children) && children.some((child) => isObj(child) && needsNormalization(child));
+}
 
 export interface ApplyOpsResult {
   doc: DesignDocument;
@@ -267,10 +286,7 @@ function applyOne(doc: DesignDocument, raw: unknown): { doc: DesignDocument; out
       const rawPlaced = placeElement(els, withTokens as unknown as DesignElement, raw.position, parentId);
       if (!rawPlaced) return fail(`insert: no container with id "${parentId}"`, parentId);
       const parentLayout = parent ? (layoutOf(parent) ?? null) : null;
-      const hasCss = Object.entries(rawPlaced as unknown as Record<string, unknown>).some(([key, value]) => {
-        const canon = canonicalKey(key);
-        return CSS_PATCH_SPELLINGS.has(canon) || (STRING_LENGTH_AXES.has(canon) && typeof value === "string");
-      });
+      const hasCss = needsNormalization(rawPlaced as unknown as Record<string, unknown>);
       // An element that named a token is normalized even when it spells no CSS
       // key: the shapes this pass writes (`fills`, `tokenBindings`) still have to
       // go through the reader that gives them sizing and a type.

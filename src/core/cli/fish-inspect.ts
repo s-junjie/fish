@@ -29,7 +29,7 @@ import { resolveAxis } from "../geometry/resolve-axis";
 import { textSpec } from "../layout/text-sizing";
 import { textFontStatus } from "../fonts/font-status";
 import { colorTokenColor } from "../interactions/token-ops";
-import { getActivePage } from "../dsl/types";
+import { getActivePage } from "../dsl/document-ops";
 import type { ComponentElement, ContainerElement, DesignDocument, DesignElement, Paint, TextStyle } from "../dsl/types";
 
 export interface InspectedSlot {

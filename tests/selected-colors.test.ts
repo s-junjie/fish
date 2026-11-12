@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { boundColorTokenFor, boundFillStyleFor, collectSelectedColors, applyColorToSelection, applyPaintToSelection, selectedColorCss, SelectedColor } from "../src/core/interactions/selected-colors";
-import { ColorToken, ComponentElement, DesignDocument, DesignElement, InstanceElement, Page, Paint, PaintStyle, RectElement, getActivePage } from "../src/core/dsl/types";
+import { ColorToken, ComponentElement, DesignDocument, DesignElement, InstanceElement, Page, Paint, PaintStyle, RectElement } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 
 const rect = (props: Partial<RectElement>): RectElement => ({
   id: "r",

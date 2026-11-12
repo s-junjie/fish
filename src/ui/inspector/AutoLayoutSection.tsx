@@ -1,4 +1,5 @@
-import { AutoLayout, DesignElement, DesignDocument, FrameElement, PolygonElement, getActivePage } from "../../core/dsl/types";
+import { AutoLayout, DesignElement, DesignDocument, FrameElement, PolygonElement } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
 import { applyAutoLayout } from "../../core/compile";
 import { findParentById, isContainer } from "../../core/geometry/tree-ops";
 import { ScrubInput } from "../ScrubInput";

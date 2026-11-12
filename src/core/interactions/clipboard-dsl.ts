@@ -1,4 +1,4 @@
-import { getActivePage } from "../dsl/types";
+import { getActivePage } from "../dsl/document-ops";
 import type { DesignElement, DesignDocument } from "../dsl/types";
 import { ELEMENT_TYPES } from "../dsl/schema-enums";
 import { normalizeDesignDocument } from "../dsl/normalize/document";

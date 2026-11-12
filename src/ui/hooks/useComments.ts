@@ -24,7 +24,7 @@ import {
 } from "../../core/comments/suggested-ops";
 import { t } from "../../i18n";
 import type { DesignDocument, DesignElement } from "../../core/dsl/types";
-import { getActivePage } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
 
 const USER_AUTHOR = { id: "user", name: "User", role: "user" as const };
 

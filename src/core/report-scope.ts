@@ -10,7 +10,7 @@
 
 import type { CompileDiagnostic } from "./compile";
 import type { DesignDocument, DesignElement } from "./dsl/types";
-import { getActivePage } from "./dsl/types";
+import { getActivePage } from "./dsl/document-ops";
 import { findElementById, flattenElements } from "./geometry/tree-ops";
 
 export interface ScopedValidate {

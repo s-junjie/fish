@@ -1,4 +1,5 @@
-import { DesignDocument, CanvasSpec, getActivePage, updateActivePage } from "../../core/dsl/types";
+import { DesignDocument, CanvasSpec } from "../../core/dsl/types";
+import { getActivePage, updateActivePage } from "../../core/dsl/document-ops";
 import { DEFAULT_CANVAS_BACKGROUND } from "../../core/dsl/defaults";
 import { ColorField } from "../ColorField";
 import { t } from "../../i18n";

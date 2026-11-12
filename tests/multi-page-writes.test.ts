@@ -1,12 +1,7 @@
 import { flattenLayout } from "../src/core/dsl/layout-flat";
 import { describe, it, expect } from "vitest";
-import {
-  DesignDocument,
-  DesignElement,
-  RectElement,
-  getActivePage,
-  updateActivePageElements
-} from "../src/core/dsl/types";
+import { DesignDocument, DesignElement, RectElement } from "../src/core/dsl/types";
+import { getActivePage, updateActivePageElements } from "../src/core/dsl/document-ops";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
 import { serializeSelf, loadInitialDocument } from "../src/core/data-bridge";
 

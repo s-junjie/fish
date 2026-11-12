@@ -1,5 +1,5 @@
 import { layoutOf } from "../src/core/dsl/layout-flat";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import { describe, it, expect } from "vitest";
 import { applyOps } from "../src/core/ops/apply-ops";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
@@ -220,6 +220,40 @@ describe("applyOps", () => {
     expect(childLocal.y).toBe(108);
     expect(childCss.x).toBe(16);
     expect(childCss.y).toBe(32);
+  });
+
+  it("normalizes the CHILDREN of an inserted frame, not only the frame", () => {
+    // The gate that decides whether an insert goes through the normalizer looked
+    // at the top-level keys alone. A frame written in stored spelling with a
+    // child written in CSS spelling therefore landed raw: `background` painted
+    // nothing, and `font-size` sat beside the `style` the renderer reads.
+    const start = doc([frame("host")]);
+    const { doc: next, outcomes } = applyOps(start, [
+      {
+        op: "insert",
+        parentId: "host",
+        element: {
+          id: "card",
+          type: "frame",
+          width: 120,
+          height: 80,
+          children: [
+            { id: "swatch", type: "rect", width: 40, height: 40, background: "#FF0000" },
+            { id: "label", type: "text", content: "Hi", "font-size": "20px" }
+          ]
+        }
+      }
+    ]);
+
+    expect(outcomes[0].ok).toBe(true);
+    const card = (byId(next, "host") as unknown as { children: DesignElement[] }).children[0];
+    const kids = (card as unknown as { children: DesignElement[] }).children;
+    const swatch = kids.find((el) => el.id === "swatch")!;
+    expect(swatch.fills).toEqual([{ type: "solid", color: "#FF0000" }]);
+    expect((swatch as unknown as Record<string, unknown>).background).toBeUndefined();
+    const label = kids.find((el) => el.id === "label")! as unknown as { style?: { fontSize?: number } };
+    expect(label.style?.fontSize).toBe(20);
+    expect((label as unknown as Record<string, unknown>)["font-size"]).toBeUndefined();
   });
 
   it("refuses a parent that cannot hold children", () => {
@@ -683,5 +717,31 @@ describe("reset-instance is the UI's Reset", () => {
     const again = applyOps(start, [{ op: "reset-instance", targetId: clean.id }]);
     expect(again.doc).toBe(start);
     expect(again.outcomes[0].detail).toMatch(/nothing to reset/);
+  });
+});
+
+describe("a `transform` patch replaces the fields it can express", () => {
+  // `absorbTransform` lets an explicitly written field win over the list, so a
+  // stale field is not merely untidy: the patch silently changes nothing.
+  const skewed = () =>
+    doc([{ ...rect("r"), rotation: 0, skewX: 15, skewY: 5, perspective: 400 } as unknown as DesignElement]);
+
+  it("clears the shear the new list does not mention", () => {
+    const { doc: next } = applyOps(skewed(), [
+      { op: "patch", targetId: "r", props: { transform: "rotate(10deg)" } }
+    ]);
+    const after = byId(next, "r")!;
+    expect(after.rotation).toBe(10);
+    expect(after.skewX).toBeUndefined();
+    expect(after.skewY).toBeUndefined();
+    expect(after.perspective).toBeUndefined();
+  });
+
+  it("writes the shear the new list names", () => {
+    const { doc: next } = applyOps(skewed(), [
+      { op: "patch", targetId: "r", props: { transform: "skewX(30deg)" } }
+    ]);
+    expect(byId(next, "r")!.skewX).toBe(30);
+    expect(byId(next, "r")!.skewY).toBeUndefined();
   });
 });

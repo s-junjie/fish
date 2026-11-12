@@ -1,12 +1,5 @@
-import {
-  ContainerElement,
-  DesignDocument,
-  DesignElement,
-  PathElement,
-  RectElement,
-  getActivePage,
-  updateActivePageElements
-} from "../../../core/dsl/types";
+import { ContainerElement, DesignDocument, DesignElement, PathElement, RectElement } from "../../../core/dsl/types";
+import { getActivePage, updateActivePageElements } from "../../../core/dsl/document-ops";
 import { relayoutDocumentTree, resizeStackWithPins } from "../../../core/compile";
 import { layoutOf } from "../../../core/dsl/layout-flat";
 import { calculateVisibleViewport } from "../../../core/geometry/cull";

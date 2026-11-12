@@ -1,13 +1,5 @@
-import {
-  ComponentElement,
-  ComponentOverride,
-  DesignDocument,
-  DesignElement,
-  FrameElement,
-  InstanceElement,
-  getActivePage,
-  updateActivePageElements
-} from "../dsl/types";
+import { ComponentElement, ComponentOverride, DesignDocument, DesignElement, FrameElement, InstanceElement } from "../dsl/types";
+import { getActivePage, updateActivePageElements } from "../dsl/document-ops";
 import { deepEqual } from "../deep-equal";
 import { resolveInstanceBox, resolveInstanceNumberMode, resolveInstanceTheme } from "./instance-inherit";
 import {

@@ -1,26 +1,6 @@
-import {
-  DesignDocument,
-  DesignElement,
-  DesignStyle,
-  DesignToken,
-  Effect,
-  EffectStyle,
-  LayoutGuide,
-  LayoutGuideStyle,
-  Paint,
-  PaintStack,
-  PaintStyle,
-  Stroke,
-  StrokeStyle,
-  STYLE_BINDING_FIELDS,
-  StyleType,
-  TextElement,
-  TextStyle,
-  TextStyleDeclaration,
-  TextStyleDefinition,
-  getActivePage,
-  updateActivePageElements
-} from "../dsl/types";
+import { DesignDocument, DesignElement, DesignStyle, DesignToken, Effect, EffectStyle, LayoutGuide, LayoutGuideStyle, Paint, PaintStack, PaintStyle, Stroke, StrokeStyle, StyleType, TextElement, TextStyle, TextStyleDeclaration, TextStyleDefinition } from "../dsl/types";
+import { getActivePage, updateActivePageElements } from "../dsl/document-ops";
+import { STYLE_BINDING_FIELDS } from "../dsl/constants";
 import { topPaint } from "../dsl/paint-stack";
 import { toTextStyleDeclaration } from "../dsl/text-style-declarations";
 import { mapElements } from "../geometry/tree-ops";

@@ -1,4 +1,5 @@
-import { DesignDocument, getActivePage } from "./dsl/types";
+import { DesignDocument } from "./dsl/types";
+import { getActivePage } from "./dsl/document-ops";
 import { convertForeignObjectsToSvg } from "./export-text";
 import { EXPORT_CHROME_SELECTOR } from "./chrome-markers";
 import { bakeTiltedElements } from "./export-tilt";

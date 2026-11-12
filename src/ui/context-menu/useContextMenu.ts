@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "preact/hooks";
-import { DesignDocument, DesignElement, getActivePage, updateActivePageElements } from "../../core/dsl/types";
+import { DesignDocument, DesignElement } from "../../core/dsl/types";
+import { getActivePage, updateActivePageElements } from "../../core/dsl/document-ops";
 import { isContainer, mapElements } from "../../core/geometry/tree-ops";
 import { editableIds, setElementsLocked } from "../../core/geometry/lock";
 import { isConvertibleToPath } from "../../core/geometry/path-convert";

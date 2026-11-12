@@ -14,7 +14,7 @@
  */
 
 import type { AssetRef, DesignDocument, DesignElement, ImagePaint } from "../dsl/types";
-import { getActivePage, updateActivePageElements } from "../dsl/types";
+import { getActivePage, updateActivePageElements } from "../dsl/document-ops";
 import { findElementById, mapElements } from "../geometry/tree-ops";
 import { cropFromPosition } from "../geometry/image-crop";
 import { createId } from "../id";

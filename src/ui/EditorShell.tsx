@@ -1,4 +1,5 @@
-import { ContainerElement, DesignDocument, DesignElement, InstanceElement, Page, PathElement, updatePageCanvas, getActivePage, updateActivePageElements } from "../core/dsl/types";
+import { ContainerElement, DesignDocument, DesignElement, InstanceElement, Page, PathElement } from "../core/dsl/types";
+import { updatePageCanvas, getActivePage, updateActivePageElements } from "../core/dsl/document-ops";
 import { useState, useEffect, useRef, useCallback } from "preact/hooks";
 import { collectDescendantIds } from "../core/geometry/tree-query";
 import { mapElements } from "../core/geometry/tree-edit";

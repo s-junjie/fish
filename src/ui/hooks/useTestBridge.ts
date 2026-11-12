@@ -1,5 +1,6 @@
 import { useEffect } from "preact/hooks";
-import { DesignDocument, DesignElement, getActivePage, updateActivePageElements } from "../../core/dsl/types";
+import { DesignDocument, DesignElement } from "../../core/dsl/types";
+import { getActivePage, updateActivePageElements } from "../../core/dsl/document-ops";
 import { relayoutDocumentTree } from "../../core/compile";
 import { instanceSizeResolver } from "../../core/interactions/instance-size";
 import { clearHeldMasters } from "../../core/interactions/detached-masters";

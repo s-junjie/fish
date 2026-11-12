@@ -1,5 +1,6 @@
 import type { AutoLayout, DesignDocument, DesignElement } from "../dsl/types";
-import { OVERRIDABLE_PROPERTIES, getActivePage } from "../dsl/types";
+import { getActivePage } from "../dsl/document-ops";
+import { OVERRIDABLE_PROPERTIES } from "../dsl/constants";
 import { commitInstanceOverrides, type InstanceSelection } from "../interactions/instance-resolve";
 import { findParentById } from "../geometry/tree-ops";
 import { FLAT_LAYOUT_KEYS, layoutOf } from "../dsl/layout-flat";
@@ -201,9 +202,16 @@ export function preparePatch(
 
   if (has("rotate", "rotation")) delete out.rotation;
   if (has("transform")) {
+    // A transform LIST replaces every field it can express. `absorbTransform`
+    // only fills a field the element does not already state, so a `skewX` left
+    // behind here would outrank the new list and a `rotate(10deg)` patch would
+    // change nothing at all.
     delete out.rotation;
     delete out.rotateX;
     delete out.rotateY;
+    delete out.skewX;
+    delete out.skewY;
+    delete out.perspective;
     delete out.flipX;
     delete out.flipY;
   }

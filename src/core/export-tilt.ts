@@ -10,7 +10,8 @@
  * then embedded as an image at the projected bounds.
  */
 
-import { DesignDocument, DesignElement, getActivePage } from "./dsl/types";
+import { DesignDocument, DesignElement } from "./dsl/types";
+import { getActivePage } from "./dsl/document-ops";
 import { pruneUnusedDefs } from "./export-defs";
 import { findElementById } from "./geometry/tree-ops";
 

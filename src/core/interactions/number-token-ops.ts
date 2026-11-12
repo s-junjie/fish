@@ -12,7 +12,7 @@ import {
   NumberToken,
   NumberTokenCategory
 } from "../dsl/types";
-import { getActivePage } from "../dsl/types";
+import { getActivePage } from "../dsl/document-ops";
 import { createId } from "../id";
 import { bindNumberToken, CORNER_SLOTS, numberTokenPropValue } from "../dsl/token-bindings";
 

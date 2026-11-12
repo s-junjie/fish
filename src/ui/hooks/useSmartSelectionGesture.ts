@@ -1,6 +1,7 @@
 import { useRef, useState } from "preact/hooks";
-import { getActivePage } from "../../core/dsl/types";
-import { DesignDocument, updateActivePageElements } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
+import { DesignDocument } from "../../core/dsl/types";
+import { updateActivePageElements } from "../../core/dsl/document-ops";
 import { SmartSelectionInfo, SmartDotHandle } from "../../core/geometry/smart-selection";
 import { mapElements, isContainer } from "../../core/geometry/tree-ops";
 import { applyAutoLayout } from "../../core/compile";

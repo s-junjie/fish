@@ -1,11 +1,7 @@
 import { useCallback } from "preact/hooks";
 import type { Rect } from "../../core/geometry/bounds";
-import {
-  DesignDocument,
-  FrameElement,
-  getActivePage,
-  updateActivePageElements
-} from "../../core/dsl/types";
+import { DesignDocument, FrameElement } from "../../core/dsl/types";
+import { getActivePage, updateActivePageElements } from "../../core/dsl/document-ops";
 import type { ToolType } from "../../core/tools";
 import { type FramePreset, placeFrameOutsideSiblings } from "../../core/frame-presets";
 import { createId } from "../../core/id";

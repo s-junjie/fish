@@ -7,7 +7,8 @@ import { scaleSelectionInDocument, settleScaledDocument } from "../src/core/inte
 import { createInstanceFromComponent, resetInstanceOverrides } from "../src/core/interactions/component-ops";
 import { propagateMasterSize } from "../src/core/interactions/instance-inherit";
 import { sizeModeOptions } from "../src/ui/size-modes";
-import { DesignDocument, DesignElement, FrameElement, InstanceElement, SizeMode, getActivePage } from "../src/core/dsl/types";
+import { DesignDocument, DesignElement, FrameElement, InstanceElement, SizeMode } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 
 /**
  * An instance stores the box it was authored with and is resolved to what the

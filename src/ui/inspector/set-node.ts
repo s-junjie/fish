@@ -1,4 +1,5 @@
-import { ComponentSetElement, DesignDocument, getActivePage } from "../../core/dsl/types";
+import { ComponentSetElement, DesignDocument } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
 import { findComponentSetNode, findParentById } from "../../core/geometry/tree-ops";
 
 /**

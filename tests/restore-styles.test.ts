@@ -6,7 +6,7 @@ import { createRecoveryStore } from "../src/core/persistence/recovery";
 import { AutosaveController } from "../src/core/persistence/autosave-controller";
 import { EditorStore } from "../src/core/store/editor-store";
 import type { DesignDocument, DesignElement, DesignStyle, Effect, TextElement } from "../src/core/dsl/types";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import { topPaint } from "../src/core/dsl/paint-stack";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize/document";
 import { bindTextStyle, createTextStyle, updateStyleInDoc } from "../src/core/interactions/style-ops";

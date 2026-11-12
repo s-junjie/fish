@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import { exportBounds } from "../src/ui/inspector/export-bounds";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
 import type { DesignDocument, DesignElement } from "../src/core/dsl/types";

@@ -1,10 +1,5 @@
-import {
-  ComponentElement,
-  DesignDocument,
-  DesignElement,
-  Page,
-  getActivePage
-} from "./dsl/types";
+import { ComponentElement, DesignDocument, DesignElement, Page } from "./dsl/types";
+import { getActivePage } from "./dsl/document-ops";
 import { elementAABB, subtreeBounds } from "./geometry/element-bounds";
 import { isElementInViewport, type ViewportBox } from "./geometry/cull";
 import { flattenElements, isContainer } from "./geometry/tree-ops";

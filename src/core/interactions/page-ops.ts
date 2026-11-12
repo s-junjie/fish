@@ -1,5 +1,5 @@
 import type { DesignDocument, DesignElement, InstanceElement, Page } from "../dsl/types";
-import { updateActivePage } from "../dsl/types";
+import { updateActivePage } from "../dsl/document-ops";
 import { createId } from "../id";
 import { isContainer } from "../geometry/tree-ops";
 import { normalizePageViewport, type PageViewport } from "../geometry/viewport";

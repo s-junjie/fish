@@ -1,5 +1,6 @@
-import { ContainerElement, DesignDocument, DesignElement, updateActivePageElements } from "../dsl/types";
-import { getActivePage } from "../dsl/types";
+import { ContainerElement, DesignDocument, DesignElement } from "../dsl/types";
+import { updateActivePageElements } from "../dsl/document-ops";
+import { getActivePage } from "../dsl/document-ops";
 import { elementRotatedAABB } from "../geometry/element-bounds";
 import { findElementById, isContainer, mapElements } from "../geometry/tree-ops";
 import type { Rect } from "../geometry/bounds";

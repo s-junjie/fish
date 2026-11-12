@@ -7,7 +7,8 @@
  */
 
 import { ColorToken, DesignDocument, DesignElement, DesignToken, GradientStop, Paint, Stroke } from "../dsl/types";
-import { getActivePage, STYLE_BINDING_FIELDS } from "../dsl/types";
+import { getActivePage } from "../dsl/document-ops";
+import { STYLE_BINDING_FIELDS } from "../dsl/constants";
 import { createId } from "../id";
 import { parseColorAlpha } from "../geometry/color-utils";
 import { resolveColorTokenHex } from "./style-sync";

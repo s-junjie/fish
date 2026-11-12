@@ -1,4 +1,5 @@
-import { getActivePage, type DesignDocument, type DesignElement, type Effect, type InstanceElement } from "../../core/dsl/types";
+import { type DesignDocument, type DesignElement, type Effect, type InstanceElement } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
 import { elementAABB } from "../../core/geometry/element-bounds";
 import { transformBoundsToAABB, type Rect } from "../../core/geometry/bounds";
 import { findMasterComponent } from "../../core/interactions/component-inventory";

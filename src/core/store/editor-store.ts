@@ -1,13 +1,5 @@
-import {
-  DesignDocument,
-  DesignElement,
-  Page,
-  Paint,
-  getActivePage,
-  updateActivePage,
-  updateActivePageElements,
-  adoptTopLevelElements
-} from "../dsl/types";
+import { DesignDocument, DesignElement, Page, Paint } from "../dsl/types";
+import { getActivePage, updateActivePage, updateActivePageElements, adoptTopLevelElements } from "../dsl/document-ops";
 import { mapElements } from "../geometry/tree-edit";
 import { relayoutDocumentTree } from "../compile";
 import { setAmbientChildSizeResolver } from "../layout/context";

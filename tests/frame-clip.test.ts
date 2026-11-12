@@ -2,13 +2,9 @@ import { describe, expect, it } from "vitest";
 import { CanvasDefs } from "../src/ui/canvas/CanvasDefs";
 import { getShapeLocalPath } from "../src/core/geometry/gradient-utils";
 import { defById } from "./support/defs";
-import {
-  type ComponentElement,
-  type FrameElement,
-  type InstanceElement,
-  hasCornerSmoothing,
-  OVERRIDABLE_PROPERTIES
-} from "../src/core/dsl/types";
+import { type ComponentElement, type FrameElement, type InstanceElement } from "../src/core/dsl/types";
+import { hasCornerSmoothing } from "../src/core/dsl/document-ops";
+import { OVERRIDABLE_PROPERTIES } from "../src/core/dsl/constants";
 import { resolveInstanceContent } from "../src/core/interactions/instance-resolve";
 
 describe("frame and instance clipPath with corner smoothing", () => {

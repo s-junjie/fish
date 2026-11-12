@@ -1,16 +1,5 @@
-import {
-  BlendMode,
-  ColorFilter,
-  CornerRadius,
-  DesignDocument,
-  DesignElement,
-  Effect,
-  PaintStack,
-  Stroke,
-  TextElement,
-  TextStyle,
-  updateActivePageElements
-} from "../dsl/types";
+import { BlendMode, ColorFilter, CornerRadius, DesignDocument, DesignElement, Effect, PaintStack, Stroke, TextElement, TextStyle } from "../dsl/types";
+import { updateActivePageElements } from "../dsl/document-ops";
 import { deepEqual } from "../deep-equal";
 import { editableIds } from "../geometry/lock";
 import { mapElements } from "../geometry/tree-ops";

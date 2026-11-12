@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
-import { DesignDocument, Page, SlideSpec, getActivePage } from "../../core/dsl/types";
+import { DesignDocument, Page, SlideSpec } from "../../core/dsl/types";
+import { getActivePage } from "../../core/dsl/document-ops";
 import { PresentationFrame, presentationFrames, presentablePages, findPresentationSlideIndex } from "../../core/presentation/frames";
 import { ResolvedSlide, createSlideClock, resolveStep } from "../../core/presentation/slide";
 import { isLaidOut, relayoutDocumentTree } from "../../core/compile";

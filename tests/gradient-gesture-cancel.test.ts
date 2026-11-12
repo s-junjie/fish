@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createGradientGesture } from "../src/ui/hooks/canvas-gestures/gradient-gesture";
-import { DesignDocument, DesignElement, getActivePage } from "../src/core/dsl/types";
+import { DesignDocument, DesignElement } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 
 /**
  * What a CANCELLED pointer leaves behind.

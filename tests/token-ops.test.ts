@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DesignElement } from "../src/core/dsl/types";
-import { getActivePage } from "../src/core/dsl/types";
+import { getActivePage } from "../src/core/dsl/document-ops";
 import type { DesignDocument, DropShadowEffect, InstanceElement, RectElement, TextElement } from "../src/core/dsl/types";
 import {
   colorTokensOf,

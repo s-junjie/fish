@@ -1,4 +1,5 @@
-import { DEFAULT_DASH, Stroke } from "../../core/dsl/types";
+import { Stroke } from "../../core/dsl/types";
+import { DEFAULT_DASH } from "../../core/dsl/constants";
 import { SegmentedControl } from "../SegmentedControl";
 import { ScrubInput } from "../ScrubInput";
 import { t } from "../../i18n";

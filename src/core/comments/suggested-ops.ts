@@ -1,4 +1,5 @@
-import { getActivePage, type DesignDocument, type DesignElement } from "../dsl/types";
+import { type DesignDocument, type DesignElement } from "../dsl/types";
+import { getActivePage } from "../dsl/document-ops";
 import { findElementById } from "../geometry/tree-ops";
 import { applyOps, type ApplyOpsResult, type OpOutcome } from "../ops/apply-ops";
 import type { CommentThread, FishCommentsDocument, SuggestedMacroOp } from "./types";
