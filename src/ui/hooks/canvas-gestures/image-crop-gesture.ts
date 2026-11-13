@@ -179,7 +179,7 @@ export function createImageCropGesture(
    *
    * The refusals are ordered like every other geometry handle's — button, lock,
    * propagation — because `e.stopPropagation()` must not happen for a press the
-   * canvas still owns (LESSONS #16/#34). A resolved clone is NOT refused: the crop
+   * canvas still owns. A resolved clone is NOT refused: the crop
    * lives on `fills`, which an instance can own. A row whose bitmap has no
    * recorded natural size refuses quietly: the panel already gates that case with
    * a named reason, so a second message on every pointerdown would be noise on
@@ -209,7 +209,7 @@ export function createImageCropGesture(
     const toLocal = invert(worldMatrixOf(docRef.current, el));
     if (!toLocal) return null;
     // One rect for the whole gesture: re-reading it per move forces a synchronous
-    // layout flush on every pointer event (LESSONS #6).
+    // layout flush on every pointer event.
     const rect = container.getBoundingClientRect();
 
     return {

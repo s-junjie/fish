@@ -56,7 +56,7 @@ function stepInto(route: DesignElement[], level: number): DesignElement {
  *
  * Every rule that decides the target lives here rather than at the call site, so
  * the canvas, the layer tree and the hover preview cannot disagree about what a
- * click means. Extracted from `useCanvasGestures` (AGENTS.md §9).
+ * click means. Extracted from `useCanvasGestures` (AGENTS.md §8).
  */
 export interface ElementClickDeps {
   docRef: { current: DesignDocument };

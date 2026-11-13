@@ -56,7 +56,8 @@ fish/
 │   │   ├── data-bridge.ts         # Pristine capture, parsing, serialization, FSA save
 │   │   └── id.ts                  # Replica-partitioned ID generator
 │   ├── i18n/                      # Key-value localization modules (en.ts, index.ts)
-│   ├── main.tsx                   # Preact workbench UI, canvas renderer, toolbar, panels
+│   ├── ui/                        # Preact shells, canvas, panels, hooks
+│   ├── main.tsx                   # Entry: boot side effects, shell dispatch, one render
 │   └── style.css                  # Tailwind entry
 ├── tests/                         # Vitest unit test suite (pure core logic tests only)
 │   └── e2e/                       # Playwright browser E2E test suites
@@ -118,7 +119,7 @@ fish/
 - **The mode is read once per load.** Both shells mount different hook trees, so swapping one for the other at runtime would change how many hooks run in one component instance; `?view=editor` is a reload, and it is the only way back from the reader.
 - **The reader is read-only by construction.** It never writes the document, and a page switch does not go through `usePageManagement` — that persists a viewport into page metadata and marks the file dirty, which would turn "just looking" into an autosave prompt. A page that was never laid out is reflowed into a memo instead.
 - **The camera is pure** (`ui/viewer/viewer-camera.ts`): a fit never magnifies past 1:1, a pinch anchors the world point under its midpoint, and a pan cannot carry the board off screen.
-- **The backdrop rule still applies.** A page with both a backdrop blur and a blend mode takes the `<g>`-attribute transform, exactly as the editor does (see LESSONS #166); only *where* the transform lands differs.
+- **The backdrop rule still applies.** A page with both a backdrop blur and a blend mode takes the `<g>`-attribute transform (`stage-transform-mode.ts`), exactly as the editor does; only *where* the transform lands differs.
 
 ---
 
@@ -184,8 +185,8 @@ External AI agents interact with FISH either by reading/writing the `#design-doc
 
 The import subsystem (`src/core/import/`) translates external formats into native FISH DSL:
 
-- **HTML Import**: Measures source DOM in an isolated shadow container to capture computed layout boxes and converts CSS flow into absolute DSL structures. Rules in [`docs/lessons/import-export.md`](lessons/import-export.md).
-- **Figma Import**: Maps Figma node JSON and asset bundles directly to DSL primitives and auto-layout attributes, verifying bounds against source frames. Rules in [`docs/lessons/import-export.md`](lessons/import-export.md).
+- **HTML Import**: Measures source DOM in an isolated shadow container to capture computed layout boxes and converts CSS flow into absolute DSL structures.
+- **Figma Import**: Maps Figma node JSON and asset bundles directly to DSL primitives and auto-layout attributes, verifying bounds against source frames.
 
 ---
 

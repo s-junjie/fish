@@ -342,29 +342,6 @@ describe("normalize preserves the mode half of a design token", () => {
     expect(second.document.activeNumberMode).toBe("compact");
   });
 
-  /**
-   * A file written before the axes were split filed a number token's per-mode
-   * values under the COLOUR mode ids. Adopting those ids as the number axis is
-   * what keeps an old document's radii from silently reverting to their base.
-   */
-  it("adopts a legacy document's colour mode ids as its number axis", () => {
-    const { first } = twice(
-      themed(
-        [],
-        {
-          modes: [
-            { id: "default", name: "Default" },
-            { id: "dark", name: "Dark" }
-          ],
-          activeTheme: "dark"
-        },
-        [{ id: "num_gap", name: "space/md", type: "number", value: 16, category: "spacing", modes: { dark: 12 } }]
-      )
-    );
-    expect(first.document.numberModes?.map((m) => m.id)).toEqual(["default", "dark"]);
-    expect(first.document.activeNumberMode).toBe("dark");
-  });
-
   it("declares no number axis when no number token ever filed a mode value", () => {
     const { first } = twice(
       themed([], {

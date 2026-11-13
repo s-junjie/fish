@@ -214,7 +214,7 @@ describe("a scale settles against its own document", () => {
     const [a, after] = laid.children!;
     // The master doubled, so the instance measures doubled and the sibling starts
     // after it. Measured against the master's old 60 it sat at 66, under a 120
-    // pill — the overlap `LESSONS §71` records, one document version too late.
+    // pill — overlapping the next sibling in the row.
     expect(a.width).toBeGreaterThan(90);
     expect(after.x).toBeCloseTo(a.width + 6, 5);
   });

@@ -500,17 +500,6 @@ export function normalizeDesignDocument(input: unknown, context?: NormalizeConte
     if (typeof source.activeNumberMode === "string" && source.activeNumberMode) {
       document.activeNumberMode = source.activeNumberMode;
     }
-  } else {
-    const carriesLegacyNumberModes = (tokens ?? []).some(
-      (token) => token.type === "number" && token.modes && Object.keys(token.modes).length > 0
-    );
-    if (carriesLegacyNumberModes && modes.length > 0) {
-      document.numberModes = modes;
-      document.activeNumberMode =
-        typeof source.activeTheme === "string" && source.activeTheme
-          ? source.activeTheme
-          : modes[0].id;
-    }
   }
 
   // Kept as written, without checking that the frame still exists: a document

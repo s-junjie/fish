@@ -141,19 +141,7 @@ async function decodeToBitmap(file: File | Blob): Promise<DecodedImage> {
   return decodeWithElement(file);
 }
 
-/**
- * The intrinsic size of an asset that is already IN the document — a `data:` or
- * `blob:` URI, not a `File`.
- *
- * Separate from `decodeToBitmap` because there is no Blob to hand it: an asset
- * imported in an earlier session, or one that arrived inside the document's JSON,
- * exists only as its URI. It answers `null` rather than a guess when the decode
- * fails or reports a zero on either axis — a pixel-solved framing derived from an
- * invented size is worse than a crop that refuses and says why (LESSONS #35).
- *
- * `naturalWidth`/`naturalHeight`, not `width`/`height`: a URI can carry an SVG
- * with a bare `viewBox`, and only the natural pair reports what it resolves to.
- */
+
 export async function measureNaturalSize(
   uri: string
 ): Promise<{ width: number; height: number } | null> {
@@ -198,16 +186,7 @@ export function svgIntrinsicSize(text: string): { width: number; height: number 
   return null;
 }
 
-/**
- * Measure a pass-through file without letting the measurement fail the import.
- *
- * An SVG is the reason this returns a fallback: its bytes are already a valid
- * data URI by the time we get here, so a decoder that refuses it is answering a
- * question the markup can answer, and the whole file must not be lost to it.
- * `FALLBACK_SIZE` is the last resort for a file neither the markup nor any
- * decoder can size — a 1×1 element would be unclickable, and an unclickable
- * import reads as "the import did nothing" just as surely as a failure does.
- */
+
 const FALLBACK_SIZE = { width: 300, height: 200 };
 
 async function measureIntrinsicSize(file: File | Blob): Promise<{ width: number; height: number }> {
@@ -217,8 +196,6 @@ async function measureIntrinsicSize(file: File | Blob): Promise<{ width: number;
       const fromMarkup = svgIntrinsicSize(text);
       if (fromMarkup) return fromMarkup;
     } catch {
-      // Fall through to the decoder; a Blob that will not read as text may still
-      // decode as an image.
     }
   }
   try {
@@ -227,7 +204,6 @@ async function measureIntrinsicSize(file: File | Blob): Promise<{ width: number;
     decoded.close();
     if (size.width > 0 && size.height > 0) return size;
   } catch {
-    // Same reasoning as above: a size we cannot read is not a reason to lose the file.
   }
   return FALLBACK_SIZE;
 }

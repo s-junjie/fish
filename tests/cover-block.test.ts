@@ -10,10 +10,6 @@ const rasterBlock = coverBlockHtml(
 
 const vectorBlock = coverBlockHtml(`<svg viewBox="0 0 10 10"><rect width="10" height="10" /></svg>`, "#101010");
 
-// Files written before the block lost its script still carry one; a re-save has to
-// replace it rather than land a second cover beside it.
-const legacyBlock = `<div data-fish-preview="1"><div style="position:fixed;inset:0;display:flex"><img src="data:image/webp;base64,UklGRiIAAABXRUJQVlA4" alt=""></div></div>\n<script data-fish-preview="1">(function(){})()</script>`;
-
 const shell = `<!DOCTYPE html><html><head><title>x</title></head><body><div id="app"></div><script id="design-doc" type="application/json">{}</script></body></html>`;
 
 describe("cover block splicing", () => {
@@ -29,14 +25,6 @@ describe("cover block splicing", () => {
     expect(twice.match(/data-fish-preview="1"/g)).toHaveLength(1);
     expect(twice).toContain("data:image/webp");
     expect(twice).not.toContain("<svg viewBox");
-  });
-
-  it("replaces a cover left by a build that still wrote the script", () => {
-    const once = insertCoverBlock(shell, legacyBlock);
-    const twice = insertCoverBlock(once, vectorBlock);
-    expect(twice.match(/data-fish-preview="1"/g)).toHaveLength(1);
-    expect(twice).not.toContain("<script data-fish-preview");
-    expect(twice).toContain("<svg viewBox");
   });
 
   it("anchors on the app div when the shell has no body", () => {
@@ -58,7 +46,6 @@ describe("cover block splicing", () => {
   // build use: a block the strip regex cannot find is the failure that leaves a
   // second cover in the file on every save.
   it("round-trips the block the generator writes", () => {
-    expect(stripCoverBlock(insertCoverBlock(shell, legacyBlock))).toBe(shell);
     expect(stripCoverBlock(insertCoverBlock(shell, vectorBlock))).toBe(shell);
   });
 });

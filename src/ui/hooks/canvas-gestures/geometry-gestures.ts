@@ -471,14 +471,14 @@ export function createGeometryGestures(ctx: GeometryGestureContext) {
         /**
          * Snap in CANVAS space, not in the element's own.
          *
-         * A child's `x` / `y` are parent-local (LESSONS §4.2) while the page
+         * A child's `x` / `y` are parent-local while the page
          * canvas and the guides are canvas-space, so feeding the local rect to
          * `calculateResizeSnapping` compared a nested element against two
          * different coordinate systems. The parent frame arrived in the
          * candidate list like any other layer and was therefore measured from the
          * wrong origin — which is why resizing inside a frame snapped to other
          * frames and the page but never to the frame the element was in. The
-         * drag path has always rebased here (LESSONS §34); the resize path did
+         * drag path has always rebased here; the resize path did
          * not, and it is the only snap that could not see its own parent.
          *
          * LEFT translation-only on purpose, and that is a limit rather than an
@@ -545,7 +545,7 @@ export function createGeometryGestures(ctx: GeometryGestureContext) {
          * rounds once per pointer event, so a slow drag — 1.002x per frame — reads
          * `round2(1 * 1.002) = 1` on a 1px stroke for every frame of the gesture and
          * the hairline stays at 1x while the box grows 3x. Measuring from the same
-         * snapshot every frame is also what the resize path above does (LESSONS §45).
+         * snapshot every frame is also what the resize path above does.
          *
          * The anchor is the corner opposite the handle, not the panel's picker: a
          * handle drag is a statement about an edge, and a centre anchor would move

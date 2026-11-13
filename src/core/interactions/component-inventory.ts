@@ -16,7 +16,7 @@ import { findElementById, flattenElements, insideComponent, isContainer } from "
  * variant sets, and the small "what IS this node" predicates every entry point
  * asks before acting.
  *
- * Split out of `component-ops.ts` (AGENTS.md §9) along the seam between reading
+ * Split out of `component-ops.ts` (AGENTS.md §8) along the seam between reading
  * the component graph and writing to it: nothing here mutates a document, and
  * `component-ops` / `instance-resolve` / `component-swap` all read through it.
  */

@@ -35,7 +35,7 @@ import { flattenElements, isContainer } from "./tree-ops";
  * handler, because the browser hit-tests the real painted geometry. The
  * consequence to keep in mind: a press that passes through and finds nothing
  * behind the lock reaches the canvas container as an ordinary click, so the
- * marquee must require a real drag distance before it selects (LESSONS §75). A
+ * marquee must require a real drag distance before it selects. A
  * locked layer stays selectable in the Layers Panel and its inspector
  * properties stay editable, which is the Figma contract: lock protects against
  * accidental edits, it does not make the layer read-only.

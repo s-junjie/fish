@@ -22,7 +22,3 @@ export function pluginPublicKey(): JsonWebKey | null {
     return null;
   }
 }
-
-export function hasPluginKey(): boolean {
-  return pluginPublicKey() !== null;
-}

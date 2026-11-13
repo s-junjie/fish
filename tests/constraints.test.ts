@@ -5,7 +5,7 @@ import { parsePathData } from "../src/core/geometry/path-data";
 import { ContainerElement, DesignElement, LineElement, PathElement, RectElement } from "../src/core/dsl/types";
 
 /**
- * Children are stored in the FRAME's local space (LESSONS §4.2), so a child's `x`
+ * Children are stored in the FRAME's local space, so a child's `x`
  * is the distance to the frame's left edge and nothing more. The frame sits at
  * (100, 100) here to make that visible: a child at `x: 20` is 20px from the left
  * edge, not 120.

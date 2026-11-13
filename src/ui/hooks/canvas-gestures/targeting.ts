@@ -7,7 +7,7 @@ import { owningInstanceId } from "../../../core/interactions/component-swap";
  * element list: the rules are shared by the click handler, the hover preview and
  * the frame-depth logic, and keeping them here is what makes "a plain click
  * selects the container, a double click pierces in" one implementation instead of
- * three. Extracted from `useCanvasGestures` (AGENTS.md §9).
+ * three. Extracted from `useCanvasGestures` (AGENTS.md §8).
  */
 /**
  * Returns the chain of ancestor frames for `id`, ordered top-level first and

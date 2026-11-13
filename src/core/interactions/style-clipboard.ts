@@ -16,7 +16,7 @@ import { overrideDerivedNodes } from "./instance-overrides";
  * Every key is optional and PRESENCE is the signal (`fills: []` is a decision —
  * "no fill" — while an absent `fills` means the source had no opinion). Applying
  * the payload therefore writes exactly the keys the source carried, which is the
- * same rule the DSL itself follows (LESSONS §38).
+ * same rule the DSL itself follows.
  */
 export interface CopiedStyle {
   fills?: PaintStack;

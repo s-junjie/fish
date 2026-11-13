@@ -65,6 +65,8 @@ not stop anyone determined. Say so plainly rather than implying otherwise.
 ```
 src/core/persistence/file-policy.ts   readOnlyFromShell / stampFilePolicy   (pure + DOM read)
 src/core/persistence/container.ts     serializeSelf({ readOnly })           (stamp on every write)
+src/main.tsx                          the policy is read once, before a shell is picked
+src/ui/hooks/useReadOnlyLock.ts       the store's `shared-file` lock, applied by every shell
 src/ui/viewer/viewer-mode.ts          readOnly is answered before the device rule
 src/ui/viewer/ViewerChrome.tsx        the third pill: link, or label
 src/ui/hooks/useFileWriteback.ts      triggerSaveAsReadOnly

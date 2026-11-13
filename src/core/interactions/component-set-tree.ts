@@ -15,7 +15,7 @@ import { variantName } from "./variant-naming";
  * Structural surgery on a `componentSet` node: creating it around masters that are
  * already on the canvas, and taking it away again.
  *
- * Split from `component-variants.ts` (AGENTS.md §9) along the seam between moving
+ * Split from `component-variants.ts` (AGENTS.md §8) along the seam between moving
  * NODES and setting a value on one. Everything here is about where a set sits and
  * what is inside it; nothing here decides which value a variant carries.
  *

@@ -40,7 +40,7 @@ for (let i = 0; i < args.length; i++) {
   --generate-key         Print a fresh P-256 keypair and exit.
 
 Signing reads FISH_UPDATE_PRIVATE_JWK (a JWK as JSON). The version is read from
-package.json, which is the only place it lives (AGENTS.md §10).`);
+package.json, which is the only place it lives (AGENTS.md §9).`);
     process.exit(0);
   } else {
     console.error(`error: unknown argument ${args[i]}`);

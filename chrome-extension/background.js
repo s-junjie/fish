@@ -23,17 +23,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
     return true; // Keep message port open for async response
   }
-
-  if (message.action === "inline-single-image") {
-    fetchImageAsDataUrl(message.url)
-      .then((dataUrl) => {
-        sendResponse({ success: true, dataUrl });
-      })
-      .catch((err) => {
-        sendResponse({ success: false, error: err?.message || String(err) });
-      });
-    return true;
-  }
 });
 
 /**

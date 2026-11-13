@@ -271,7 +271,7 @@ export function reorderInAutoLayout(
 
   // The reorder can change this frame's hug size, and that has to reach its
   // ancestors — reflowing only the frame the children moved in left every outer
-  // box at the size it had before the move (LESSONS #20/#23/#27).
+  // box at the size it had before the move.
   const reordered = mapElements(elements, (el) =>
     el.id === parentEl!.id ? ({ ...parentEl, children } as DesignElement) : el
   );

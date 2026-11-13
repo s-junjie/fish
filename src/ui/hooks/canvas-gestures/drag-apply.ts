@@ -144,7 +144,7 @@ export interface DragApplyContext {
 /**
  * One frame of a move drag: snapping, the drop slot, and the transient move.
  *
- * Extracted from `useCanvasGestures` (AGENTS.md §9) — it is the per-frame hot
+ * Extracted from `useCanvasGestures` (AGENTS.md §8) — it is the per-frame hot
  * path of element dragging, and it is the only place that needs the drag refs.
  */
 export function createDragApply(ctx: DragApplyContext) {

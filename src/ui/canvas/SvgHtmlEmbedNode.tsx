@@ -9,6 +9,7 @@ import {
   CANVAS_BADGE_INK,
   CANVAS_GUIDE
 } from "./canvas-colors";
+import { CANVAS_CHROME_TEXT } from "./canvas-text";
 import { NodeRenderContext } from "./NodeRenderContext";
 
 /**
@@ -131,7 +132,7 @@ export function SvgHtmlEmbedNode({
           </div>
         </foreignObject>
       ) : posterUri ? (
-        <g>
+        <>
           <clipPath id={`clip-html-${el.id}`}>
             <path d={shapeLocalD} />
           </clipPath>
@@ -144,9 +145,9 @@ export function SvgHtmlEmbedNode({
             preserveAspectRatio="none"
             clipPath={`url(#clip-html-${el.id})`}
           />
-        </g>
+        </>
       ) : (
-        <g>
+        <>
           <rect
             x={0}
             y={0}
@@ -177,7 +178,7 @@ export function SvgHtmlEmbedNode({
                 textAnchor="middle"
                 fill={CANVAS_BADGE_INK}
                 fontSize={12}
-                fontFamily="ui-monospace, monospace"
+                fontFamily={CANVAS_CHROME_TEXT}
                 fontWeight="600"
               >
                 {titleText}
@@ -188,12 +189,12 @@ export function SvgHtmlEmbedNode({
                 textAnchor="middle"
                 fill={CANVAS_GUIDE}
                 fontSize={9.5}
-                fontFamily="ui-monospace, monospace"
+                fontFamily={CANVAS_CHROME_TEXT}
               >
                 {subText}
               </text>
               {canFitBadge && (
-                <g>
+                <>
                   <rect
                     x={cx - 72}
                     y={cy + 24}
@@ -208,15 +209,15 @@ export function SvgHtmlEmbedNode({
                     textAnchor="middle"
                     fill={CANVAS_BADGE_INK}
                     fontSize={8.5}
-                    fontFamily="ui-monospace, monospace"
+                    fontFamily={CANVAS_CHROME_TEXT}
                   >
                     {t("htmlEmbed.badgeResting")}
                   </text>
-                </g>
+                </>
               )}
             </g>
           )}
-        </g>
+        </>
       )}
 
       {!isPresent && (

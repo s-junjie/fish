@@ -322,7 +322,7 @@ export function CanvasArea({
   // while the pointer is inside the current selection, so they stop wallpapering
   // the canvas the moment a frame is picked. The container rect is cached and
   // invalidated on resize: re-measuring per move forces a synchronous layout
-  // flush during element drags (see docs/LESSONS_LEARNED.md #17).
+  // flush during element drags.
   const smartHoverBox = (() => {
     const frame = smartSelection?.parentFrame;
     // The hover test below is in canvas space, and a frame nested in another

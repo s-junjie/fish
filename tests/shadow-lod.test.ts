@@ -11,7 +11,7 @@ import {
 
 // No DOM in this runner, and the pass only ever asks an element for three things:
 // what the node authored, what the reach is, and whether anything has said `none`
-// yet. The browser half is `scratch/verify-shadow-lod.mjs`.
+// yet (the browser half is verified by `tests/e2e/shadow-lod.spec.mjs`).
 function fakeNode(chain: string | null, reach: string | null) {
   const attrs: Record<string, string> = {
     // Rendered state: the node put its own chain on, like the real markup does.

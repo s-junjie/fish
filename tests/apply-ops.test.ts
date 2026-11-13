@@ -417,7 +417,7 @@ describe("applyOps", () => {
 });
 
 /**
- * `repeat` — the authoring-time stamping macro (`docs/LOOP_EXPRESSION_PLAN.md`).
+ * `repeat` — the authoring-time stamping macro.
  * It is a verb the CLI runs and nothing the document stores, so no test here
  * reads a `repeat` field back out of the artifact; they assert the concrete
  * elements it wrote.

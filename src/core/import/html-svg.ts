@@ -527,8 +527,7 @@ function decorationLines(cs: CSSStyleDeclaration): NonNullable<TextStyle["textDe
  * shifts that box along with the glyphs, which is why the same subtraction is
  * right under `dominant-baseline="hanging"` or `"middle"` too. Neither
  * `getStartPositionOfChar().y` nor the `y` attribute will do: both report where
- * the pen went, and neither moves when `dominant-baseline` does. Measured across
- * fonts and baseline modes in `scratch/probe-ascent-source.mjs`.
+ * the pen went, and neither moves when `dominant-baseline` does.
  */
 export function svgTexts(
   svg: SVGSVGElement,

@@ -1,3 +1,4 @@
+import { Fragment } from "preact";
 import {
   DesignElement,
   InstanceElement,
@@ -802,7 +803,7 @@ export function renderNodeList(
     if (grp.maskEl) {
       const maskNode = renderNode(grp.maskEl, true, `mask_${grp.maskEl.id}`);
       if (isZeroAlphaMask(grp.maskEl)) {
-        return <g key={`mask_grp_${grp.maskEl.id}`}>{maskNode}</g>;
+        return maskNode;
       }
       const maskBox = maskLayerBox(grp.maskEl, ctx);
       /* A mask that is pure geometry is stated as a CLIP, because a `<mask>`
@@ -811,22 +812,22 @@ export function renderNodeList(
          that leaves `backdrop-filter` working is usable here. */
       if (maskIsClip(grp.maskEl, maskBox)) {
         return (
-          <g key={`mask_grp_${grp.maskEl.id}`}>
+          <Fragment key={`mask_grp_${grp.maskEl.id}`}>
             {maskNode}
             <g clipPath={`url(#clip_mask_${grp.maskEl.id})`}>{renderedItems}</g>
-          </g>
+          </Fragment>
         );
       }
       const maskedBackdrops = renderMaskedBackdrops(grp.maskEl, grp.items, maskBox, ctx);
       return (
-        <g key={`mask_grp_${grp.maskEl.id}`}>
+        <Fragment key={`mask_grp_${grp.maskEl.id}`}>
           {maskNode}
           {maskedBackdrops}
           <g data-masked-group="true" mask={`url(#mask_layer_${grp.maskEl.id})`}>{renderedItems}</g>
-        </g>
+        </Fragment>
       );
     }
-    return <g key={`grp_${grp.items[0]?.id ?? gIdx}`}>{renderedItems}</g>;
+    return <Fragment key={`grp_${grp.items[0]?.id ?? gIdx}`}>{renderedItems}</Fragment>;
   });
 
   if (!titles) return rendered;

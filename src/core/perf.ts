@@ -14,10 +14,6 @@
 
 const scope = typeof window !== "undefined" ? ((window as any).__FISH_PERF__ ? (window as any).performance : undefined) : undefined;
 
-export function perfEnabled(): boolean {
-  return typeof window !== "undefined" && Boolean((window as any).__FISH_PERF__);
-}
-
 /** Times `body` and records it as `name`. Returns whatever `body` returned. */
 export function measureSpan<T>(name: string, body: () => T): T {
   if (!scope) return body();

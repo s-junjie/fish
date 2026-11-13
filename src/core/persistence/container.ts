@@ -21,10 +21,6 @@ export const BOTH_BLOCKS_RE =
 
 let pristineHtml = "";
 
-export function getPristineHtml(): string {
-  return pristineHtml;
-}
-
 export function setPristineHtml(html: string): void {
   pristineHtml = html;
 }

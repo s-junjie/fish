@@ -60,7 +60,7 @@ try {
 
   const shell = readFileSync(SHELL);
   // One segment above this build, so the check has something real to find. The
-  // app version is hand-set (AGENTS.md §10), which is exactly why a rehearsal
+  // app version is hand-set (AGENTS.md §9), which is exactly why a rehearsal
   // has to manufacture the difference rather than wait for a release.
   const [major, minor, patch] = pkg.version.split(".").map(Number);
   const newer = `${major}.${minor}.${patch + 1}`;

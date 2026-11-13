@@ -32,7 +32,7 @@ export interface ScaleTool {
   toggle: () => void;
   /**
    * Leave the tool and go back to Move. Stable, so the global shortcut listener
-   * can hold it without re-registering (LESSONS §59).
+   * can hold it without re-registering.
    */
   leave: () => void;
   /** True while a W / H / factor edit is live, so the Size block can stand down. */

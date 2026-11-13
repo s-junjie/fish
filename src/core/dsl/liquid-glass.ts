@@ -6,8 +6,7 @@ import type { LiquidGlassEffect } from "./types";
  * Figma's glass effect and Apple's material are one target, not two: Apple's own
  * iOS 27 UI kit is built with Figma's glass effect — Figma's help text says so in
  * as many words — so the names, units and ranges below are Figma's, and the
- * defaults are the ones measured against Apple's illustrations of the material
- * (docs/LIQUID-GLASS-RESEARCH.md §8 and §9).
+ * defaults are the ones measured against Apple's illustrations of the material.
  *
  * Three quantities are OUR conventions, because Figma publishes neither the
  * units nor the mapping, and they are named here rather than buried in the bake:

@@ -1,3 +1,4 @@
+import { Fragment } from "preact";
 import { useState, useRef, useEffect } from "preact/hooks";
 import { useWindowKeydown } from "../hooks/useWindowKeydown";
 import { Pt, EditablePath, normalizePathOrigin, serializePathData } from "../../core/geometry/path-data";
@@ -216,7 +217,7 @@ export function PenDrawOverlay({
   }
 
   return (
-    <g className="cursor-crosshair" onMouseDown={handlePointerDown}>
+    <g className="cursor-crosshair" strokeWidth={strokeW} onMouseDown={handlePointerDown}>
       {/* Invisible global capture surface */}
       <rect
         x={-50000}
@@ -243,7 +244,6 @@ export function PenDrawOverlay({
           d={rubberBandD}
           fill="none"
           stroke={CANVAS_PREVIEW}
-          strokeWidth={strokeW}
           strokeDasharray={`${3 / zoom} ${3 / zoom}`}
           pointerEvents="none"
         />
@@ -251,7 +251,7 @@ export function PenDrawOverlay({
 
       {/* Handles being dragged for current point */}
       {points.map((pt, idx) => (
-        <g key={`pen_pt_${idx}`}>
+        <Fragment key={`pen_pt_${idx}`}>
           {pt.handleOut && (
             <>
               <line
@@ -260,7 +260,6 @@ export function PenDrawOverlay({
                 x2={pt.handleOut.x}
                 y2={pt.handleOut.y}
                 stroke={CANVAS_SELECT}
-                strokeWidth={strokeW}
               />
               <circle
                 cx={pt.handleOut.x}
@@ -280,7 +279,6 @@ export function PenDrawOverlay({
                 x2={pt.handleIn.x}
                 y2={pt.handleIn.y}
                 stroke={CANVAS_SELECT}
-                strokeWidth={strokeW}
               />
               <circle
                 cx={pt.handleIn.x}
@@ -302,7 +300,7 @@ export function PenDrawOverlay({
             stroke={CANVAS_SELECT}
             strokeWidth={strokeW * 1.2}
           />
-        </g>
+        </Fragment>
       ))}
 
       {/* Close path snap ring on point 0 */}

@@ -116,7 +116,7 @@ export function figmaAssetStoreFromUris(
  * arrives in the document at 2.6MB, where the SAME photograph in a folder comes
  * back through that policy. Unpacking it here and handing the bytes to
  * `figmaAssetStoreFromBlobs` is what makes the two packagings cost the same,
- * whichever door they came through (`docs/FIGMA_IMPORT_PLAN.md` §0: how big an
+ * whichever door they came through (`plans/FIGMA_IMPORT_PLAN.md` §0: how big an
  * image ends up in a document is the app's decision).
  *
  * A URI that is not a data URI at all yields nothing for that ref, which the
@@ -155,7 +155,7 @@ function blobFromDataUri(uri: string): Blob | null {
  *
  * The policy is applied HERE, in the app, rather than in the plugin: how large an
  * image ends up in a document is the app's decision, and a plugin that resized on
- * its own would be making it (`docs/FIGMA_IMPORT_PLAN.md` §0).
+ * its own would be making it (`plans/FIGMA_IMPORT_PLAN.md` §0).
  *
  * A failure is per-image rather than fatal. One unreadable photograph must not
  * cost the other thirty-seven, and the one that failed is named.

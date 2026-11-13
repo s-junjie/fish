@@ -86,7 +86,7 @@ function stripNonCode(source: string): string {
 /**
  * Utility classes that must resolve against the theme.
  *
- * LESSONS §31 is the reason this exists as a test rather than a convention:
+ * This exists as a test rather than a convention because
  * Tailwind JIT emits an unmapped utility as nothing at all — no error, no
  * warning, just a transparent surface. `surface-elevated` was a dead
  * `bg-surface-elevated/40` at AutosaveBadge for exactly that long.
@@ -412,7 +412,7 @@ describe("ui tokenization and i18n (AGENTS.md §3, §4)", () => {
           );
         expect(
           [...new Set(unresolved)],
-          `${rel}: these utilities resolve to nothing. LESSONS §31 — an unmapped Tailwind utility is emitted as an empty rule, so the surface silently disappears`
+          `${rel}: these utilities resolve to nothing — an unmapped Tailwind utility is emitted as an empty rule, so the surface silently disappears`
         ).toEqual([]);
       });
 

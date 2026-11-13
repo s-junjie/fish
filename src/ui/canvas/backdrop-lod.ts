@@ -8,7 +8,7 @@
  * else: removing the `foreignObject` instead costs the same as disabling it, and
  * a plain document padded to 8,647 nodes still ticks at 16.7 ms, so neither the
  * HTML element nor the node count is what is being paid for. The runs are in
- * `docs/CANVAS_PERF.md` §8.
+ * `plans/CANVAS_PERF.md` §8.
  *
  * A footprint too small to show a blur is therefore pure loss — and it is loss
  * exactly where it hurts, because far out is where a large file puts every panel

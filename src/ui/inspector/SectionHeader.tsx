@@ -165,7 +165,7 @@ export function SectionHeaderLabel({
               case;
             - a named `textTransform` scale (`{ micro: "uppercase" }`) emits NO
               utility at all in this build, verified against an isolated config.
-          Both are LESSONS §31's shape: a declaration that compiles to nothing.
+          Both are the same failure mode: a declaration that compiles to nothing.
           The rule to keep: a micro label is 9px + wide tracking + UPPERCASE, and
           all three must be visible in the markup to be reviewable. */}
       <span className={`text-micro uppercase text-ink-muted ${MICRO_LABEL_AXIS_CLASS}`}>{label}</span>

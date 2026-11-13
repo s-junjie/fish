@@ -435,7 +435,7 @@ export function useCanvasGestures({
         // (`box.x < maxX && box.x + box.width > minX`), so at zero width and zero
         // height it collapses to "this element's AABB contains the point" — and
         // then a single click on empty canvas selects every unlocked layer
-        // stacked under the cursor, which is the exact bug LESSONS §75 recorded
+        // stacked under the cursor (a regression of the same shape previously fixed
         // against locked layers swallowing the press. It is reachable again now
         // that a locked layer is DOM-transparent: the press passes through the
         // lock, misses every hit target behind it, and lands here.
@@ -559,7 +559,7 @@ export function useCanvasGestures({
     // particular deselects first — so a plain right-click on a layer used to empty
     // the selection and then re-select whatever the degenerate box happened to
     // contain. The element click handler bails on `button !== 0` for the same
-    // reason and lets the press reach here (LESSONS §16), which means THIS is
+    // reason and lets the press reach here, which means THIS is
     // where the bail-out has to be: the comment above describing a guard that was
     // not in the code is how a right-click emptied the selection while the code
     // read as though it could not.

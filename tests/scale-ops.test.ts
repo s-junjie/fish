@@ -932,7 +932,7 @@ describe("the factor the panel reports", () => {
 });
 
 /**
- * A refusal that is computed and then dropped is the failure LESSONS §15 names:
+ * A refusal that is computed and then dropped silently breaks the control:
  * the number in the field moves, the box does not, and nothing says why. The
  * branches above cover that each refusal is *reached*; this covers that it
  * *arrives* — every refusal names a key the dictionary actually has.

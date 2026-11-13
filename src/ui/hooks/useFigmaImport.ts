@@ -47,7 +47,7 @@ export type ImportProgress = (stage: "images", done: number, total: number) => v
  *
  * ONE DOOR: the file the designer exported with the FISH Export plugin. Nothing
  * here asks Figma for anything, so there is no token, no seat and no rate limit —
- * `docs/FIGMA_IMPORT_PLAN.md` §0.
+ * `plans/FIGMA_IMPORT_PLAN.md` §0.
  */
 export function useFigmaImport({
   docRef,

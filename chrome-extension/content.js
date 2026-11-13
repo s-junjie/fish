@@ -494,7 +494,6 @@
     const uniqueHttp = Array.from(new Set(needFetch));
 
     // 1. Try background service worker first (bypasses CORS via host_permissions)
-    let bgHandled = false;
     try {
       if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
         const response = await new Promise((resolve) => {
@@ -506,7 +505,6 @@
         });
         if (response && response.success && response.results) {
           Object.assign(result, response.results);
-          bgHandled = true;
         }
       }
     } catch (e) {

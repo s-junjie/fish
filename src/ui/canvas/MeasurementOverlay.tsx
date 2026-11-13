@@ -1,3 +1,4 @@
+import { Fragment } from "preact";
 import { MeasureResult } from "../../core/geometry/measure-guides";
 import { CANVAS_CORAL, CANVAS_ON_SELECT, CANVAS_SELECT } from "./canvas-colors";
 import { CANVAS_CHROME_TEXT } from "./canvas-text";
@@ -17,7 +18,7 @@ export function MeasurementOverlay({ measurement, zoom }: MeasurementOverlayProp
   const fontSize = 11 / zoom;
 
   return (
-    <g data-measure-overlay="true" className="pointer-events-none select-none">
+    <g data-measure-overlay="true" className="pointer-events-none select-none" strokeWidth={strokeW}>
       {/* The selection the distances leave from. The selection chrome stands
           down while measuring, so this is the only thing that says where the
           numbers start — and for a multi-selection it is the union box, which
@@ -30,7 +31,6 @@ export function MeasurementOverlay({ measurement, zoom }: MeasurementOverlayProp
         height={referenceBox.height}
         fill="none"
         stroke={CANVAS_SELECT}
-        strokeWidth={strokeW}
       />
       {/* Target Element Outline (Red highlight) */}
       <rect
@@ -40,7 +40,6 @@ export function MeasurementOverlay({ measurement, zoom }: MeasurementOverlayProp
         height={targetBox.height}
         fill="none"
         stroke={strokeColor}
-        strokeWidth={strokeW}
         strokeDasharray={`${4 / zoom} ${3 / zoom}`}
       />
 
@@ -52,7 +51,7 @@ export function MeasurementOverlay({ measurement, zoom }: MeasurementOverlayProp
         const pillH = 16 / zoom;
 
         return (
-          <g key={`measure_line_${idx}`}>
+          <Fragment key={`measure_line_${idx}`}>
             {/* The distance line */}
             <line
               x1={l.x1}
@@ -60,7 +59,6 @@ export function MeasurementOverlay({ measurement, zoom }: MeasurementOverlayProp
               x2={l.x2}
               y2={l.y2}
               stroke={strokeColor}
-              strokeWidth={strokeW}
             />
 
             {/* End caps */}
@@ -72,7 +70,6 @@ export function MeasurementOverlay({ measurement, zoom }: MeasurementOverlayProp
                   x2={l.x1 + 4 / zoom}
                   y2={l.y1}
                   stroke={strokeColor}
-                  strokeWidth={strokeW}
                 />
                 <line
                   x1={l.x2 - 4 / zoom}
@@ -80,7 +77,6 @@ export function MeasurementOverlay({ measurement, zoom }: MeasurementOverlayProp
                   x2={l.x2 + 4 / zoom}
                   y2={l.y2}
                   stroke={strokeColor}
-                  strokeWidth={strokeW}
                 />
               </>
             ) : (
@@ -91,7 +87,6 @@ export function MeasurementOverlay({ measurement, zoom }: MeasurementOverlayProp
                   x2={l.x1}
                   y2={l.y1 + 4 / zoom}
                   stroke={strokeColor}
-                  strokeWidth={strokeW}
                 />
                 <line
                   x1={l.x2}
@@ -99,7 +94,6 @@ export function MeasurementOverlay({ measurement, zoom }: MeasurementOverlayProp
                   x2={l.x2}
                   y2={l.y2 + 4 / zoom}
                   stroke={strokeColor}
-                  strokeWidth={strokeW}
                 />
               </>
             )}
@@ -124,7 +118,7 @@ export function MeasurementOverlay({ measurement, zoom }: MeasurementOverlayProp
             >
               {text}
             </text>
-          </g>
+          </Fragment>
         );
       })}
     </g>

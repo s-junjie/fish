@@ -30,10 +30,6 @@ export function noteCommentDeleted(threadId: string): void {
   deletedCommentIds.add(threadId);
 }
 
-export function noteCommentRestored(threadId: string): void {
-  deletedCommentIds.delete(threadId);
-}
-
 export function clearDeletedCommentIds(): void {
   deletedCommentIds.clear();
 }

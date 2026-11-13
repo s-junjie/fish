@@ -146,7 +146,7 @@ await settle();
 check("a shape is not offered the button at all", await panelFit.count(), 0);
 
 // Inside a frame the layout engine can still own the box, and that refusal keeps
-// the disabled state *with* the reason (LESSONS §15).
+// the disabled state *with* the reason.
 await applySetup([plain("a", 0, 0, 80, 40), plain("b", 0, 60, 80, 40)], {
   sizing: { height: "fit-content" },
   display: "flex",

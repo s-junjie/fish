@@ -251,7 +251,7 @@ check("copy stays available on it", onLocked.includes("copy:off"), false);
 check("cut is off on a locked layer", onLocked.includes("cut:off"), true);
 check("delete is off on a locked layer", onLocked.includes("delete:off"), true);
 // The label is a leaf inside the row: `textContent` of the row concatenates the
-// shortcut hint onto it (LESSONS §30).
+// shortcut hint onto it.
 check(
   "the lock command offers the unlock",
   (await page.locator('[data-context-item="lock"] span').first().textContent()).trim(),

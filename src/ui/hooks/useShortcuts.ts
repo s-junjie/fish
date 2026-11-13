@@ -145,7 +145,7 @@ export function useShortcuts(options: UseShortcutsOptions) {
     // `isScaleToolActive` is a dependency for the same reason `onSetScaleTool` is
     // not one of them: the handler above has to be able to tell whether Enter
     // means "leave Scale", and a flag frozen at the listener's registration would
-    // answer the wrong question (LESSONS §59). The flag is a boolean, so the
+    // answer the wrong question. The flag is a boolean, so the
     // listener re-registers only on the two transitions, not on every render.
     // `onLeaveScaleTool` is a stable `useCallback`, so it does not belong here.
     //

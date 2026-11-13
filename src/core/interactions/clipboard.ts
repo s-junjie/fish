@@ -139,7 +139,7 @@ export function removeElements(elements: DesignElement[], ids: Set<string>): Des
  * Remove `ids` and reflow the whole tree.
  *
  * Reflowing only the frames that lost a child is not enough: a hug frame's new
- * size has to reach its ancestors (LESSONS #20/#23/#27), and a frame whose last
+ * size has to reach its ancestors, and a frame whose last
  * child just left has to collapse onto its padding. Both fall out of one full
  * pass, and a partial one only moves the stale geometry somewhere else.
  */

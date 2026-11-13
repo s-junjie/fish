@@ -107,7 +107,7 @@ export function ScaleSection({
     }
     // A refusal is computed on purpose and then has nowhere to go, which is how a
     // locked layer or a layout-owned size ends up looking like a dead field:
-    // the number moves, nothing does, nothing says why (LESSONS §15).
+    // the number moves, nothing does, nothing says why.
     if (result.refusal && onHint) onHint(t(SCALE_REFUSALS[result.refusal]));
   };
 
@@ -132,7 +132,7 @@ export function ScaleSection({
   );
 
   // With nothing selected there is no box to scale, and every control here would be
-  // a button that silently does nothing. Say so instead (LESSONS §15).
+  // a button that silently does nothing. Say so instead.
   if (selectedElements.length === 0) {
     return (
       <Section id="scale" title={t("scale.title")} trailing={closeButton} data-scale-section="true">

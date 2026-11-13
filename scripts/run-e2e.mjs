@@ -23,7 +23,7 @@ if (!fs.existsSync(distHtml)) {
  *
  * A fresh directory per spec also means the `fish-autosave` IndexedDB and the
  * recovery record start empty, instead of one spec's auto-save becoming the next
- * spec's restore input (LESSONS §28 — `file://` is one shared origin). That
+ * spec's restore input (because `file://` shares one origin). That
  * isolation is per DIRECTORY, which is what makes the run below safe to fan out.
  */
 const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "fish-e2e-"));

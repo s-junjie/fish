@@ -3,7 +3,7 @@
  *
  * A plugin is a bare ES module executed in the host's realm, and a `blob:` module
  * cannot resolve a bare specifier or a relative import (measured — see
- * `docs/PLUGIN_DISTRIBUTION_PLAN.md` §1). Everything it needs therefore arrives
+ * `plans/PLUGIN_DISTRIBUTION_PLAN.md` §1). Everything it needs therefore arrives
  * through this one global, which the shell installs once at boot:
  *
  * - **the runtime** (`preact`, `hooks`, `jsx-runtime`): shared, not duplicated.

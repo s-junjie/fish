@@ -561,8 +561,12 @@ describe("hand-written schema copies stay in step", () => {
    */
   describe("headless report channel", () => {
     it("is wired to both the hook and the canvas-only view", () => {
-      expect(read("src/main.tsx")).toContain("useHeadlessReport");
-      expect(read("src/main.tsx")).toContain("headlessOrigin=");
+      // The shell that answers `?report=1` is the bare embed, so the pin follows
+      // the wiring into `CanvasOnlyRoot` rather than sitting on the entry: an
+      // entry that only dispatches cannot prove either end is connected.
+      const root = read("src/ui/canvas/CanvasOnlyRoot.tsx");
+      expect(root).toContain("useHeadlessReport");
+      expect(root).toContain("headlessOrigin=");
       expect(read("src/ui/hooks/useHeadlessReport.ts")).toContain('id = REPORT_ID');
     });
 

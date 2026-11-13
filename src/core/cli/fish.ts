@@ -300,7 +300,7 @@ function usage(message: string): number {
 // `exitCode`, not `exit()`: Node writes asynchronously to a pipe and synchronously
 // to a file or TTY, so `process.exit()` drops everything past the first pending
 // buffer and still exits 0 — and only `| cat` sees the truncation. Letting the loop
-// drain is the whole fix. See docs/LESSONS_LEARNED.md §111.
+// drain is the whole fix.
 const cliResult = main(process.argv.slice(2));
 if (typeof cliResult === "number") {
   process.exitCode = cliResult;

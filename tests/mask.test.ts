@@ -373,8 +373,7 @@ describe("a mask that is pure geometry is stated as a clip", () => {
   // What is left as a `<mask>`: a gradient or a photo (soft coverage a clip
   // cannot state), a translucent fill, and a text with no outline. Those keep
   // today's behaviour — their blur stays lost — because the one alternative,
-  // a CSS `mask-image` on the backdrop div, is inert inside the canvas tree
-  // (measured, `scratch/dbg-half-mask3.mjs`).
+  // a CSS `mask-image` on the backdrop div, is inert inside the canvas tree.
   const leaf = (extra: Partial<DesignElement> = {}): DesignElement =>
     rect({ isMask: true, fills: [{ type: "solid", color: "#000000" }], ...extra });
 

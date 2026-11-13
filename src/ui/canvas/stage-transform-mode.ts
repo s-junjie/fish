@@ -6,7 +6,7 @@ import { isContainer } from "../../core/geometry/tree-ops";
  * `transform` ATTRIBUTE on a `<g>` — instead of a composited CSS `transform` on
  * the root `<svg>`.
  *
- * `docs/LESSONS_LEARNED.md` #166: Chromium drops every `backdrop-filter` inside
+ * Chromium drops every `backdrop-filter` inside
  * an `<svg>` as soon as (a) a `mix-blend-mode` other than `normal` appears in
  * that `<svg>` AND (b) anything above it moves it by transform — a CSS transform
  * on the `<svg>` itself, the SVG `transform` attribute on it, or one on an HTML

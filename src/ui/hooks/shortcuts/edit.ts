@@ -145,7 +145,7 @@ export const ARROW_NUDGE: KeyRule = {
 /**
  * Layer ordering: `[`, `]`, `Cmd + [`, `Cmd + ]`.
  *
- * Matched on `e.code`, for the same reason the Alt shortcuts are (LESSONS §46):
+ * Matched on `e.code`, for the same reason the Alt shortcuts are:
  * `e.key` is a CHARACTER, and a bare bracket is the one key a layout or an IME
  * most reliably rewrites on the way to the page. `Shift + [` already arrives as
  * `{`, a Chinese or Japanese IME composes it into something else entirely, and a

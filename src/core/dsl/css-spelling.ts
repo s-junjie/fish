@@ -160,7 +160,7 @@ export const NO_CSS_EQUIVALENT: Readonly<Record<string, string>> = {
       "arrowhead", "autoplay", "loop", "muted", "controls", "srcdoc",
       // A ruler over the box, not a style: CSS's nearest neighbours (`background`
       // tiling, `padding`) are a different contract, so there is nothing to
-      // rename it into (§13 of `plans/LAYOUT-GUIDES.md`).
+      // rename it into.
       "layoutGuides"
     ],
     "a design primitive or embed option CSS has no property for"

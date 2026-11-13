@@ -11,8 +11,8 @@ import { DesignDocument, DesignElement, FrameElement } from "../src/core/dsl/typ
  * the caller knows: the masters live on the document. `applyAutoLayout` had 26
  * call sites and the two inside the tree passes were the only ones that passed
  * one, so the auto-layout inspector section, the gestures and `stack-resize` all
- * measured a hugging instance by its authored width — the overlap
- * `LESSONS §71` records, still reachable through the front door.
+ * measured a hugging instance by its authored width (causing sibling overlap),
+ * still reachable through the front door.
  *
  * The store now publishes the resolver once per commit. These tests pin the two
  * halves of that: the direct call and the full-tree call agree, and neither

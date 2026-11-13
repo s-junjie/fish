@@ -101,7 +101,7 @@ export function scalePathGeometry(d: string, sx: number, sy: number): string | n
  * `height`; this brings the drawing back under it.
  *
  * Returns the same element when there is nothing to scale or the scale is 1:1,
- * so a caller keeps structural sharing (LESSONS §7).
+ * so a caller keeps structural sharing.
  */
 export function scaleElementGeometry<T extends DesignElement>(el: T, sx: number, sy: number): T {
   if (sx === 1 && sy === 1) return el;

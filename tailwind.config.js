@@ -21,9 +21,9 @@ import {
  * an armed tool, and a commit/destructive action. Layer selection is a
  * state, not an action, so it wears a neutral wash — see `selection`.
  *
- * Amber sits close to the canvas measurement coral (#EF4444, 0.37
- * perceptual distance). That is accepted: coral only paints while Alt is
- * held (`MeasurementOverlay.tsx`), amber is always on. They do not coexist.
+ * Amber sits close to the canvas measurement coral (#FF5353). That is accepted:
+ * coral only paints while Alt is held (`MeasurementOverlay.tsx`), amber is
+ * always on. They do not coexist.
  */
 export default {
   content: [
@@ -46,11 +46,9 @@ export default {
 
            `mono` is the shell's DEFAULT voice: `src/style.css` sets it on
            `html`, so every string that does not ask otherwise speaks it.
-           `sans` is kept for an explicit `font-sans` opt-in and currently has
-           no consumer — see DESIGN.md §Typography and the note in
-           `src/style.css` for why the default was flipped (short version: a
-           `fontSize` tuple cannot carry a family, so the two-family split was
-           never implemented, and the reference layout was mono-first anyway). */
+           `sans` is kept for an explicit `font-sans` opt-in (e.g. `Button.tsx`
+           and UI/plugin controls) — see DESIGN.md §Typography and the note in
+           `src/style.css` for why the default is mono. */
         sans: ["system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI",
                "Roboto", "Helvetica Neue", "Arial", "sans-serif"],
         mono: ["ui-monospace", "SFMono-Regular", "SF Mono", "Menlo", "Consolas",

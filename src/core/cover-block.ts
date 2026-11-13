@@ -22,14 +22,6 @@ export const COVER_BLOCK_RE =
   /\s*<div\s+data-fish-preview="1"[^>]*>[\s\S]*?<div\s+data-fish-preview-end="1"[^>]*>\s*<\/div>\s*<\/div>/gi;
 
 /**
- * The form files written before the end marker carry: the same wrapper, followed by
- * a script that deleted it. Kept so re-saving one of those files does not stack a
- * second cover on top of the first.
- */
-export const LEGACY_COVER_BLOCK_RE =
-  /\s*<div\s+data-fish-preview="1"[^>]*>[\s\S]*?<\/div>\s*<script\s+data-fish-preview="1"[^>]*>[\s\S]*?<\/script>/gi;
-
-/**
  * Wrap one picture into a cover block: the paper, the picture, and the end marker.
  *
  * `inner` is an `<img>` when a rasterized snapshot was ready and an inline `<svg>`
@@ -65,7 +57,7 @@ export function removeCoverFromDom(): void {
 
 /** Drop any previous cover; a save that produces none leaves the file without. */
 export function stripCoverBlock(html: string): string {
-  return html.replace(COVER_BLOCK_RE, "").replace(LEGACY_COVER_BLOCK_RE, "");
+  return html.replace(COVER_BLOCK_RE, "");
 }
 
 /**

@@ -10,8 +10,8 @@ const artifactPath = (name) => path.join(os.tmpdir(), "fish-e2e-artifacts", name
 // number under the pointer is the only place the value is visible.
 //
 // The stack is nested and off the canvas origin on purpose: a band computed from
-// a child's own `x`/`y` lands at the page origin instead of over the child, which
-// is the failure docs/LESSONS_LEARNED.md §34 records for the gap pills.
+// a child's own `x`/`y` lands at the page origin instead of over the child
+// (matching how spacing bands resolve world coordinates).
 //
 // Band geometry is read off the SVG attributes, which are in WORLD units — the
 // canvas's stage group carries the pan/zoom transform — so nothing here needs a zoom.

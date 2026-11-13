@@ -308,10 +308,6 @@ export function flattenElement(el: DesignElement): DesignElement {
   };
 }
 
-export function flattenElements(elements: DesignElement[]): DesignElement[] {
-  return elements.map(flattenElement);
-}
-
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
 /**

@@ -11,11 +11,9 @@
  */
 
 import type {
-  ColorToken,
   DesignDocument,
   DesignStyle,
-  DesignToken,
-  NumberToken
+  DesignToken
 } from "../dsl/types";
 
 export interface StyleTables {
@@ -63,11 +61,3 @@ export function styleMap(styles: readonly DesignStyle[]): Map<string, DesignStyl
  * inspector, which have always read them from this module.
  */
 export { colorTokenValue, numberTokenValue } from "../dsl/token-value";
-
-export function isColorTokenType(token: DesignToken): token is ColorToken {
-  return token.type === "color";
-}
-
-export function isNumberTokenType(token: DesignToken): token is NumberToken {
-  return token.type === "number";
-}

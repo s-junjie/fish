@@ -6,7 +6,7 @@
  * 199.6, 206.4 and 227.7 ms for the same 480 of them, and rewriting every
  * `filter` attribute to `none` — with all 480 `<filter>` DEFINITIONS left in the
  * tree — takes it to 16.7, the frame a document with no effects pays. The cost is
- * following the REFERENCE, not compiling the chain. `docs/CANVAS_PERF.md` §9.
+ * following the REFERENCE, not compiling the chain. `plans/CANVAS_PERF.md` §9.
  *
  * What buys it back is therefore dropping the reference, and what makes that
  * invisible is the shadow's own reach: the distance a shadow paints BEYOND the

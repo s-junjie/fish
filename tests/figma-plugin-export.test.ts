@@ -1,13 +1,12 @@
 /**
  * The two import doors must produce the SAME DOCUMENT.
  *
- * `docs/FIGMA_IMPORT_PLAN.md` §0: the mapping exists once, in
+ * `plans/FIGMA_IMPORT_PLAN.md` §0: the mapping exists once, in
  * `src/core/import/figma-*.ts`, and the plugin only reshapes bytes on the way in.
  * That is a claim about two pieces of code agreeing, and the only honest way to
  * hold it is to run both and diff. Everything weaker — "it renders", "there are no
  * empty paths" — passes with a mapping that is subtly, silently different, which
- * is exactly how this line already lost ninety degrees of gradient once
- * (`docs/LESSONS_LEARNED.md` §142).
+ * is how this pipeline previously regressed gradient angles.
  */
 
 import fs from "node:fs";

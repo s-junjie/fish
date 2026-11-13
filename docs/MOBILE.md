@@ -43,7 +43,7 @@ fourth shell: same reader, a different reason for being in it.
 
 `touch-action: none` on the element the gesture is bound to, and Pointer Events
 with `setPointerCapture`. Mouse events and post-hoc `preventDefault` lose the
-gesture before dispatch. See `docs/lessons/ui-interaction.md` §35.
+gesture before dispatch.
 
 A board that pans is a board that says so: the stage shows an open hand at rest
 and a closed one while a pointer is down. On a device with a pointer this is the
@@ -160,10 +160,12 @@ src/ui/viewer/
   ViewerShell.tsx      page index, camera state, refit triggers
 ```
 
-- `main.tsx` picks the shell before the editor tree and returns early.
+- `main.tsx` picks the shell before any hook exists and mounts only that root
+  (`ViewerRoot` / `CanvasOnlyRoot` / `EditorRoot`), so the reader never builds
+  the editor's hook tree at all.
 - `DocumentStage` is mounted exactly as `PresentOverlay` mounts it, including the
-  backdrop rule from LESSONS #166: a page with both a backdrop blur and a blend
-  mode takes the `<g>`-attribute transform instead of a CSS transform.
+  backdrop rule (`stage-transform-mode.ts`): a page with both a backdrop blur and
+  a blend mode takes the `<g>`-attribute transform instead of a CSS transform.
 - `viewportBox` comes from the camera, so culling works the same as the editor's.
 - `viewport-fit=cover` in `index.html` plus `env(safe-area-inset-*)` on both pills.
 

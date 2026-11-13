@@ -73,10 +73,6 @@ export function setGradientEditorOpen(open: boolean) {
   gradientEditors = Math.max(0, gradientEditors + (open ? 1 : -1));
 }
 
-export function gradientEditorOpen(): boolean {
-  return gradientEditors > 0;
-}
-
 /** True when an open gradient editor took the key. */
 export function consumeGradientStopDelete(): boolean {
   if (gradientEditors === 0) return false;
@@ -159,10 +155,6 @@ export function setGradientDrag(next: GradientDragState | null) {
   if (sameDrag(drag, next)) return;
   drag = next;
   dragListeners.forEach((fn) => fn());
-}
-
-export function getGradientDrag(): GradientDragState | null {
-  return drag;
 }
 
 export function useGradientDrag(): GradientDragState | null {

@@ -90,8 +90,8 @@ describe("spacingBands", () => {
       ...flattenLayout({ mode: "flex", direction: "row", padding: [10, 10, 10, 10] })
     } as FrameElement;
 
-    // Nested 400/300 down and to the right — the failure docs/LESSONS_LEARNED.md
-    // §34 records, where reading `x`/`y` raw put the bands at the page origin.
+    // Nested 400/300 down and to the right — reading `x`/`y` raw put the
+    // bands at the page origin instead of the element's world origin.
     const bands = spacingBands(
       { elementId: "f1", kind: "padding", sides: [0] },
       frame,

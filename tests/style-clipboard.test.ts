@@ -44,7 +44,7 @@ describe("copy / paste properties", () => {
   });
 
   it("treats an empty paint stack as a decision, not as nothing to copy", () => {
-    // `fills: []` means "no fill" (LESSONS §38) — pasting it has to clear the
+    // `fills: []` means "no fill" — pasting it has to clear the
     // target's fill, and the target's own absent field must stay absent.
     const cleared: RectElement = { id: "a", type: "rect", x: 0, y: 0, width: 1, height: 1, fills: [] };
     const copied = copyStyleFrom(cleared)!;

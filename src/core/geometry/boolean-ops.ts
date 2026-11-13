@@ -250,11 +250,6 @@ export function ringsToPathData(rings: Ring[]): RingPathData | null {
   };
 }
 
-export function elementToRing(el: DesignElement): Ring | null {
-  const rings = elementToRings(el);
-  return rings.length > 0 ? rings[0] : null;
-}
-
 /**
  * One element's outlines as separate rings in WORLD space — the space the
  * renderer paints it in, because the result is written back as a path that

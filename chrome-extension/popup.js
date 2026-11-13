@@ -19,10 +19,6 @@ function showStatus(text, type = "loading") {
   }
 }
 
-function hideStatus() {
-  if (statusBox) statusBox.style.display = "none";
-}
-
 function setButtonsDisabled(disabled) {
   if (btnPick) btnPick.disabled = disabled;
   if (btnPage) btnPage.disabled = disabled;

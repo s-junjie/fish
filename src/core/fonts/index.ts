@@ -14,8 +14,8 @@ export { commandsBounds, commandsToPathData, transformCommands } from "./glyph-p
  * What the outline pipeline needs from a font file: which glyph a character
  * maps to, and what shape that glyph has.
  *
- * Advance widths are deliberately absent. The browser already reports every
- * character's position (see docs/TEXT_OUTLINE_PLAN.md §2.2), and a second
+ *   Advance widths are deliberately absent. The browser already reports every
+ *   character's position, and a second
  * opinion computed here would only be a second thing to disagree with it.
  */
 export interface OutlineFont {

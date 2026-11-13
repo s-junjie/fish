@@ -171,7 +171,7 @@ export function createMultiResizeGesture(ctx: MultiResizeGestureContext) {
         // Snap in CANVAS space, like the single-layer path: the union is already a
         // world-space box, so unlike a nested element it needs no parent rebase, and
         // feeding it a parent-local rect is what made that path compare a child against
-        // two coordinate systems (LESSONS §34).
+        // two coordinate systems.
         const rect = currentContainerRect();
         const vp = rect ? calculateVisibleViewport(pan, zoom, rect.width, rect.height, 0) : null;
         // The same candidate set the single-layer resize and the move drag read:

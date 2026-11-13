@@ -263,5 +263,3 @@ export function commentsCommand(args: string[], opts: CommentsCommandOptions = {
 
   return fail(`unknown comments action "${action}"`);
 }
-
-export const COMMENTS_USAGE = USAGE;

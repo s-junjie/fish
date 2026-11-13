@@ -253,8 +253,7 @@ function InspectorPanelBase({
   // instead of the previous element's half-typed one. The value must be UNIQUE among
   // the stack's children: `key` is matched together with `type`, so a second sibling
   // spelling the same string is handed the first one's old node — and a same-typed
-  // sibling taking it keeps the PREVIOUS element's state (measured in
-  // `scratch/probe-duplicate-keys-same-type.mjs`). Two sections were added here sharing
+  // sibling taking it keeps the PREVIOUS element's state. Two sections were added here sharing
   // one string; each is namespaced below.
   const selectionKey = multiBounds
     ? selectedElements.map((e) => e.id).sort().join(",")

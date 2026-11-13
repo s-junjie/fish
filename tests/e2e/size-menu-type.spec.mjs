@@ -11,7 +11,7 @@
 //      note that brand text on a brand fill is invisible.
 //
 // Measured off the rendered box, not off the class strings: a class can name a
-// token the stylesheet never emitted (LESSONS §31), and only a computed style
+// token the stylesheet never emitted, and only a computed style
 // proves it reached the screen.
 import { chromium } from "playwright";
 import { pathToFileURL } from "url";

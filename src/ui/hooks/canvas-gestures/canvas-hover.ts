@@ -55,7 +55,7 @@ export interface CanvasHoverContext {
  * measurement, and the duplicate target it must keep quiet about), the drag
  * pump, the marquee, and the hover preview.
  *
- * Extracted from `useCanvasGestures` (AGENTS.md §9). The Alt pair is resolved
+ * Extracted from `useCanvasGestures` (AGENTS.md §8). The Alt pair is resolved
  * FIRST so a measurement can never paint over a layer that Alt+drag would copy.
  */
 export function createCanvasHover(ctx: CanvasHoverContext) {

@@ -1,3 +1,4 @@
+import { Fragment } from "preact";
 import { MorphPair } from "../../core/presentation/morph";
 import { CANVAS_GUIDE, CANVAS_SELECT } from "./canvas-colors";
 
@@ -48,7 +49,7 @@ export function MorphPairOverlay({
         const y2 = toOrigin.y + pair.to.y + pair.to.height / 2;
 
         return (
-          <g key={`${pair.fromId}->${pair.toId}`}>
+          <Fragment key={`${pair.fromId}->${pair.toId}`}>
             <line
               x1={x1}
               y1={y1}
@@ -60,7 +61,7 @@ export function MorphPairOverlay({
             />
             <rect x={x1 - cap / 2} y={y1 - cap / 2} width={cap} height={cap} fill={stroke} />
             <rect x={x2 - cap / 2} y={y2 - cap / 2} width={cap} height={cap} fill={stroke} />
-          </g>
+          </Fragment>
         );
       })}
     </g>

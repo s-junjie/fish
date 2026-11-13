@@ -25,7 +25,7 @@ const round2 = (n: number): number => Math.round(n * 100) / 100;
  * holds no opinion about who may edit what. The write half (which nodes an
  * instance owns, how an edit becomes an override) lives in `instance-write`, and
  * re-exported below so callers keep one import. Split out of `component-ops.ts`
- * (AGENTS.md §9): this module reads a document and derives from it,
+ * (AGENTS.md §8): this module reads a document and derives from it,
  * `component-ops` writes whole-document commands.
  */
 

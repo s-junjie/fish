@@ -129,7 +129,7 @@ describe("BAKE_CACHE_BYTES", () => {
     // whereas failing to hold the current rung costs a bake on EVERY frame. So
     // the budget has to clear the mounted set, not the mounted set times the
     // rungs. 540 mounted glass elements is the worst case measured
-    // (`docs/CANVAS_PERF.md`).
+    // (`plans/CANVAS_PERF.md`).
     const MOUNTED = 540;
     expect(BAKE_CACHE_BYTES).toBeGreaterThanOrEqual(MOUNTED * ENTRY_HEAP_BYTES);
   });

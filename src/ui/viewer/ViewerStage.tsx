@@ -37,7 +37,7 @@ export function ViewerStage({
   viewportBox,
   panning
 }: ViewerStageProps) {
-  // Same rule as the editor (LESSONS #166): with a backdrop blur and a blend
+  // Same rule as the editor (`stage-transform-mode.ts`): with a backdrop blur and a blend
   // mode in the page, a transform ABOVE the svg makes Chromium drop every
   // `backdrop-filter` inside it. Then the camera rides a `<g>` attribute instead.
   const needsGroup = useMemo(() => pageNeedsBackdropSafeStage(elements), [elements]);

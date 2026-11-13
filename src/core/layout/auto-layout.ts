@@ -88,9 +88,8 @@ export function relayoutDocumentTree(
   resolveChild?: ChildSizeResolver
 ): DesignElement[] {
   // ONE resolver for both passes. They have to agree: pass 1 measures the
-  // children, pass 2 positions what pass 1 measured, and a child measured by
-  // the master's real size but positioned by its authored size is the overlap
-  // `LESSONS §71` records.
+  // children, pass 2 positions what pass 1 measured — a mismatch between the
+  // two causes sibling overlap.
   const childSize = resolveChildSize(resolveChild);
   const measured = measureTreeBottomUp(elements, childSize);
   const positioned = positionTreeTopDown(measured, childSize);
@@ -99,19 +98,7 @@ export function relayoutDocumentTree(
   return done;
 }
 
-/**
- * The trees this module has already laid out.
- *
- * Layout is idempotent but not free: the two passes measure and clone the whole
- * tree, and a page switch asked for it on every visit even though the page it
- * was opening had not changed since the last one — 2.7 ms on a 1,841-element
- * page, which is a visible hitch on a tab the user flips between.
- *
- * Keyed on the array, so an edit — which always produces a new array through
- * this function — cannot inherit the mark. The cross-page input, a master's box,
- * is kept in step by `propagateMasterSize` on every commit, which rewrites the
- * instances it changes and therefore their pages' arrays too.
- */
+
 const laidOut = new WeakSet<DesignElement[]>();
 
 /** Whether this exact tree has been through `relayoutDocumentTree`. */
@@ -119,18 +106,7 @@ export function isLaidOut(elements: DesignElement[]): boolean {
   return laidOut.has(elements);
 }
 
-/**
- * A container with nothing in the flow has nothing to hug, so a hugging axis
- * collapses onto its own padding. Without this the frame keeps whatever size it
- * had when its last child was removed — the one case where "Hug" visibly stops
- * working, and what left a hole behind after deleting the only child of a stack.
- * Same answer when the flow is empty because every child is hidden or out of it.
- *
- * Returns the frame itself when the collapse is already in place. `children` is
- * part of that test because this normalises a missing array to `[]`, and
- * skipping the rewrite would leave `children: undefined` on a frame the pass
- * has already decided the shape of.
- */
+
 function hugEmptyContainer<T extends ContainerElement>(frameEl: T): T {
   const [pt, pr, pb, pl] = resolvePadding(layoutOf(frameEl as AutoLayoutFields)!.padding);
   const width = hugsAxis(frameEl, "width") ? pl + pr : frameEl.width;

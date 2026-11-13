@@ -13,7 +13,7 @@
  *      spread` — so the two are told apart instead of being one complaint.
  *
  *   2. Does the size actually cost? Architected guesswork either way is not
- *      evidence here: §9 of `docs/CANVAS_PERF.md` measured that a CHIP's filter
+ *      evidence here: §9 of `plans/CANVAS_PERF.md` measured that a CHIP's filter
  *      cost is per element and not per area, and if that holds at poster sizes
  *      then none of this matters. So the second half renders both regions in
  *      Chromium and times them. It also diffs them pixel-for-pixel, because a

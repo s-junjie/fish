@@ -78,9 +78,3 @@ export function overflowFields(axes: OverflowAxes): OverflowFields {
   if (axes.x === axes.y) return axes.x === "visible" ? {} : { overflow: axes.x };
   return { overflowX: axes.x, overflowY: axes.y };
 }
-
-/** Whether the element declares scrolling on either axis. */
-export function declaresScroll(el: OverflowFields | null | undefined): boolean {
-  const { x, y } = overflowAxes(el);
-  return x === "auto" || y === "auto";
-}

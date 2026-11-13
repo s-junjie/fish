@@ -7,7 +7,7 @@ import { CANVAS_SELECT, CANVAS_COMPONENT } from "./canvas-colors";
  * A component set on the canvas: a dashed border around its variants.
  *
  * Separate from `SvgElementRenderer` for a structural reason, not a stylistic one:
- * that file is at the 1000-line hard ceiling (AGENTS.md §9) and a set needs a
+ * that file is at the 1000-line hard ceiling (AGENTS.md §8) and a set needs a
  * branch no other element has — a border that paints nothing, and a collapse that
  * hides all but one child (driven from the layer panel, not a canvas twisty).
  *
@@ -28,7 +28,7 @@ export function ComponentSetFrame({
   const stroke = isDragOver ? CANVAS_SELECT : CANVAS_COMPONENT;
 
   return (
-    <g>
+    <>
       {/* Transparent, so the padding between the variants selects the set rather
           than falling through to whatever is behind it. */}
       <rect
@@ -58,6 +58,6 @@ export function ComponentSetFrame({
       <g transform={`translate(${set.x}, ${set.y})`}>
         {renderNodeList(variants, ctx, false)}
       </g>
-    </g>
+    </>
   );
 }

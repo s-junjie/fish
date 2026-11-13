@@ -976,7 +976,7 @@ export interface ComponentSetElement extends BaseElement, SlideHost {
  * because each of them was sugar over a layer override that already worked
  * (`content`, `visible`, `componentId`), and the two channels meant two rules for
  * "what does this instance own", two sets of repairs, and a property vocabulary
- * with two meanings in it. See `docs/LESSONS_LEARNED.md` §110.
+ * with two meanings in it.
  */
 export interface InstanceElement extends BaseElement {
   type: "instance";

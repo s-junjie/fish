@@ -12,7 +12,7 @@
  * tracks the way CSS does. Writing a ratio where the engine will resolve it
  * differently is the single largest source of `verifyImport` downgrades in this
  * importer — the measured box is the ground truth, and a ratio is only kept when
- * it REPRODUCES that measurement (`docs/LESSONS_LEARNED.md` §137, and the same
+ * it REPRODUCES that measurement (and the same
  * guard the HTML importer applies in its `trackPlan`). Everything that cannot be
  * expressed is reported through `gaps`, never guessed at.
  *

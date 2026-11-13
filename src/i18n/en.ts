@@ -95,7 +95,6 @@ export const en = {
     replaced: "Document replaced"
   },
   updates: {
-    title: "FISH updates",
     titleAvailable: "FISH updates — a new version is available",
     idle: "This is the version you opened. Check whenever you like.",
     checking: "Checking…",

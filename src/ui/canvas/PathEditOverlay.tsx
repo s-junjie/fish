@@ -1,3 +1,4 @@
+import { Fragment } from "preact";
 import { useState, useRef, useEffect } from "preact/hooks";
 import { useWindowKeydown } from "../hooks/useWindowKeydown";
 import { DesignDocument, PathElement } from "../../core/dsl/types";
@@ -536,6 +537,7 @@ export function PathEditOverlay({
       // on the artwork rather than on the origin-plus-`x`/`y` point that only
       // equals it while nothing is turned.
       transform={matrixToSvg(shapeMatrix)}
+      strokeWidth={strokeW}
       className="select-none"
     >
       {/* In a pen mode the outline is the target, so it is drawn: without it
@@ -559,7 +561,7 @@ export function PathEditOverlay({
           if (!a || !b) return null;
 
           return (
-            <g key={`cubic_ctrl_${sIdx}`}>
+            <Fragment key={`cubic_ctrl_${sIdx}`}>
               {/* Handle Line A */}
               <line
                 x1={a.x}
@@ -567,7 +569,6 @@ export function PathEditOverlay({
                 x2={seg.ca.x}
                 y2={seg.ca.y}
                 stroke={CANVAS_SELECT}
-                strokeWidth={strokeW}
               />
               {/* Handle Circle A with transparent hit circle */}
               <circle
@@ -597,7 +598,6 @@ export function PathEditOverlay({
                 x2={seg.cb.x}
                 y2={seg.cb.y}
                 stroke={CANVAS_SELECT}
-                strokeWidth={strokeW}
               />
               {/* Handle Circle B with transparent hit circle */}
               <circle
@@ -619,7 +619,7 @@ export function PathEditOverlay({
                 strokeWidth={strokeW * 0.75}
                 pointerEvents="none"
               />
-            </g>
+            </Fragment>
           );
         }
         return null;
@@ -647,33 +647,36 @@ export function PathEditOverlay({
       )}
 
       {/* Anchor Points */}
-      {editable.anchors.map((p, aIdx) => {
-        const isSelected = selectedAnchorIdxs.has(aIdx);
-        return (
-          <g key={`anchor_${aIdx}`}>
-            {/* Transparent comfortable hit zone */}
-            <circle
-              data-anchor-index={aIdx}
-              cx={p.x}
-              cy={p.y}
-              r={hitR}
-              fill="transparent"
-              style={{ cursor: "default" }}
-              onPointerDown={(e) => handlePointerDownAnchor(e, aIdx)}
-            />
-            {/* Visual anchor point */}
-            <circle
-              cx={p.x}
-              cy={p.y}
-              r={aIdx === doomedIdx ? anchorR * 1.3 : anchorR}
-              fill={aIdx === doomedIdx ? CANVAS_CORAL : isSelected ? CANVAS_SELECT : CANVAS_ON_SELECT}
-              stroke={aIdx === doomedIdx ? CANVAS_ON_SELECT : isSelected ? CANVAS_ON_SELECT : CANVAS_SELECT}
-              strokeWidth={strokeW * 1.2}
-              pointerEvents="none"
-            />
-          </g>
-        );
-      })}
+      {editable.anchors.length > 0 && (
+        <g strokeWidth={strokeW * 1.2}>
+          {editable.anchors.map((p, aIdx) => {
+            const isSelected = selectedAnchorIdxs.has(aIdx);
+            return (
+              <Fragment key={`anchor_${aIdx}`}>
+                {/* Transparent comfortable hit zone */}
+                <circle
+                  data-anchor-index={aIdx}
+                  cx={p.x}
+                  cy={p.y}
+                  r={hitR}
+                  fill="transparent"
+                  style={{ cursor: "default" }}
+                  onPointerDown={(e) => handlePointerDownAnchor(e, aIdx)}
+                />
+                {/* Visual anchor point */}
+                <circle
+                  cx={p.x}
+                  cy={p.y}
+                  r={aIdx === doomedIdx ? anchorR * 1.3 : anchorR}
+                  fill={aIdx === doomedIdx ? CANVAS_CORAL : isSelected ? CANVAS_SELECT : CANVAS_ON_SELECT}
+                  stroke={aIdx === doomedIdx ? CANVAS_ON_SELECT : isSelected ? CANVAS_ON_SELECT : CANVAS_SELECT}
+                  pointerEvents="none"
+                />
+              </Fragment>
+            );
+          })}
+        </g>
+      )}
     </g>
   );
 }

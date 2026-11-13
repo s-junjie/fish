@@ -1,4 +1,5 @@
 import { CANVAS_BADGE_INK, CANVAS_BADGE_RIDGE, CANVAS_BADGE_SURFACE } from "./canvas-colors";
+import { CANVAS_CHROME_TEXT } from "./canvas-text";
 
 /**
  * The number that follows the pointer while a gradient grip is dragged.
@@ -49,7 +50,7 @@ export function GradientHud({ x, y, text, zoom, box }: GradientHudProps) {
         y={top + height / 2}
         textAnchor="middle"
         dominantBaseline="central"
-        fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+        fontFamily={CANVAS_CHROME_TEXT}
         fontSize={FONT_SIZE / zoom}
         fill={CANVAS_BADGE_INK}
       >

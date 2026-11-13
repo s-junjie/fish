@@ -88,12 +88,3 @@ export async function removePlugin(id: string): Promise<void> {
   installed = installed.filter((m) => m.id !== id);
   rebuild();
 }
-
-/** Tests only: drop the module-level state between cases. */
-export function __resetPluginStore(): void {
-  installed = [];
-  ready = false;
-  error = null;
-  listeners.clear();
-  rebuild();
-}

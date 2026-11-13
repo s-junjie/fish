@@ -156,7 +156,7 @@ function applyConstraintsToChild(child: DesignElement, old: Bounds, next: Bounds
  * it cannot come through the ContainerElement entry point.
  *
  * Sizes, not boxes, and that is the whole point. A child's distance to the frame's
- * left edge IS its own `x`, because `x` is local to the frame (LESSONS §4.2). Hand
+ * left edge IS its own `x`, because `x` is local to the frame. Hand
  * this the frame's canvas box and the maths subtracts the frame's origin from a
  * child that never had it: a top-left-constrained child then drifted away from the
  * corner it is pinned to, by exactly the amount the frame's own origin moved.

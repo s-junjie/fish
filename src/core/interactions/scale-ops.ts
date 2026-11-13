@@ -439,7 +439,7 @@ export function scaleReadout(
  * what a scale does.
  *
  * A refusal is a field rather than a silent `changed: false`, so the caller can
- * say why (LESSONS §15) instead of leaving the user wondering whether the
+ * say why instead of leaving the user wondering whether the
  * shortcut registered.
  */
 export function scaleSelectionInDocument(
@@ -478,23 +478,7 @@ function runScale(
   return { doc: updateActivePageElements(doc, next), changed: true };
 }
 
-/**
- * Settle a document a scale just rewrote: the layout pass, measured against the
- * masters THIS document holds.
- *
- * The two must be the same document. `relayoutDocumentTree` falls back to the
- * resolver the store published on its last commit, which describes the document
- * from BEFORE this scale — so a scale that resizes a master and one of its
- * instances in the same action would measure the instance against the master it
- * used to be, and write that stale box into the tree the panel and the selection
- * outline read. The resolver's contract already says an explicit argument wins
- * for exactly this reason.
- *
- * A scale is discrete (the panel's fields) or per-frame (a drag), but it always
- * needs this one pass: it writes sizes the engine can only derive — a
- * `fit-content` text's width, a hugging frame's height, a `fill` child's box —
- * and without it the stored tree holds a number the next relayout replaces.
- */
+
 export function settleScaledDocument(doc: DesignDocument): DesignDocument {
   return updateActivePageElements(
     doc,

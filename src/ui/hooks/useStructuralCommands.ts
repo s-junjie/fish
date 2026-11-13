@@ -312,7 +312,7 @@ export function useStructuralCommands({
    * Hide the whole selection unless every selected layer is already hidden, in
    * which case show it — the same any-on/toggle-off rhythm as `toggleLock`.
    * Visibility feeds auto-layout, so the tree is re-laid-out rather than having
-   * a flag flipped on it (see docs/LESSONS_LEARNED.md). A derived node (a layer
+   * a flag flipped on it. A derived node (a layer
    * inside an instance) is written as an override on its instance.
    */
   const toggleVisibility = useCallback(() => {

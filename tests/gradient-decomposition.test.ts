@@ -20,7 +20,7 @@ const angular = (over: Partial<Extract<Paint, { type: "angular-gradient" }>> = {
 
 describe("diamondQuadrants", () => {
   it("puts the gradient axis normal to the diamond edge, even when that leaves the box", () => {
-    // The worked example from docs/PLAN-angular-diamond-gradients.md §1.2:
+    // Worked example:
     // a 200x100 box, centred, semi-axes rx = ry = 0.5 (so a = 100, b = 50).
     // For the (dx >= 0, dy <= 0) quadrant tMax = 2 and the axis must end at
     // (140, -30) — outside the box, because the axis is perpendicular to the

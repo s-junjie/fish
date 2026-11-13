@@ -183,29 +183,6 @@ export function toElementLocal(
 }
 
 /**
- * World matrix for a node: translate(center)·rotate·translate(-center).
- *
- * With absolute-coordinate v0.1 the node's geometry is *already* placed at its
- * canvas bounds, so this matrix only ever carries the rotation around the
- * center — an unrotated node maps geometry to itself (identity). It must not
- * translate by `bounds.x/y`: every consumer (`nodeContainsPoint`,
- * `transformBoundsToAABB`, `getNodeWorldCorners`, `pointOnLine`) feeds
- * absolute-coordinate geometry into it, so an extra origin translation would
- * shift the result by (x, y) a second time. That was silently broken for any
- * node away from the canvas origin: hit testing missed, drill-in never found a
- * child, world bounds doubled the offset, and the multi-select union box was
- * displaced.
- */
-export function composeTransform(bounds: Rect, rotationDeg: number): Matrix2D {
-  if (Math.abs(rotationDeg % 360) < 1e-9) {
-    return identityMatrix();
-  }
-  const cx = bounds.x + bounds.width / 2;
-  const cy = bounds.y + bounds.height / 2;
-  return rotationAroundDeg(rotationDeg, cx, cy);
-}
-
-/**
  * Figma-style curved double-arrow rotate cursor in SVG data URI format.
  */
 export function getRotateCursor(angleDeg: number = 0): string {

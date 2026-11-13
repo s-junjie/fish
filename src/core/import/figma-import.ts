@@ -20,7 +20,7 @@
  * own file-response shape plus the image bytes beside it — and nothing here
  * fetches anything: `figma-export.ts` unwraps the envelope and this maps it. The
  * REST door (a file key plus a seat-spending token) is gone; `figma-client.ts`
- * with it. See `docs/FIGMA_IMPORT_PLAN.md` §0.
+ * with it. See `plans/FIGMA_IMPORT_PLAN.md` §0.
  */
 
 import type { AssetRef, DesignElement, Page } from "../dsl/types";

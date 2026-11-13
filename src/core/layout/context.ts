@@ -12,7 +12,7 @@ import type { ChildSizeResolver } from "./box";
  * the two inside the tree passes ever passed one, because every other caller
  * (16 in the auto-layout inspector section, the gestures, `stack-resize`) has no
  * resolver to hand and would silently measure a hugging instance by its
- * authored width — the overlap `LESSONS §71` records. Threading it by hand
+ * authored width (risking sibling overlap). Threading it by hand
  * through 24 sites is how the next drift starts, so the store publishes it once
  * per commit and the passes read it from here.
  *

@@ -238,7 +238,7 @@ function maskGeometry(el: DesignElement, fills: PaintStack, box: InstanceBox | n
  * Chromium makes any element carrying a mask a *backdrop root*, so a
  * `backdrop-filter` inside one samples an empty backdrop and paints nothing: a
  * frosted panel lost its blur the moment a mask layer covered it. A `clip-path`
- * is not a backdrop root — measured, `scratch/probe-backdrop-mask.mjs` — so a
+ * is not a backdrop root — measured in Chromium — so a
  * mask whose coverage is 0 or 1 everywhere can be restated as one and the
  * backdrop survives.
  *

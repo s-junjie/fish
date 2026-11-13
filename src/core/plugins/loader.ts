@@ -18,7 +18,7 @@
  *
  * The module arrives as one file: a `blob:` module has no base URL, so a relative
  * `import()` inside it fails to resolve (measured — see
- * `docs/PLUGIN_DISTRIBUTION_PLAN.md` §1). `scripts/build-plugin.mjs` enforces that
+ * `plans/PLUGIN_DISTRIBUTION_PLAN.md` §1). `scripts/build-plugin.mjs` enforces that
  * by bundling with code splitting off.
  */
 import {
@@ -148,17 +148,6 @@ export async function installPlugin(bytes: ArrayBuffer): Promise<InstalledRecord
 /** A picked file is just bytes; what it is comes from what it proves. */
 export async function installFromFile(file: Blob): Promise<InstalledRecord> {
   return installPlugin(await file.arrayBuffer());
-}
-
-/** Fetch a plugin bundle from a URL and install it through the exact same verification. */
-export async function installFromUrl(url: string, fetchImpl?: typeof globalThis.fetch): Promise<InstalledRecord> {
-  const doFetch = fetchImpl ?? globalThis.fetch;
-  const res = await doFetch(url);
-  if (!res.ok) {
-    throw new PluginRejected(`failed to download plugin from ${url} (status ${res.status})`, "shape");
-  }
-  const bytes = await res.arrayBuffer();
-  return installPlugin(bytes);
 }
 
 export async function uninstallPlugin(id: string): Promise<void> {

@@ -1,6 +1,6 @@
 import { isObj } from "./op-primitives";
 
-// `repeat` (§3.3 of docs/LOOP_EXPRESSION_PLAN.md): the authoring-time stamping
+// `repeat`: the authoring-time stamping
 // macro. It is a verb the CLI runs, never a field the document keeps, so the only
 // surface here is the substitution and the insert it drives once per entry.
 export const REPEAT_IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;

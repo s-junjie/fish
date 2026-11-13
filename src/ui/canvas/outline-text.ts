@@ -19,8 +19,7 @@ import { DEFAULT_FONT_FAMILY } from "../../core/font-stack";
  * Wrapping comes from `layoutTextRun` — the same function the exporter uses —
  * so the outlined path breaks at the same word the canvas breaks at. Only the
  * positions inside a line come from the browser, and they come from the browser
- * because that is the only source that agrees with what was drawn (see
- * docs/TEXT_OUTLINE_PLAN.md §2.2).
+ * because that is the only source that agrees with what was drawn.
  */
 export type OutlineTextResult =
   | { ok: true; node: FrameElement }
