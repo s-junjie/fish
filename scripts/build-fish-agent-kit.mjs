@@ -158,6 +158,16 @@ const skillText = kitUrl
   : skillSource;
 fs.writeFileSync(path.join(kit, "SKILL.md"), skillText);
 
+const lucideIconsDir = path.join(root, "node_modules/lucide-react/dist/esm/icons");
+const lucideNames = fs.existsSync(lucideIconsDir)
+  ? fs
+      .readdirSync(lucideIconsDir)
+      .filter((f) => f.endsWith(".mjs"))
+      .map((f) => f.slice(0, -4))
+      .sort()
+      .join(",")
+  : "";
+
 for (const { from, to } of BUNDLES) {
   const dest = path.join(kit, to);
   if (from.endsWith(".ts")) {
@@ -177,7 +187,8 @@ for (const { from, to } of BUNDLES) {
       define: {
         __FISH_APP_VERSION__: JSON.stringify(pkg.version),
         __FISH_KIT_MANIFEST_URL__: JSON.stringify(kitOrigin ? `${kitOrigin}/${STABLE_MANIFEST}` : ""),
-        __FISH_KIT_INSTALL_URL__: JSON.stringify(kitOrigin ? `${kitOrigin}/${STABLE_KIT}` : "")
+        __FISH_KIT_INSTALL_URL__: JSON.stringify(kitOrigin ? `${kitOrigin}/${STABLE_KIT}` : ""),
+        __FISH_LUCIDE_NAMES__: JSON.stringify(lucideNames)
       },
       legalComments: "none",
       logLevel: "warning"

@@ -220,7 +220,7 @@ function checkElement(el: DesignElement, parent: ContainerElement | null, out: C
   // A content-driven size on a container with no layout pass to compute it: the
   // element keeps the box it was authored with, and nothing says why.
   if (
-    (el.type === "frame" || el.type === "component") &&
+    (el.type === "frame" || el.type === "component" || el.type === "componentSet") &&
     !layoutOf(el) &&
     (el.sizing?.width === "fit-content" ||
       el.sizing?.width === "max-content" ||

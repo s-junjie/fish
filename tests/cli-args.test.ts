@@ -6,6 +6,7 @@
 
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { COMMANDS, commandSpec, formLine, parseArgs, renderUsage } from "../src/core/cli/command-spec";
@@ -135,5 +136,82 @@ describe("the built kit answers the same way", () => {
     const res = runCli(["--help"]);
     expect(res.code).toBe(0);
     expect(res.out).toContain(formLine(commandSpec("export")!.forms[0]));
+  });
+
+  (kitBuilt ? it : it.skip)("supports --page and --all-pages on check", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "fish-check-pages-"));
+    try {
+      const docPath = path.join(tmp, "multi.json");
+      fs.writeFileSync(
+        docPath,
+        JSON.stringify({
+          version: "0.1",
+          activePageId: "p1",
+          pages: [
+            {
+              id: "p1",
+              name: "Cover",
+              canvas: { width: 400, height: 400 },
+              children: [{ id: "ok_box", type: "rect", x: 0, y: 0, width: 40, height: 40 }]
+            },
+            {
+              id: "p2",
+              name: "Second",
+              canvas: { width: 400, height: 400 },
+              children: [
+                {
+                  id: "parent_box",
+                  type: "frame",
+                  x: 0,
+                  y: 0,
+                  width: 50,
+                  height: 50,
+                  display: "flex",
+                  children: [{ id: "tall_child", type: "rect", width: 80, height: 80 }]
+                }
+              ]
+            }
+          ]
+        })
+      );
+
+      const p1 = runCli(["check", docPath, "--geometry", "--json"]);
+      expect(p1.code).toBe(0);
+      expect(JSON.parse(p1.out).geometry).toEqual([]);
+
+      const p2 = runCli(["check", docPath, "--page", "p2", "--geometry", "--json"]);
+      expect(p2.code).toBe(0);
+      const p2Json = JSON.parse(p2.out);
+      expect(p2Json.page).toEqual({ id: "p2", name: "Second" });
+      expect(p2Json.geometry.length).toBeGreaterThan(0);
+
+      const all = runCli(["check", docPath, "--all-pages", "--geometry", "--json"]);
+      expect(all.code).toBe(0);
+      const allJson = JSON.parse(all.out);
+      expect(allJson.pages.map((p: any) => p.id)).toEqual(["p1", "p2"]);
+      expect(allJson.geometry.length).toBeGreaterThan(0);
+
+      const missing = runCli(["check", docPath, "--page", "missing_page"]);
+      expect(missing.code).toBe(2);
+
+      const conflict = runCli(["check", docPath, "--page", "p1", "--all-pages"]);
+      expect(conflict.code).toBe(2);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  (kitBuilt ? it : it.skip)("shot.sh refuses unknown flags instead of treating them as output paths", () => {
+    const shotPath = path.join(root, "dist/fish-agent-kit/tools/shot.sh");
+    try {
+      execFileSync("bash", [shotPath, "doc.fish.html", "out.png", "--unknown-flag"], {
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "pipe"]
+      });
+      throw new Error("expected shot.sh to exit non-zero");
+    } catch (err: any) {
+      expect(err.status).toBe(2);
+      expect(String(err.stderr ?? "")).toContain("unknown option");
+    }
   });
 });

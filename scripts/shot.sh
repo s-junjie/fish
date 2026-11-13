@@ -5,6 +5,7 @@
 #
 #   ./shot.sh design.fish.html out.png
 #   ./shot.sh design.fish.html out.png --scale 2
+#   ./shot.sh design.fish.html out.png --page page_2
 #   ./shot.sh design.fish.html out.png --element hero-title
 #   ./shot.sh design.fish.html out.png --debug        # print full browser command line
 #   ./shot.sh design.fish.html out.png --watch      # re-render on every save
@@ -21,19 +22,50 @@
 set -euo pipefail
 
 ARGS=("$@")
-DOC=""; OUT=""; SCALE=1; ELEMENT=""; WATCH=0; DEBUG=0
+DOC=""; OUT=""; SCALE=1; ELEMENT=""; PAGE=""; WATCH=0; DEBUG=0
+need_val() { [ $# -ge 2 ] || { echo "$1 needs a value" >&2; exit 2; }; }
 while [ $# -gt 0 ]; do
   case "$1" in
-    --scale) SCALE="$2"; shift 2 ;;
-    --element) ELEMENT="$2"; shift 2 ;;
+    --scale) need_val "$@"; SCALE="$2"; shift 2 ;;
+    --scale=*) SCALE="${1#--scale=}"; shift ;;
+    --element) need_val "$@"; ELEMENT="$2"; shift 2 ;;
+    --element=*) ELEMENT="${1#--element=}"; shift ;;
+    --page) need_val "$@"; PAGE="$2"; shift 2 ;;
+    --page=*) PAGE="${1#--page=}"; shift ;;
     --watch) WATCH=1; shift ;;
     --debug) DEBUG=1; shift ;;
-    -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) [ -z "$DOC" ] && DOC="$1" || OUT="$1"; shift ;;
+    -h|--help) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --) shift; break ;;
+    -*) echo "unknown option: $1" >&2; exit 2 ;;
+    *)
+      if [ -z "$DOC" ]; then DOC="$1"
+      elif [ -z "$OUT" ]; then OUT="$1"
+      else echo "unexpected argument: $1" >&2; exit 2
+      fi
+      shift ;;
   esac
 done
-[ -n "$DOC" ] && [ -n "$OUT" ] || { echo "usage: $0 <doc.fish.html> <out.png> [--scale N] [--element ID]" >&2; exit 2; }
+while [ $# -gt 0 ]; do
+  if [ -z "$DOC" ]; then DOC="$1"
+  elif [ -z "$OUT" ]; then OUT="$1"
+  else echo "unexpected argument: $1" >&2; exit 2
+  fi
+  shift
+done
+[ -n "$DOC" ] && [ -n "$OUT" ] || { echo "usage: $0 <doc.fish.html> <out.png> [--scale N] [--page ID] [--element ID]" >&2; exit 2; }
 [ -f "$DOC" ] || { echo "no such file: $DOC" >&2; exit 2; }
+
+url_encode() {
+  LC_ALL=C awk -v s="$1" 'BEGIN {
+    for (i = 1; i < 256; i++) ord[sprintf("%c", i)] = i
+    out = ""
+    for (i = 1; i <= length(s); i++) {
+      c = substr(s, i, 1)
+      out = out (c ~ /^[A-Za-z0-9._~-]$/ ? c : sprintf("%%%02X", ord[c]))
+    }
+    printf "%s", out
+  }'
+}
 
 find_browser() {
   local playwright_candidates
@@ -175,8 +207,10 @@ shoot() { # <url-query> <dest.png> <window> — once, then once more without the
 }
 
 # Pass 1 — query the engine via dump-dom for element-specific geometry or fallback.
-REPORT_QUERY="view=canvas&report=1&scale=$SCALE"
-[ -n "$ELEMENT" ] && REPORT_QUERY="$REPORT_QUERY&element=$ELEMENT"
+PAGE_PARAM=""; ELEMENT_PARAM=""
+[ -n "$PAGE" ] && PAGE_PARAM="&page=$(url_encode "$PAGE")"
+[ -n "$ELEMENT" ] && ELEMENT_PARAM="&element=$(url_encode "$ELEMENT")"
+REPORT_QUERY="view=canvas&report=1&scale=$SCALE${PAGE_PARAM}${ELEMENT_PARAM}"
 DUMP_ERR="$TMP/dump.err"
 
 dump_once() {
@@ -233,7 +267,7 @@ esac
 
 # Pass 2 — the picture. A screenshot is the one thing the headless CLI waits for
 # correctly, so the pixels are the browser's job and only the aim is ours.
-shoot "view=canvas${ORIGIN:+&origin=$ORIGIN}" "$OUT" "$WINDOW"
+shoot "view=canvas${PAGE_PARAM}${ORIGIN:+&origin=$ORIGIN}" "$OUT" "$WINDOW"
 [ -s "$OUT" ] || { echo "no image produced (window $WINDOW)" >&2; exit 1; }
 
 echo "$OUT ($(wc -c < "$OUT" | tr -d ' ') bytes, ${EXPECTED} @${SCALE}x) + $JSON"

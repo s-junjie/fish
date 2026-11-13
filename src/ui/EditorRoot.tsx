@@ -663,7 +663,7 @@ export function EditorRoot({ readOnly }: EditorRootProps) {
 
   const components = useMemo(() => collectComponents(doc), [doc]);
 
-  const handleImportComponents = useComponentImport({ docRef, commitSnapshot, setHintMessage: hint.setHintMessage });
+  const handleImportComponents = useComponentImport({ docRef, commitSnapshot, setHintMessage: hint.showHint });
 
   const { assetUsage, cleanUnusedAssets } = useAssetUsage({
     doc,

@@ -108,6 +108,8 @@ function dispatch(argv: string[]): number | Promise<number> {
     geometry: values.has("--geometry"),
     audit: values.has("--audit"),
     strictAssets: values.has("--strict-assets"),
+    page: valueOf("--page"),
+    allPages: values.has("--all-pages"),
     compact: values.has("--compact"),
     embed: values.has("--embed"),
     all: values.has("--all"),

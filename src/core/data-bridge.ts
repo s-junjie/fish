@@ -1,5 +1,5 @@
 import { DesignDocument } from "./dsl/types";
-import { getActivePage, updateActivePageElements } from "./dsl/document-ops";
+import { findPage, getActivePage, updateActivePageElements, withActivePage } from "./dsl/document-ops";
 import { DEFAULT_CANVAS_BACKGROUND } from "./dsl/defaults";
 import { mintDocId } from "./id";
 import { parseLenientJson } from "./dsl/lenient-json";
@@ -82,20 +82,24 @@ export function loadInitialDocument(): DesignDocument {
     // rather than invented, here and in `createEmptyDocument`.
     delete parsed.$schema;
     const normalized = readDocument(parsed);
+    const requestedPage =
+      typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("page") : null;
+    const matchedPage = requestedPage ? findPage(normalized, requestedPage) : undefined;
+    const initialDoc = matchedPage ? withActivePage(normalized, matchedPage.id) : normalized;
     // Before the first layout. A family this machine does not have has to be
     // known BEFORE anything measures: the layout pass below writes `fit-content`
     // boxes, and a box sized in a substitute's metrics is the author's layout
     // destroyed — permanently, in the file, on the one machine that could not
     // show it. `resolveTextSizing` consults the same answer, so this is the call
     // that makes the freeze effective rather than decorative.
-    refreshFontStatus(normalized);
+    refreshFontStatus(initialDoc);
     // The active page, not just the mirror: on a multi-page file the mirror is
     // ignored by readers, so relayouting it alone would drop the measurements.
     return updateActivePageElements(
-      normalized,
+      initialDoc,
       relayoutDocumentTree(
-        getActivePage(normalized).children,
-        instanceSizeResolver(normalized)
+        getActivePage(initialDoc).children,
+        instanceSizeResolver(initialDoc)
       )
     );
   } catch (err) {

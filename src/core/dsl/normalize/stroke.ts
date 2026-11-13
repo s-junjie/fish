@@ -128,7 +128,7 @@ function radiusToken(token: string, reference: number): number | undefined {
  * the DSL has one length per corner, so `50%` on a square is the circle it
  * means, and on a rectangle it is the closest a single radius can be.
  */
-function parseRadiusString(
+export function parseRadiusString(
   raw: string,
   box?: { width: number; height: number }
 ): CornerRadius | undefined {

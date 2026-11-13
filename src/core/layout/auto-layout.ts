@@ -27,11 +27,9 @@ function measureTreeBottomUp(
       let updated: ContainerElement = nextChildren === item.children ? item : { ...item, children: nextChildren };
       if (layoutOf(updated as AutoLayoutFields)) {
         updated = applyAutoLayout(updated, resolveChild);
-      }
-      // A set has no layout to run, and this is the only pass that sees its
-      // children already measured — which is what makes the box it computes
-      // correct rather than one relayout behind.
-      if (updated.type === "componentSet") {
+      } else if (updated.type === "componentSet") {
+        // Free-form sets fit around their variants on the bottom-up pass so
+        // their box sees already-measured variant sizes without lagging a pass.
         updated = fitComponentSet(updated);
       }
       if (updated !== item) changed = true;
@@ -87,13 +85,21 @@ export function relayoutDocumentTree(
   elements: DesignElement[],
   resolveChild?: ChildSizeResolver
 ): DesignElement[] {
-  // ONE resolver for both passes. They have to agree: pass 1 measures the
-  // children, pass 2 positions what pass 1 measured — a mismatch between the
-  // two causes sibling overlap.
+  // ONE resolver for all passes. They have to agree: measure measures the
+  // children, position assigns `fill` widths and positions what measure measured.
+  // A `hug`-height parent holding a `fill`-width `hug`-height column with
+  // wrapping text grows the column during pass 1's position step (when its
+  // width is first assigned), so one more bottom-up/top-down cycle propagates
+  // that new height back up; already-settled trees exit on `positioned === measured`.
   const childSize = resolveChildSize(resolveChild);
-  const measured = measureTreeBottomUp(elements, childSize);
-  const positioned = positionTreeTopDown(measured, childSize);
-  const done = syncInstanceSizing(syncTextSizing(positioned), childSize);
+  let current = elements;
+  for (let pass = 0; pass < 4; pass++) {
+    const measured = measureTreeBottomUp(current, childSize);
+    const positioned = positionTreeTopDown(measured, childSize);
+    current = positioned;
+    if (positioned === measured) break;
+  }
+  const done = syncInstanceSizing(syncTextSizing(current), childSize);
   laidOut.add(done);
   return done;
 }
@@ -158,7 +164,8 @@ export function applyAutoLayout<T extends ContainerElement>(
   // against numbers that disagree about the same child.
   const childSize = resolveChildSize(resolveChild);
 
-  const flow = inFlowChildren(children);
+  const candidates = frameEl.type === "componentSet" && frameEl.collapsed ? children.slice(0, 1) : children;
+  const flow = inFlowChildren(candidates);
   // Nothing left to arrange — every child opted out or is hidden: hug onto the
   // own padding and leave the children exactly where they are.
   if (flow.length === 0) return hugEmptyContainer(frameEl);

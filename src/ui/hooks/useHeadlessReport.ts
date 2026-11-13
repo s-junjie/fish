@@ -2,7 +2,7 @@ import { useEffect } from "preact/hooks";
 import type { DesignDocument } from "../../core/dsl/types";
 import { normalizeDesignDocument } from "../../core/dsl/normalize";
 import { parseLenientJson } from "../../core/dsl/lenient-json";
-import { getActivePage } from "../../core/dsl/document-ops";
+import { findPage, getActivePage } from "../../core/dsl/document-ops";
 import { parseReportRequest, screenshotPlan } from "../../core/export-request";
 import { measureElement } from "../../core/measure";
 import { validateDocument } from "../../core/validate";
@@ -101,6 +101,7 @@ export function useHeadlessReport(
       const report: Record<string, unknown> = {
         ok: true,
         version: live.version,
+        page: { id: page.id, name: page.name },
         canvas,
         scale,
         // `window` is CSS pixels for `--window-size`; `expected` is the bitmap the
@@ -121,6 +122,11 @@ export function useHeadlessReport(
         // is a correct image of the wrong thing.
         report.ok = false;
         report.error = `the #design-doc block is not valid JSON — ${raw.parseError}`;
+        delete report.window;
+        delete report.expected;
+      } else if (request.page && !findPage(current, request.page)) {
+        report.ok = false;
+        report.error = `no page matching "${request.page}" in this document`;
         delete report.window;
         delete report.expected;
       }

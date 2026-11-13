@@ -49,6 +49,44 @@ await page.evaluate(() => {
         height: 60,
         fills: [{ type: "solid", color: "#3B82F6" }],
         children: []
+      },
+      {
+        id: "set_alert",
+        type: "componentSet",
+        name: "AlertDialogHeader",
+        x: 200,
+        y: 0,
+        width: 240,
+        height: 160,
+        variantGroupProperties: { Variant: ["Default", "Destructive"] },
+        children: [
+          {
+            id: "c_alert_def",
+            type: "component",
+            name: "Variant=Default",
+            x: 16,
+            y: 16,
+            width: 180,
+            height: 48,
+            setId: "set_alert",
+            variantProperties: { Variant: "Default" },
+            fills: [{ type: "solid", color: "#1E293B" }],
+            children: []
+          },
+          {
+            id: "c_alert_dest",
+            type: "component",
+            name: "Variant=Destructive",
+            x: 16,
+            y: 80,
+            width: 180,
+            height: 48,
+            setId: "set_alert",
+            variantProperties: { Variant: "Destructive" },
+            fills: [{ type: "solid", color: "#7F1D1D" }],
+            children: []
+          }
+        ]
       }
     ], {
 canvas: { ...base.canvas, width: 2000, height: 1200 },
@@ -232,6 +270,134 @@ if (videoEl) {
 const panelShot = await page.$('[data-ui-panel="left"]');
 await panelShot.screenshot({ path: "/tmp/fish-assets-panel.png" });
 console.log("screenshot: /tmp/fish-assets-panel.png");
+
+// --- list view: unified across Images and Components, and set search --------
+await page.click('[data-testid="assets-view-list"]');
+await page.waitForTimeout(200);
+const imgListView = await page.evaluate(() =>
+  document.querySelector('[data-asset-page="__doc__"] [data-asset-scroll]')?.getAttribute("data-asset-view")
+);
+same("switching to list view updates Images tab", imgListView, "list");
+const imgListBox = await geometry("images");
+await panelShot.screenshot({ path: "/tmp/fish-assets-images-list.png" });
+
+await switchTo("Components");
+const compListView = await page.evaluate(() =>
+  document.querySelector('[data-asset-page="__doc__"] [data-asset-scroll]')?.getAttribute("data-asset-view")
+);
+same("view mode stays list when switching to Components", compListView, "list");
+const compListBox = await geometry("components");
+yes(
+  "list view preview size matches between Images and Components",
+  imgListBox !== null && JSON.stringify(imgListBox) === JSON.stringify(compListBox),
+  `${JSON.stringify(imgListBox)} vs ${JSON.stringify(compListBox)}`
+);
+
+// Expand set in list view
+await page.click('[data-asset-variants="c_alert_def"]');
+await page.waitForTimeout(200);
+const expandedInList = await page.evaluate(() => document.querySelectorAll("[data-asset-component]").length);
+same("expanding a set in list view shows its members", expandedInList, 4);
+await panelShot.screenshot({ path: "/tmp/fish-assets-components-list.png" });
+
+// Search by component set name
+await page.fill('[data-testid="assets-search"]', "AlertDialog");
+await page.waitForTimeout(300);
+const searchSetNames = await page.evaluate(() =>
+  [...document.querySelectorAll('[data-asset-page="__doc__"] [data-asset-name]')].map((el) => el.textContent?.trim())
+);
+yes(
+  "searching by component set name finds the set and keeps its variants",
+  searchSetNames.includes("AlertDialogHeader") && searchSetNames.includes("Default"),
+  JSON.stringify(searchSetNames)
+);
+
+// Clear search & switch back to grid view for screenshot
+await page.fill('[data-testid="assets-search"]', "");
+await page.waitForTimeout(300);
+await page.click('[data-testid="assets-view-grid"]');
+await page.waitForTimeout(200);
+const compGridView = await page.evaluate(() =>
+  document.querySelector('[data-asset-page="__doc__"] [data-asset-scroll]')?.getAttribute("data-asset-view")
+);
+same("switching back to grid view updates Components tab", compGridView, "grid");
+await panelShot.screenshot({ path: "/tmp/fish-assets-components-grid.png" });
+
+// --- import components from a .fish.html file -------------------------------
+const importHtml = `<!doctype html><html><head>
+  <script id="design-doc" type="application/json">${JSON.stringify({
+    id: "doc_foreign",
+    name: "Foreign",
+    version: "0.1",
+    assets: [{ id: "asset_png", name: "foreign.png", uri: "", width: 32, height: 32 }],
+    pages: [{
+      id: "fp1",
+      name: "Page 1",
+      children: [{
+        id: "set_imported",
+        type: "componentSet",
+        name: "ImportedSwitch",
+        x: 0,
+        y: 0,
+        width: 140,
+        height: 80,
+        variantGroupProperties: { State: ["On", "Off"] },
+        children: [
+          {
+            id: "c_imp_on",
+            type: "component",
+            name: "State=On",
+            x: 10,
+            y: 10,
+            width: 50,
+            height: 30,
+            setId: "set_imported",
+            variantProperties: { State: "On" },
+            fills: [{ type: "image", assetId: "asset_png", fit: "cover" }],
+            children: []
+          },
+          {
+            id: "c_imp_off",
+            type: "component",
+            name: "State=Off",
+            x: 70,
+            y: 10,
+            width: 50,
+            height: 30,
+            setId: "set_imported",
+            variantProperties: { State: "Off" },
+            children: []
+          }
+        ]
+      }]
+    }]
+  })}</script>
+  <script id="fish-assets" type="application/json">${JSON.stringify({
+    asset_png: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+  })}</script>
+</head><body></body></html>`;
+
+const beforeImportAssets = await page.evaluate(() => (window.__FISH_BRIDGE__.getDoc().assets || []).length);
+
+await page.setInputFiles('input[name="asset-file"]', {
+  name: "library.fish.html",
+  mimeType: "text/html",
+  buffer: Buffer.from(importHtml, "utf8")
+});
+await page.waitForTimeout(400);
+
+const afterImport = await page.evaluate(() => {
+  const names = [...document.querySelectorAll('[data-asset-page="__doc__"] [data-asset-name]')].map((el) => el.textContent?.trim());
+  const d = window.__FISH_BRIDGE__.getDoc();
+  const hasForeignAsset = (d.assets || []).some((a) => a.name === "foreign.png");
+  return {
+    names,
+    assetCount: (d.assets || []).length,
+    hasForeignAsset
+  };
+});
+yes("importing a .fish.html adds the componentSet to Components tab", afterImport.names.includes("ImportedSwitch"), JSON.stringify(afterImport.names));
+yes("importing components does not import source image assets", !afterImport.hasForeignAsset && afterImport.assetCount === beforeImportAssets, JSON.stringify(afterImport));
 
 await browser.close();
 console.log(`\n${results.filter((r) => r.ok).length} passed, ${results.filter((r) => !r.ok).length} failed`);

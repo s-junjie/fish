@@ -941,7 +941,7 @@ describe("instances reflow a master's layout inside the stored instance box", ()
     expect(inst.overrides).toEqual([]);
   });
 
-  it("importComponentsFromDocument remints ids and carries referenced assets", () => {
+  it("importComponentsFromDocument remints ids without importing source assets", () => {
     const source: DesignDocument = {
       ...baseDoc,
       assets: [{ id: "a1", name: "Photo", uri: "data:image/gif;base64,x", width: 1, height: 1 }],
@@ -979,8 +979,7 @@ describe("instances reflow a master's layout inside the stored instance box", ()
     const imported = els.find((e) => e.type === "component") as ComponentElement;
     expect(imported.id).not.toBe("src_card");
     expect((imported.children[0] as any).id).not.toBe("src_img");
-    expect((imported.children[0] as any).fills[0].assetId).toBe("a1");
-    expect(result.doc.assets).toHaveLength(1);
+    expect(result.doc.assets ?? []).toHaveLength(0);
 
     // A file without the embedded document block is not a FISH file.
     expect(parseFishDocument("<html><body>nope</body></html>")).toBeNull();

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
+import { documentToPlainObject } from "../src/core/document-json";
 import { getActivePage } from "../src/core/dsl/document-ops";
 import { applyOps } from "../src/core/ops/apply-ops";
 import { checkVerdict } from "../src/core/check-verdict";
@@ -432,6 +433,45 @@ describe("unchanged documents stay unchanged", () => {
     const once = normalize([frame({ gap: "$space/md", background: "$color/surface" })]).document;
     const twice = normalizeDesignDocument(once).document;
     expect(twice.pages).toEqual(once.pages);
+  });
+
+  it("round-trips through documentToPlainObject without alias-conflict repairs", () => {
+    const authored = [
+      frame({
+        id: "card_radius",
+        borderRadius: "$radius/card",
+        gap: "$space/md",
+        padding: "$space/md",
+        strokes: [{ color: "#000000", width: 1 }],
+        strokeWidth: "$stroke/thin"
+      }),
+      frame({
+        id: "card_corner",
+        borderRadius: 4,
+        "border-top-left-radius": "$radius/card"
+      }),
+      {
+        id: "label",
+        type: "text",
+        x: 0,
+        y: 0,
+        width: 80,
+        height: 20,
+        content: "Hi",
+        "font-size": "$type/body"
+      }
+    ];
+    const once = normalize(authored);
+    expect(once.repairs).toEqual([]);
+
+    const serialized = JSON.parse(JSON.stringify(documentToPlainObject(once.document)));
+    const roundTripped = normalizeDesignDocument(serialized);
+    expect(roundTripped.repairs).toEqual([]);
+
+    const children = getActivePage(roundTripped.document).children as Array<Record<string, any>>;
+    expect(children.find((c) => c.id === "card_radius")?.borderRadius).toBe(12);
+    expect(children.find((c) => c.id === "card_corner")?.borderRadius).toEqual([12, 4, 4, 4]);
+    expect(children.find((c) => c.id === "label")?.style?.fontSize).toBe(14);
   });
 });
 

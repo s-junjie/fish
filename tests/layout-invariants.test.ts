@@ -224,6 +224,43 @@ describe("convergence per trigger", () => {
     expect((laid[0] as FrameElement).width).toBe(50 + 6 * 10);
     expect((laid[0] as FrameElement).height).toBe(24 + 6 * 10);
   });
+
+  it("a hug-height row holding a fill-width hug-height column with wrapping text settles in one call", () => {
+    const doc: DesignElement[] = [
+      {
+        id: "alert",
+        type: "frame",
+        x: 0,
+        y: 0,
+        width: 400,
+        height: 40,
+        sizing: { width: "fixed", height: "fit-content" },
+        ...flattenLayout({ mode: "flex", direction: "row", gap: 12, padding: 16 }),
+        children: [
+          { id: "icon", type: "rect", x: 0, y: 0, width: 16, height: 20, sizing: { width: "fixed", height: "fixed" } },
+          {
+            id: "content",
+            type: "frame",
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+            sizing: { width: "fill", height: "fit-content" },
+            ...flattenLayout({ mode: "flex", direction: "column", gap: 4 }),
+            children: [
+              txt("title", "Error", { width: "fill", height: "fit-content" }),
+              txt("desc", "Your session has expired. Please log in again to continue.", { width: "fill", height: "fit-content" })
+            ]
+          } as FrameElement
+        ]
+      } as FrameElement
+    ];
+    const laid = settled(doc);
+    const alert = laid[0] as FrameElement;
+    const content = alert.children[1] as FrameElement;
+    expect(content.width).toBe(400 - 32 - 12 - 16);
+    expect(alert.height).toBe(content.height + 32);
+  });
 });
 
 describe("grid column-major", () => {

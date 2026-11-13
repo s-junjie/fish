@@ -1,5 +1,6 @@
 import { ComponentElement, ComponentSetElement, DesignDocument, DesignElement } from "../dsl/types";
 import { getActivePage, updateActivePageElements } from "../dsl/document-ops";
+import { layoutOf } from "../dsl/layout-flat";
 import {
   findComponentSetNode,
   flattenElements,
@@ -8,7 +9,12 @@ import {
   removeElementFromTree
 } from "../geometry/tree-ops";
 import { createId } from "../id";
+import { applyAutoLayout } from "../layout/auto-layout";
 import { fitComponentSet, nextVariantOrigin } from "../layout/component-set";
+
+function layoutComponentSet(set: ComponentSetElement): ComponentSetElement {
+  return layoutOf(set) ? applyAutoLayout(set) : fitComponentSet(set);
+}
 import { assembleComponentSet, dissolveComponentSet, ensureComponentSet, setNodeHolding } from "./component-set-tree";
 import { nextVariantPropertyName, nextVariantValueName, parseSlashNaming, variantName } from "./variant-naming";
 
@@ -158,7 +164,7 @@ function writeSet(
   if (append) nextChildren.push(append);
 
   return withElementReplaced(doc, set.id, () =>
-    fitComponentSet({ ...set, variantGroupProperties: properties, children: nextChildren })
+    layoutComponentSet({ ...set, variantGroupProperties: properties, children: nextChildren })
   );
 }
 
@@ -460,7 +466,7 @@ export function removeVariant(doc: DesignDocument, componentId: string): DesignD
   return remaining.length === 1
     ? dissolveComponentSet(next, setId) ?? next
     : withElementReplaced(next, setId, () =>
-        fitComponentSet({ ...set, children: (set.children || []).filter((c) => c.id !== componentId) })
+        layoutComponentSet({ ...set, children: (set.children || []).filter((c) => c.id !== componentId) })
       );
 }
 

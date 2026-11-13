@@ -70,6 +70,18 @@ export function getActivePage(doc: DesignDocument): Page {
   return doc.pages.find((p) => p.id === doc.activePageId) || doc.pages[0];
 }
 
+export function findPage(doc: DesignDocument, query: string): Page | undefined {
+  const pages = doc.pages;
+  if (!pages || pages.length === 0) return undefined;
+  return pages.find((p) => p.id === query) ?? pages.find((p) => p.name === query);
+}
+
+export function withActivePage(doc: DesignDocument, pageId: string): DesignDocument {
+  if (!doc.pages || !doc.pages.some((p) => p.id === pageId)) return doc;
+  if (doc.activePageId === pageId) return doc;
+  return { ...doc, activePageId: pageId };
+}
+
 export function updateActivePage(
   doc: DesignDocument,
   updater: (page: Page) => Partial<Page>

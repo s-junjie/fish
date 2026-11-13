@@ -111,9 +111,25 @@ async function request<T>(path: string): Promise<T> {
  */
 const BATCH = 150;
 
+/** Persistent storage backend so CLI runs (where `localStorage` is absent) share the 7-day cache. */
+export interface IconifyStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+}
+
+let customStorage: IconifyStorage | null = null;
+
+export function setIconifyStorage(storage: IconifyStorage | null): void {
+  customStorage = storage;
+}
+
+function activeStorage(): IconifyStorage | undefined {
+  return customStorage ?? globalThis.localStorage;
+}
+
 function readCache<T>(key: string): T | undefined {
   try {
-    const raw = globalThis.localStorage?.getItem(CACHE_PREFIX + key);
+    const raw = activeStorage()?.getItem(CACHE_PREFIX + key);
     return raw ? (JSON.parse(raw) as T) : undefined;
   } catch {
     return undefined;
@@ -122,7 +138,7 @@ function readCache<T>(key: string): T | undefined {
 
 function writeCache(key: string, value: unknown): void {
   try {
-    globalThis.localStorage?.setItem(CACHE_PREFIX + key, JSON.stringify(value));
+    activeStorage()?.setItem(CACHE_PREFIX + key, JSON.stringify(value));
   } catch {
     // A full or disabled storage quota costs a refetch, not a broken panel.
   }
@@ -148,12 +164,29 @@ export function fetchCollections(prefixes: string[]): Promise<IconifyCollection[
   const cached = collectionsCache.get(key);
   if (cached) return Promise.resolve(cached);
   return once(`collections:${key}`, async () => {
-    const res = await request<CollectionsResponse>(
-      `/collections?prefixes=${prefixes.map(encodeURIComponent).join(",")}`
-    );
-    const list = prefixes.map((p) => res.collections?.[p]).filter((c): c is IconifyCollection => !!c);
-    if (list.length > 0) collectionsCache.set(key, list);
-    return list;
+    const cacheKey = `collections:${key}`;
+    const stored = readCache<{ at: number; list: IconifyCollection[] }>(cacheKey);
+    if (stored && Date.now() - stored.at < COLLECTION_TTL_MS && stored.list.length > 0) {
+      collectionsCache.set(key, stored.list);
+      return stored.list;
+    }
+    try {
+      const res = await request<CollectionsResponse>(
+        `/collections?prefixes=${prefixes.map(encodeURIComponent).join(",")}`
+      );
+      const list = prefixes.map((p) => res.collections?.[p]).filter((c): c is IconifyCollection => !!c);
+      if (list.length > 0) {
+        collectionsCache.set(key, list);
+        writeCache(cacheKey, { at: Date.now(), list });
+      }
+      return list;
+    } catch (err) {
+      if (stored?.list?.length) {
+        collectionsCache.set(key, stored.list);
+        return stored.list;
+      }
+      throw err;
+    }
   });
 }
 
@@ -168,17 +201,25 @@ export function fetchIconNames(prefix: string): Promise<string[]> {
       namesCache.set(prefix, stored.names);
       return stored.names;
     }
-    const res = await request<CollectionNamesResponse>(`/collection?prefix=${encodeURIComponent(prefix)}`);
-    const names = [
-      ...(res.uncategorized || []),
-      ...(res.hidden || []),
-      ...Object.values(res.categories || {}).flat(),
-      ...Object.keys(res.aliases || {})
-    ];
-    const unique = [...new Set(names)].sort();
-    namesCache.set(prefix, unique);
-    writeCache(cacheKey, { at: Date.now(), names: unique });
-    return unique;
+    try {
+      const res = await request<CollectionNamesResponse>(`/collection?prefix=${encodeURIComponent(prefix)}`);
+      const names = [
+        ...(res.uncategorized || []),
+        ...(res.hidden || []),
+        ...Object.values(res.categories || {}).flat(),
+        ...Object.keys(res.aliases || {})
+      ];
+      const unique = [...new Set(names)].sort();
+      namesCache.set(prefix, unique);
+      writeCache(cacheKey, { at: Date.now(), names: unique });
+      return unique;
+    } catch (err) {
+      if (stored?.names?.length) {
+        namesCache.set(prefix, stored.names);
+        return stored.names;
+      }
+      throw err;
+    }
   });
 }
 
@@ -202,14 +243,29 @@ export function fetchIconBodies(prefix: string, names: string[]): Promise<Iconif
   if (names.length === 0) return Promise.resolve({ icons: {}, aliases: {}, notFound: [] });
   const sorted = [...names].sort();
   return once(`bodies:${prefix}:${sorted.join(",")}`, async () => {
+    const bodyCacheKey = `bodies:${prefix}`;
+    const cachedBodies = customStorage ? readCache<{ icons: Record<string, IconifyIcon>; aliases: Record<string, IconifyAlias>; width?: number; height?: number }>(bodyCacheKey) : undefined;
     const icons: Record<string, IconifyIcon> = {};
     const aliases: Record<string, IconifyAlias> = {};
     const notFound: string[] = [];
-    let width: number | undefined;
-    let height: number | undefined;
+    let width: number | undefined = cachedBodies?.width;
+    let height: number | undefined = cachedBodies?.height;
+    const missing: string[] = [];
 
-    for (let i = 0; i < sorted.length; i += BATCH) {
-      const batch = sorted.slice(i, i + BATCH);
+    for (const name of sorted) {
+      if (cachedBodies?.icons?.[name]) {
+        icons[name] = cachedBodies.icons[name];
+      } else if (cachedBodies?.aliases?.[name]?.parent && cachedBodies.icons?.[cachedBodies.aliases[name].parent]) {
+        const parent = cachedBodies.aliases[name].parent;
+        aliases[name] = cachedBodies.aliases[name];
+        icons[parent] = cachedBodies.icons[parent];
+      } else {
+        missing.push(name);
+      }
+    }
+
+    for (let i = 0; i < missing.length; i += BATCH) {
+      const batch = missing.slice(i, i + BATCH);
       const res = await request<IconifyBatch>(
         `/${encodeURIComponent(prefix)}.json?icons=${batch.map(encodeURIComponent).join(",")}`
       );
@@ -218,6 +274,15 @@ export function fetchIconBodies(prefix: string, names: string[]): Promise<Iconif
       Object.assign(icons, res.icons || {});
       Object.assign(aliases, res.aliases || {});
       notFound.push(...(res.not_found || []));
+    }
+
+    if (customStorage && missing.length > 0) {
+      writeCache(bodyCacheKey, {
+        width,
+        height,
+        icons: { ...(cachedBodies?.icons ?? {}), ...icons },
+        aliases: { ...(cachedBodies?.aliases ?? {}), ...aliases }
+      });
     }
 
     return { icons, aliases, width, height, notFound };

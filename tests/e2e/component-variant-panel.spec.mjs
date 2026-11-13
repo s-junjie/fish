@@ -202,16 +202,41 @@ await page.click('[data-variant-switch="Disabled"]');
 await page.waitForTimeout(400);
 check("flipping the switch re-pointed the instance", (await setNode("inst_toggle")).componentId, "c_off");
 
-// --- 7. a standalone component offers the canvas "+" too --------------------
-// The command already promoted a lone component to a set; the button was gated on
-// `setId`, so the one case the comment named was the one case it never reached.
+// --- 7. canvas "+" only appears once a variant exists, in component color ---
 await page.evaluate(() => window.__FISH_BRIDGE__.selectElement("c_card"));
 await page.waitForTimeout(250);
 check(
-  "a standalone component shows + Add variant on its box",
-  (await page.$('[data-canvas-add-variant="c_card"]')) !== null,
+  "a standalone component hides + Add variant on the canvas",
+  (await page.$('[data-canvas-add-variant="c_card"]')) === null,
   true
 );
+
+await selectRow("c_size_s");
+await page.waitForTimeout(250);
+check(
+  "a variant member inside a set shows + Add variant on its box",
+  (await page.$('[data-canvas-add-variant="c_size_s"]')) !== null,
+  true
+);
+
+await selectRow("set_size");
+await page.waitForTimeout(250);
+const setAddBtn = await page.$('[data-canvas-add-variant="set_size"]');
+check("a component set shows + Add variant on its box", setAddBtn !== null, true);
+const addBtnColors = await setAddBtn.evaluate((g) => ({
+  fill: g.querySelector("rect")?.getAttribute("fill"),
+  stroke: g.querySelector("path")?.getAttribute("stroke")
+}));
+check("canvas + uses component violet fill and white glyph", addBtnColors, {
+  fill: "#B794FF",
+  stroke: "#FFFFFF"
+});
+const sizeCountBefore = (await setNode("set_size")).children.length;
+await setAddBtn.evaluate((el) =>
+  el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }))
+);
+await page.waitForTimeout(400);
+check("pressing canvas + on a set adds a variant", (await setNode("set_size")).children.length, sizeCountBefore + 1);
 
 // --- 8. an Alt-drop that cannot swap does not fall through to insert --------
 const altDrop = (componentId, instanceId) =>
@@ -258,15 +283,11 @@ await page.waitForTimeout(400);
 check("an Alt-drop of another component swaps in place", await elementCount(), before);
 check("the instance now projects that component", (await setNode("inst_toggle")).componentId, "c_on");
 
-// --- 9. the canvas "+" ACTS, not merely appears -----------------------------
+// --- 9. an orphan component stays quiet on canvas until promoted via inspector -
 // A variant copied out of its set keeps the `setId` it had, so the layer claims a
-// set that does not hold it. The command read that claim, found no node to add to
-// and returned: the button drew itself, took the press and did nothing — which is
-// what made it look like "the + cannot be clicked".
-//
-// The press is delivered to the button rather than to a screen point: §5 framed the
-// canvas on another component, so where this layer lands on screen is not this
-// section's business (and a screen point would grade the viewport, not the button).
+// set that does not hold it. Until a real set holds it, it is a standalone
+// component with no variants and must not show the canvas "+"; the inspector's
+// "+ Add variant" promotes it to a set, after which the canvas "+" appears.
 await page.evaluate(() => {
   window.__FISH_BRIDGE__.insertElement({
     id: "c_orphan",
@@ -284,10 +305,9 @@ await page.waitForTimeout(250);
 await page.evaluate(() => window.__FISH_BRIDGE__.selectElement("c_orphan"));
 await page.waitForTimeout(250);
 const orphanAdd = await page.$('[data-canvas-add-variant="c_orphan"]');
-check("a component whose set is gone still offers the canvas +", orphanAdd !== null, true);
-await orphanAdd.evaluate((el) =>
-  el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }))
-);
+check("a component whose set is gone hides the canvas +", orphanAdd === null, true);
+await page.waitForSelector('[data-variant-property-first="true"]');
+await page.click('[data-variant-property-first="true"]');
 await page.waitForTimeout(400);
 const holdingSet = () =>
   page.evaluate(
@@ -297,8 +317,13 @@ const holdingSet = () =>
       )?.id ?? null
   );
 const orphanSet = await holdingSet();
-check("pressing it really promotes the layer to a set", Boolean(orphanSet), true);
+check("promoting via inspector creates a holding set", Boolean(orphanSet), true);
 check("and leaves that set selected", [...(await selected())], orphanSet ? [orphanSet] : []);
+check(
+  "once promoted to a set, the canvas + appears",
+  orphanSet ? (await page.$(`[data-canvas-add-variant="${orphanSet}"]`)) !== null : false,
+  true
+);
 
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} passed`);

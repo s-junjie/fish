@@ -34,13 +34,14 @@ const displayName = (name: string) => (name === "x" ? "X" : titleCase(name));
  * `arrow-left` above `chevron-arrow-left` and puts an exact hit in the middle
  * of the grid, which reads as a broken search.
  */
-function rank(name: string, query: string): number {
+function rank(name: string, query: string, tokens: string[] = []): number {
   if (!query) return 0;
   if (name === query) return 0;
   if (name.startsWith(query)) return 1;
   if (name.split("-")[0] === query) return 2;
   if (name.split("-").includes(query)) return 3;
-  return 4;
+  if (name.includes(query)) return 4;
+  return tokens.length > 1 && tokens.every((t) => name.includes(t)) ? 5 : 6;
 }
 
 const creditOf = (set: IconifyCollection | undefined): AssetCredit | undefined => {
@@ -68,17 +69,94 @@ export type SyncAssetProvider = Omit<AssetProvider, "insert"> & {
   insert(result: AssetSearchResult, target: AssetInsertTarget): AssetInsertResult;
 };
 
+export interface IconifySearchOptions {
+  /** Propagate transport errors instead of masquerading a failure as zero matches. */
+  strict?: boolean;
+  /** Offline/rate-limit name list used only when `/collection` cannot be reached. */
+  fallbackNames?: readonly string[];
+  defaultCredit?: AssetCredit;
+}
+
+export async function searchIconifySet(
+  prefix: string,
+  query: string,
+  limit: number = ICON_PAGE_SIZE,
+  offset = 0,
+  searchOpts: IconifySearchOptions = {}
+): Promise<AssetSearchResult[]> {
+  const raw = query.trim().toLowerCase();
+  const q = raw.replace(/\s+/g, "-");
+  const tokens = raw.split(/[\s-]+/).filter(Boolean);
+
+  let names: string[];
+  try {
+    names = await fetchIconNames(prefix);
+  } catch (err) {
+    if (searchOpts.fallbackNames && searchOpts.fallbackNames.length > 0) {
+      names = [...searchOpts.fallbackNames];
+    } else if (searchOpts.strict) {
+      throw err;
+    } else {
+      return [];
+    }
+  }
+
+  // A copy: with no query this sorts the array the week-long cache holds,
+  // and a cached list that other callers read must not move under them.
+  const matched = (
+    q
+      ? names.filter((n) => n.includes(q) || (tokens.length > 1 && tokens.every((t) => n.includes(t))))
+      : [...names]
+  )
+    .sort((a, b) => rank(a, q, tokens) - rank(b, q, tokens) || a.localeCompare(b))
+    .slice(Math.max(0, offset), offset + limit);
+  if (matched.length === 0) return [];
+
+  let batch;
+  try {
+    batch = await fetchIconBodies(prefix, matched);
+  } catch (err) {
+    if (searchOpts.strict) throw err;
+    return [];
+  }
+
+  let credit: AssetCredit | undefined;
+  try {
+    const all = await fetchCollections([prefix]);
+    credit = creditOf(all.find((c) => c.prefix === prefix));
+  } catch {
+    credit = undefined;
+  }
+  credit ??= searchOpts.defaultCredit;
+
+  const results: AssetSearchResult[] = [];
+  for (const iconName of matched) {
+    const icon = resolveAlias(iconName, batch);
+    if (!icon) continue;
+    const g = parseIconBody(icon.body);
+    // A body the converter does not understand is left out rather than
+    // inserted as a blank box: a missing icon is obvious, a silent hole in
+    // a design is not.
+    if (!g) continue;
+    results.push({
+      id: `${prefix}:${iconName}`,
+      name: displayName(iconName),
+      iconPaths: [g.d],
+      iconRender: {
+        mode: g.mode,
+        fillRule: g.fillRule,
+        strokeWidth: g.strokeWidth,
+        cap: g.cap,
+        join: g.join
+      },
+      credit
+    });
+  }
+  return results;
+}
+
 export function createIconifyProvider(options: IconifyProviderOptions): SyncAssetProvider {
   const { prefix } = options;
-
-  const setMeta = async (): Promise<IconifyCollection | undefined> => {
-    try {
-      const all = await fetchCollections([prefix]);
-      return all.find((c) => c.prefix === prefix);
-    } catch {
-      return undefined;
-    }
-  };
 
   return {
     id: prefix,
@@ -86,66 +164,8 @@ export function createIconifyProvider(options: IconifyProviderOptions): SyncAsse
     nameKey: options.nameKey,
     kind: "icon",
 
-    /**
-     * Not `remote`: the panel skips a remote source on an empty query, which
-     * would hide the grid the tab exists to show. This one fetch is a name list
-     * the browser keeps for a week.
-     *
-     * A window is `[offset, offset + limit)` of the *ranked* list, not of the
-     * raw names: page two has to continue the order the user is looking at, and
-     * taking the offset before the sort would page through the alphabet and put
-     * a search's best hits on a later screen. Bodies are fetched only for the
-     * names inside this window, so a second page costs one request and the first
-     * page is never re-downloaded.
-     */
     async search(query: string, limit: number = ICON_PAGE_SIZE, offset = 0): Promise<AssetSearchResult[]> {
-      const q = query.trim().toLowerCase();
-      let names: string[];
-      try {
-        names = await fetchIconNames(prefix);
-      } catch {
-        return [];
-      }
-
-      // A copy: with no query this sorts the array the week-long cache holds,
-      // and a cached list that other callers read must not move under them.
-      const matched = (q ? names.filter((n) => n.includes(q)) : [...names])
-        .sort((a, b) => rank(a, q) - rank(b, q) || a.localeCompare(b))
-        .slice(Math.max(0, offset), offset + limit);
-      if (matched.length === 0) return [];
-
-      let batch;
-      try {
-        batch = await fetchIconBodies(prefix, matched);
-      } catch {
-        return [];
-      }
-
-      const credit = creditOf(await setMeta());
-      const results: AssetSearchResult[] = [];
-      for (const iconName of matched) {
-        const icon = resolveAlias(iconName, batch);
-        if (!icon) continue;
-        const g = parseIconBody(icon.body);
-        // A body the converter does not understand is left out rather than
-        // inserted as a blank box: a missing icon is obvious, a silent hole in
-        // a design is not.
-        if (!g) continue;
-        results.push({
-          id: `${prefix}:${iconName}`,
-          name: displayName(iconName),
-          iconPaths: [g.d],
-          iconRender: {
-            mode: g.mode,
-            fillRule: g.fillRule,
-            strokeWidth: g.strokeWidth,
-            cap: g.cap,
-            join: g.join
-          },
-          credit
-        });
-      }
-      return results;
+      return searchIconifySet(prefix, query, limit, offset, { strict: false });
     },
 
     insert(result, target): AssetInsertResult {

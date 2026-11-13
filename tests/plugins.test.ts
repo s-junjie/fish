@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { lucideProvider, remixProvider } from "../src/plugins/_shared/assets/iconify-provider";
+import { lucideProvider, remixProvider, searchIconifySet } from "../src/plugins/_shared/assets/iconify-provider";
 import { openverseProvider, __resetOpenverseThrottle } from "../src/plugins/_shared/assets/openverse-provider";
 import { createWikimediaProvider } from "../src/plugins/wikimedia/provider";
 import { PixabayError, searchPixabay } from "../src/plugins/pixabay/provider";
 import { insertRemoteImage } from "../src/core/plugins/remote-image";
-import { __resetIconifyCaches, fetchIconNames } from "../src/plugins/_shared/assets/iconify";
+import { __resetIconifyCaches, fetchIconNames, setIconifyStorage } from "../src/plugins/_shared/assets/iconify";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
 import { validateDocument } from "../src/core/validate";
 import { DesignDocument, Paint, PathElement } from "../src/core/dsl/types";
@@ -112,6 +112,7 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = realFetch;
+  setIconifyStorage(null);
   __resetIconifyCaches();
 });
 
@@ -148,6 +149,47 @@ describe("iconify transport", () => {
   it("returns nothing rather than throwing when the library is unreachable", async () => {
     failWith = 503;
     await expect(lucideProvider.search("star")).resolves.toEqual([]);
+  });
+
+  it("propagates transport failures in strict mode instead of reporting zero matches", async () => {
+    failWith = 429;
+    await expect(searchIconifySet("lucide", "star", 5, 0, { strict: true })).rejects.toThrow("429");
+  });
+
+  it("falls back to provided names when /collection fails but CDN bodies are reachable", async () => {
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/collection") {
+        return { ok: false, status: 429, statusText: "Too Many Requests" } as unknown as Response;
+      }
+      return prevFetch(input, init);
+    }) as typeof globalThis.fetch;
+
+    const results = await searchIconifySet("lucide", "star", 5, 0, {
+      strict: true,
+      fallbackNames: Object.keys(lucideFixture.icons)
+    });
+    expect(results.length).toBeGreaterThan(0);
+    expect(results[0].id).toBe("lucide:star");
+  });
+
+  it("serves cached names and bodies via custom storage when offline", async () => {
+    const mem = new Map<string, string>();
+    setIconifyStorage({
+      getItem: (k) => mem.get(k) ?? null,
+      setItem: (k, v) => {
+        mem.set(k, v);
+      }
+    });
+
+    const warm = await searchIconifySet("lucide", "star", 5, 0, { strict: true });
+    expect(warm.length).toBeGreaterThan(0);
+
+    __resetIconifyCaches();
+    failWith = 503;
+    const cold = await searchIconifySet("lucide", "star", 5, 0, { strict: true });
+    expect(cold.map((r) => r.id)).toEqual(warm.map((r) => r.id));
   });
 
   it("carries the set's licence on every result", async () => {

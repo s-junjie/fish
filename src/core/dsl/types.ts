@@ -941,12 +941,13 @@ export interface ComponentElement extends BaseElement, SlideHost, AutoLayoutFiel
  * coordinates. A value nobody has used yet is still a legal choice, which is what
  * lets an instance dropdown offer `Variant 3` before anyone has drawn it.
  *
- * The box is derived from the children (`fitComponentSet`), so a set cannot be
- * resized by hand — Figma does not let you either. There is no `layout` and no
- * `overflow`: the variants are freely positioned and stay visible outside a
- * shrunken set, exactly as Figma leaves them.
+ * When no Auto-Layout (`display`) is declared, the box is derived from its
+ * children (`fitComponentSet`) and variants stay freely positioned; opting into
+ * Stack or Grid (`AutoLayoutFields`) lets `applyAutoLayout` arrange the variants
+ * and size the set with its own gap, padding and wrap rules. There is no
+ * `overflow`: variants stay visible outside a shrunken or collapsed set.
  */
-export interface ComponentSetElement extends BaseElement, SlideHost {
+export interface ComponentSetElement extends BaseElement, SlideHost, AutoLayoutFields {
   type: "componentSet";
   children: DesignElement[];
   /** Figma's collapse: the set paints its first variant and nothing else. */

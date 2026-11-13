@@ -135,7 +135,7 @@ export function collectReferencedAssets(
  * also writes the concrete values inline (`bindFillStyle` and friends), so a
  * paste renders correctly whether or not the style arrives.
  */
-function collectReferencedStyles(
+export function collectReferencedStyles(
   allStyles: readonly DesignStyle[] | undefined,
   elements: readonly DesignElement[]
 ): DesignStyle[] {
@@ -174,7 +174,7 @@ function collectReferencedStyles(
  * colour and no binding — editable nowhere, which is the one thing a copy is
  * supposed to keep.
  */
-function collectReferencedTokens(
+export function collectReferencedTokens(
   allTokens: readonly DesignToken[] | undefined,
   elements: readonly DesignElement[]
 ): DesignToken[] {

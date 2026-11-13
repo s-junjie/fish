@@ -7,7 +7,9 @@ import { syncDocumentBindings } from "../interactions/style-ops";
 import { validateDocument } from "../validate";
 import { geometryReport } from "../geometry-report";
 import { checkVerdict } from "../check-verdict";
-import { laidOutDocument } from "../layout-report";
+import { findPage, getActivePage, withActivePage } from "../dsl/document-ops";
+import { laidOutAllPages, laidOutDocument, type LayoutFinding } from "../layout-report";
+import type { GeometryFinding } from "../geometry-report";
 import { fontDiagnostics } from "../font-diagnostics";
 import { countElements } from "../geometry/tree-ops";
 import type { DesignDocument } from "../dsl/types";
@@ -78,7 +80,7 @@ type InkAudit = {
   rules?: string[];
 };
 
-function auditInk(src: Source, tolerance?: number): InkAudit | string {
+function auditInk(src: Source, tolerance?: number, pageId?: string): InkAudit | string {
   if (!src.html) {
     return "a bare .json has no shell for a browser to open — compose it into a .fish.html first";
   }
@@ -90,6 +92,8 @@ function auditInk(src: Source, tolerance?: number): InkAudit | string {
   const abs = path.resolve(src.file);
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fish-audit-"));
   try {
+    const pageQuery = pageId ? `&page=${encodeURIComponent(pageId)}` : "";
+    const toleranceQuery = tolerance !== undefined ? `&auditTolerance=${tolerance}` : "";
     // A generous virtual-time budget: the page waits for `document.fonts.ready`
     // before it measures, because a fallback face moves every glyph and turns a
     // 1px rule into noise.
@@ -100,7 +104,7 @@ function auditInk(src: Source, tolerance?: number): InkAudit | string {
         "--virtual-time-budget=10000",
         "--window-size=1440,900",
         "--dump-dom",
-        `file://${abs}?view=canvas&report=1&audit=1${tolerance !== undefined ? `&auditTolerance=${tolerance}` : ""}`
+        `file://${abs}?view=canvas&report=1&audit=1${pageQuery}${toleranceQuery}`
       ],
       { step: "text ink audit", maxBuffer: 20 * 1024 * 1024 }
     );
@@ -137,6 +141,44 @@ function auditInk(src: Source, tolerance?: number): InkAudit | string {
   }
 }
 
+interface PageCheckRecord {
+  id: string;
+  name: string;
+  canvas: DesignDocument["canvas"];
+  elements: number;
+  layout: LayoutFinding[];
+  geometry: GeometryFinding[];
+  ink: InkAudit | string | null;
+}
+
+function mergeInkAudits(records: PageCheckRecord[]): InkAudit | string {
+  const findings: InkFinding[] = [];
+  const skipped: Array<{ elementId: string; reason: string }> = [];
+  let checked = 0;
+  let fontsReady: boolean | undefined;
+  let zoom = 1;
+  let tolerance: { x: number; y: number } | undefined;
+  let rules: string[] | undefined;
+
+  for (const record of records) {
+    if (typeof record.ink === "string") {
+      return `page "${record.name}" (${record.id}): ${record.ink}`;
+    }
+    if (!record.ink) {
+      return `page "${record.name}" (${record.id}): the audit did not run`;
+    }
+    checked += record.ink.checked;
+    zoom = record.ink.zoom;
+    tolerance ??= record.ink.tolerance;
+    rules ??= record.ink.rules;
+    if (record.ink.fontsReady === false) fontsReady = false;
+    else if (fontsReady === undefined && record.ink.fontsReady === true) fontsReady = true;
+    skipped.push(...record.ink.skipped);
+    findings.push(...record.ink.findings);
+  }
+  return { findings, checked, skipped, zoom, tolerance, fontsReady, rules };
+}
+
 export function check(
   file: string,
   opts: {
@@ -146,8 +188,17 @@ export function check(
     strictAssets: boolean;
     audit: boolean;
     auditTolerance?: number;
+    page?: string;
+    allPages?: boolean;
   }
 ): number {
+  if (opts.page && opts.allPages) {
+    const msg = "choose either --page or --all-pages, not both";
+    if (opts.json) console.log(JSON.stringify({ ok: false, file, error: msg }, null, 2));
+    else console.error(msg);
+    return 2;
+  }
+
   const read = readDocument(file);
   if ("error" in read) {
     if (opts.json && read.parseError) {
@@ -163,25 +214,54 @@ export function check(
   // no `style` is a text the canvas paints at the default 24px, and `validate`
   // has to see the size the renderer will use, not the one the author omitted.
   const { document: normalized, repairs } = normalizeDesignDocument(value);
-  // Laid out before it is graded: the load path positions every in-flow child, and
-  // a verdict about a box that the page never paints is the one kind of green
-  // `check` must not give.
-  const prepared = laidOutDocument(syncDocumentBindings(normalized), value);
-  const document = prepared.document;
+  const synced = syncDocumentBindings(normalized);
+
+  let targetPage: { id: string; name: string; canvas: DesignDocument["canvas"] } | null = null;
+  if (opts.page) {
+    const found = findPage(synced, opts.page);
+    if (!found) {
+      const msg = `no page matching "${opts.page}" in ${src.file}`;
+      if (opts.json) console.log(JSON.stringify({ ok: false, file: src.file, error: msg }, null, 2));
+      else console.error(msg);
+      return 2;
+    }
+    targetPage = { id: found.id, name: found.name, canvas: found.canvas };
+  }
+
+  const preparedAll = opts.allPages ? laidOutAllPages(synced, value) : null;
+  const preparedSingle = preparedAll
+    ? null
+    : laidOutDocument(targetPage ? withActivePage(synced, targetPage.id) : synced, value);
+  const document = (preparedAll ?? preparedSingle)!.document;
+  const layoutFindings = (preparedAll ?? preparedSingle)!.findings;
   const diagnostics = validateDocument(document);
-  // Opt-in, and measurements rather than verdicts: overlap is a design technique,
-  // so this reports what landed outside the box that was meant to hold it, with
-  // the number and the way to say "I meant that". Only a collapsed container is
-  // a warning — there the author wrote paint that cannot be painted.
-  const geometry = opts.geometry ? geometryReport(document) : [];
   const assetFindings = assetDiagnostics(document, opts.strictAssets);
-  // Beside the asset note rather than inside `validate`: a family the file does
-  // not carry travels badly, it is not wrong.
   const fontFindings = fontDiagnostics(document, opts.strictAssets);
-  // The one check that needs the picture rather than the document. Everything
-  // above can be satisfied by a page whose labels are pinned to the left edge of
-  // their boxes, because nothing in the document is wrong — only the rendering.
-  const ink = opts.audit ? auditInk(src, opts.auditTolerance) : null;
+
+  let pageRecords: PageCheckRecord[] | null = null;
+  let geometry: GeometryFinding[];
+  let ink: InkAudit | string | null;
+  if (preparedAll) {
+    const docPages = document.pages && document.pages.length > 0 ? document.pages : [getActivePage(document)];
+    pageRecords = docPages.map((page) => {
+      const pageDoc = withActivePage(document, page.id);
+      return {
+        id: page.id,
+        name: page.name,
+        canvas: page.canvas ?? document.canvas,
+        elements: countElements(pageDoc),
+        layout: preparedAll.findingsByPage.get(page.id) ?? [],
+        geometry: opts.geometry ? geometryReport(pageDoc) : [],
+        ink: opts.audit ? auditInk(src, opts.auditTolerance, page.id) : null
+      };
+    });
+    geometry = pageRecords.flatMap((record) => record.geometry);
+    ink = opts.audit ? mergeInkAudits(pageRecords) : null;
+  } else {
+    geometry = opts.geometry ? geometryReport(document) : [];
+    ink = opts.audit ? auditInk(src, opts.auditTolerance, targetPage?.id) : null;
+  }
+
   // Graded here, not by the runtime that measured: which findings may fail a build
   // is the gate's judgement, and the file's own runtime can be from another build.
   const inkFindings = (ink && typeof ink !== "string" ? ink.findings : []).map((finding) => ({
@@ -189,13 +269,15 @@ export function check(
     message: finding.message,
     elementId: finding.elementId
   }));
-  const all = [...diagnostics, ...prepared.findings, ...geometry, ...assetFindings, ...fontFindings, ...inkFindings];
+  const all = [...diagnostics, ...layoutFindings, ...geometry, ...assetFindings, ...fontFindings, ...inkFindings];
   const errors = all.filter((d) => d.level === "error");
   const warnings = all.filter((d) => d.level === "warning");
-  // `checkVerdict` owns the rule that only a "lossy" repair fails: an `info`
-  // repair merely records a default the engine supplied or a value it relocated,
-  // so a document that omits `canvas` is not a document that lost anything.
   const { ok, lossy, failReason } = checkVerdict(repairs, errors.length, warnings.length, opts.strict);
+
+  const canvas = targetPage?.canvas ?? document.canvas;
+  const elementCount = pageRecords
+    ? pageRecords.reduce((sum, record) => sum + record.elements, 0)
+    : countElements(document);
 
   if (opts.json) {
     console.log(
@@ -204,14 +286,28 @@ export function check(
           ok,
           file: src.file,
           version: document.version,
-          canvas: document.canvas,
-          elements: countElements(document),
+          ...(targetPage ? { page: { id: targetPage.id, name: targetPage.name } } : {}),
+          canvas,
+          elements: elementCount,
           repairs,
           lossyRepairs: lossy,
           diagnostics,
-          ...(prepared.findings.length > 0 ? { layout: prepared.findings } : {}),
+          ...(layoutFindings.length > 0 ? { layout: layoutFindings } : {}),
           ...(opts.geometry ? { geometry } : {}),
           ...(opts.audit ? { ink: inkJson(ink) } : {}),
+          ...(pageRecords
+            ? {
+                pages: pageRecords.map((record) => ({
+                  id: record.id,
+                  name: record.name,
+                  canvas: record.canvas,
+                  elements: record.elements,
+                  ...(record.layout.length > 0 ? { layout: record.layout } : {}),
+                  ...(opts.geometry ? { geometry: record.geometry } : {}),
+                  ...(opts.audit ? { ink: inkJson(record.ink) } : {})
+                }))
+              }
+            : {}),
           ...(assetFindings.length > 0 ? { assetFindings } : {}),
           ...(fontFindings.length > 0 ? { fontFindings } : {})
         },
@@ -222,10 +318,10 @@ export function check(
     return ok ? 0 : 1;
   }
 
-  const canvas = document.canvas;
-  console.log(
-    `${src.file}\n  v${document.version} · canvas ${canvas?.width}×${canvas?.height} · ${countElements(document)} elements`
-  );
+  const headerScope = pageRecords
+    ? `${pageRecords.length} page(s) (${pageRecords.map((r) => r.id).join(", ")})`
+    : `${targetPage ? `page "${targetPage.name}" (${targetPage.id}) · ` : ""}canvas ${canvas?.width}×${canvas?.height}`;
+  console.log(`${src.file}\n  v${document.version} · ${headerScope} · ${elementCount} elements`);
   console.log(`  repairs: ${repairs.length}${lossy !== repairs.length ? ` (${lossy} lossy)` : ""}`);
   for (const r of repairs) console.log(`    [${r.kind}]${r.severity === "info" ? " (info)" : ""} ${r.path} — ${r.message}`);
   console.log(`  findings: ${errors.length} error(s), ${warnings.length} warning(s)`);
@@ -233,10 +329,11 @@ export function check(
     console.log(`    [${d.level}]${d.elementId ? ` ${d.elementId}:` : ""} ${d.message}`);
   }
   if (opts.geometry) {
+    const scope = pageRecords ? ` across ${pageRecords.length} page(s)` : "";
     console.log(
       geometry.length === 0
-        ? "  geometry: nothing outside its box, nothing left empty (--geometry)"
-        : `  geometry: ${geometry.length} measurement(s) — these are numbers, not verdicts (--geometry)`
+        ? `  geometry: nothing outside its box, nothing left empty${scope} (--geometry)`
+        : `  geometry: ${geometry.length} measurement(s)${scope} — these are numbers, not verdicts (--geometry)`
     );
   }
   if (opts.audit) {

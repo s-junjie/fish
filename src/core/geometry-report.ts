@@ -1,5 +1,6 @@
 import { relayoutDocumentTree, resolvePadding } from "./compile";
 import { getActivePage } from "./dsl/document-ops";
+import { instanceSizeResolver } from "./interactions/instance-size";
 import { DEFAULT_FLEX_DIRECTION, layoutOf, type FlatAutoLayout } from "./dsl/layout-flat";
 import { elementRotatedAABB } from "./geometry/element-bounds";
 import type { AutoLayout, DesignDocument, DesignElement, LayoutGuide } from "./dsl/types";
@@ -113,7 +114,7 @@ const hasVisibleSurface = (el: DesignElement): boolean => {
  * there the author wrote paint that cannot be painted.
  */
 export function geometryReport(doc: DesignDocument): GeometryFinding[] {
-  const laidOut = relayoutDocumentTree(getActivePage(doc).children ?? []);
+  const laidOut = relayoutDocumentTree(getActivePage(doc).children ?? [], instanceSizeResolver(doc));
   const out: GeometryFinding[] = [];
 
   const walk = (els: DesignElement[]) => {

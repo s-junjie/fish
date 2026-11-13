@@ -452,11 +452,8 @@ export function scaleElement<T extends DesignElement>(
   }
   const bounds = scaleSizingBounds((box as { sizing?: ElementSizing }).sizing, sx, sy);
   if (bounds !== (box as { sizing?: ElementSizing }).sizing) next = { ...next, sizing: bounds };
-  // Narrowed to the two container types that can carry one: a component set has
-  // none (its box comes from `fitComponentSet`), so the branch is dead for it and
-  // the union is what says so rather than a cast.
   const boxLayout = layoutOf(box as FlatAutoLayout);
-  if (boxLayout && next.type !== "componentSet") {
+  if (boxLayout && isContainer(next)) {
     const layout = scaleLayout(boxLayout, sx, sy, k);
     next = withLayout(next, layout);
     scaled.spacing = !sameValue(layout, boxLayout);

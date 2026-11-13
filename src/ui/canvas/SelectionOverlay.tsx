@@ -26,8 +26,6 @@ import { isSelectingTool } from "../../core/geometry/shape-creation";
 import { runEditorCommand } from "../commands/editor-commands";
 import type { ToolType } from "../../core/tools";
 import {
-  CANVAS_BADGE_INK,
-  CANVAS_BADGE_SURFACE,
   CANVAS_CORAL,
   CANVAS_GUIDE,
   CANVAS_PREVIEW,
@@ -391,16 +389,18 @@ export function SelectionOverlay({
               />
             )}
 
-            {/* "Add variant", on the box it would add to. A set is a definition
-                whose next member is its most likely edit, and reaching for the
-                inspector to do it made the canvas gesture the slow way round.
-                A standalone component is offered it too: the command promotes it
-                to a set, which is exactly "Add variant" before a matrix exists. */}
+            {/* "Add variant" on the canvas appears only once the component already
+                has at least one variant (either the set box itself or a member
+                inside one); a standalone component starts its first variant from
+                the inspector so the canvas chrome stays quiet before variants exist. */}
             {!isEditingText && !lockedEl && !gradientTarget && !cropTarget &&
-              (el.type === "componentSet" || el.type === "component") && (
+              ((el.type === "componentSet" && (el.children?.length ?? 0) > 0) ||
+                (el.type === "component" && sizingParent?.type === "componentSet")) && (
                 <g
                   data-canvas-add-variant={el.id}
-                  transform={`translate(${worldX + el.width / 2}, ${worldY + el.height + 9 / zoom})`}
+                  role="button"
+                  aria-label={t("component.addVariant")}
+                  transform={`translate(${worldX + el.width / 2}, ${worldY + el.height + 15 / zoom})`}
                   onPointerDown={(e) => {
                     e.stopPropagation();
                     e.preventDefault();
@@ -408,6 +408,7 @@ export function SelectionOverlay({
                   }}
                   style={{ cursor: "pointer" }}
                 >
+                  <title>{t("component.addVariant")}</title>
                   <rect
                     x={-7 / zoom}
                     y={-7 / zoom}
@@ -415,15 +416,14 @@ export function SelectionOverlay({
                     height={14 / zoom}
                     rx={3 / zoom}
                     ry={3 / zoom}
-                    fill={CANVAS_BADGE_SURFACE}
-                    stroke={CANVAS_COMPONENT}
-                    strokeWidth={1 / zoom}
+                    fill={CANVAS_COMPONENT}
                   />
                   <path
                     d={`M ${-3 / zoom} 0 H ${3 / zoom} M 0 ${-3 / zoom} V ${3 / zoom}`}
-                    stroke={CANVAS_BADGE_INK}
-                    strokeWidth={1 / zoom}
+                    stroke={CANVAS_ON_SELECT}
+                    strokeWidth={1.5 / zoom}
                     strokeLinecap="round"
+                    pointerEvents="none"
                   />
                 </g>
               )}

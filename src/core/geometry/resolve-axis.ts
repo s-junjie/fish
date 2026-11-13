@@ -41,6 +41,7 @@ export function canFitContent(el: DesignElement): boolean {
   return (
     el.type === "frame" ||
     el.type === "component" ||
+    el.type === "componentSet" ||
     el.type === "text" ||
     el.type === "instance"
   );

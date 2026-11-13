@@ -211,7 +211,7 @@ All scene nodes belong to one of these types:
 | :-- | :-- | :-- |
 | `frame` | `children`, auto-layout keys, `overflow`, `border-radius`, `cornerSmoothing`, `fills`, `strokes` | Sole structural container. |
 | `component` | as `frame` + `setId`, `variantProperties` | Reusable master component or set variant. |
-| `componentSet` | `children`, `name`, `variantGroupProperties` | Container for component variants. Holds `component` children only. |
+| `componentSet` | `children`, `name`, `variantGroupProperties`, auto-layout keys | Container for component variants. Holds `component` children only; opt into Auto-Layout (`display: flex` / `grid`) or omit `display` for free-form positioning. |
 | `instance` | `componentId`, `width`, `height`, `sizeOverride`, `overrides` (+ base element keys) | Renders master subtree; carries no `children`. As a canvas element, the instance itself supports all standard transforms (`rotate`, `scale`), coordinates, opacity, and paint. `componentId` must point at a `type:"component"` node — a `frame` is not a master and renders as a dashed empty box. An omitted width/height is copied from the master. |
 | `text` | `content`, `style`, `spans`, `onPath` | Text element. Glyphs paint via `fills` (default black). |
 | `rect` | `fills`, `strokes`, `border-radius`, `cornerSmoothing` | Rectangle / card shape. `cornerRadius` is an alias. |

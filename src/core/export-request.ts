@@ -8,6 +8,8 @@
  */
 
 export interface ReportRequest {
+  /** A page id or name to target instead of the document's saved active page. */
+  page?: string;
   /** An element id to resolve. Absent means "report the document". */
   elementId?: string;
   /** Device pixel factor the caller intends to capture at. */
@@ -55,6 +57,8 @@ export function parseReportRequest(search: string): ReportRequest | null {
   };
   const elementId = params.get("element");
   if (elementId) request.elementId = elementId;
+  const page = params.get("page");
+  if (page) request.page = page;
   if (params.get("audit") === "1") request.audit = true;
   const tolerance = auditToleranceOf(params.get("auditTolerance"));
   if (tolerance !== undefined) request.auditTolerance = tolerance;

@@ -164,12 +164,12 @@ The full source table, credentials, licences and link-vs-embed rules are in `ass
 
 | Tier | Command | Purpose |
 | :-- | :-- | :-- |
-| Structure | `./tools/fish check <doc>` | Schema and semantic consistency. |
+| Structure | `./tools/fish check <doc> [--page <id> \| --all-pages]` | Schema and semantic consistency. |
 | Geometry | `./tools/fish check <doc> --geometry` | Bounds, overflow, collapsed boxes. |
-| Visual | `./tools/shot.sh <doc> out.png [--element <id>]` | Headless render plus `out.report.json` diagnostics. |
+| Visual | `./tools/shot.sh <doc> out.png [--page <id>] [--element <id>]` | Headless render plus `out.report.json` diagnostics. |
 | Glyphs | `./tools/fish check <doc> --audit` | Alignment, ink centring, empty boxes in a real browser. |
 
-Use `--strict` to fail on warnings and `--strict-assets` before delivery. When the document is open, `__fish.check()` gives the same verdict without re-reading the file.
+Use `--strict` to fail on warnings, `--strict-assets` before delivery, and `--all-pages` or `--page <id>` on multi-page documents so non-active pages are laid out, measured, and audited too. When the document is open, `__fish.check()` gives the same verdict without re-reading the file.
 
 **Two renderers, one protocol.** `shot.sh` and `fish export` both drive `chrome --headless`, and neither computes the window size or the crop origin — the page reports them, both callers only pass them through. Choose by what the machine has and what you need back:
 

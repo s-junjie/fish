@@ -1,10 +1,12 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { compactDocumentJson, documentJson } from "../document-json";
 import { normalizeDesignDocument } from "../dsl/normalize";
 import { createId } from "../id";
 import { openverseProvider } from "../../plugins/_shared/assets/openverse-provider";
-import { lucideProvider, remixProvider } from "../../plugins/_shared/assets/iconify-provider";
+import { setIconifyStorage } from "../../plugins/_shared/assets/iconify";
+import { lucideProvider, remixProvider, searchIconifySet } from "../../plugins/_shared/assets/iconify-provider";
 import { dataUriBytes, embedImageBytes, embedImageUri, formatBytes } from "./image-embed";
 import type { EmbeddedImage } from "./image-embed";
 import type { AssetRef, DesignDocument, DesignElement, ImagePaint, Paint } from "../dsl/types";
@@ -461,13 +463,81 @@ async function assetsEmbedCommand(rest: string[], opts: AssetsCommandOpts): Prom
   return failed.length === 0 ? 0 : 1;
 }
 
+declare const __FISH_LUCIDE_NAMES__: string | undefined;
+
+const LUCIDE_DEFAULT_CREDIT = { name: "Lucide Icons · ISC", url: "https://lucide.dev/icons/" };
+
+function lucideFallbackNames(): string[] | undefined {
+  if (typeof __FISH_LUCIDE_NAMES__ === "string" && __FISH_LUCIDE_NAMES__.length > 0) {
+    return __FISH_LUCIDE_NAMES__.split(",");
+  }
+  const iconsDir = path.join(process.cwd(), "node_modules/lucide-react/dist/esm/icons");
+  try {
+    if (fs.existsSync(iconsDir)) {
+      return fs
+        .readdirSync(iconsDir)
+        .filter((f) => f.endsWith(".mjs"))
+        .map((f) => f.slice(0, -4))
+        .sort();
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+function installDiskIconifyCache(): void {
+  const dir =
+    process.env.FISH_ICONIFY_CACHE_DIR ||
+    path.join(os.homedir() || os.tmpdir(), ".cache", "fish", "iconify");
+  const fileFor = (key: string) => path.join(dir, `${key.replace(/[^a-zA-Z0-9._-]+/g, "_")}.json`);
+  setIconifyStorage({
+    getItem(key) {
+      try {
+        return fs.readFileSync(fileFor(key), "utf-8");
+      } catch {
+        return null;
+      }
+    },
+    setItem(key, value) {
+      try {
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(fileFor(key), value);
+      } catch {
+        // Fallback to tmpdir if home cache dir is read-only.
+        try {
+          const fallbackDir = path.join(os.tmpdir(), "fish-iconify-cache");
+          fs.mkdirSync(fallbackDir, { recursive: true });
+          fs.writeFileSync(path.join(fallbackDir, path.basename(fileFor(key))), value);
+        } catch {}
+      }
+    }
+  });
+}
+
 async function searchAssets(query: string, opts: AssetsCommandOpts): Promise<number> {
   const source = (opts.source ?? "openverse").toLowerCase();
   const limit = opts.limit && Number.isFinite(opts.limit) && opts.limit > 0 ? Math.min(20, Math.floor(opts.limit)) : 5;
 
   if (source === "lucide" || source === "ri" || source === "remix") {
-    const provider = source === "lucide" ? lucideProvider : remixProvider;
-    const results = await provider.search(query, limit);
+    installDiskIconifyCache();
+    const isLucide = source === "lucide";
+    const provider = isLucide ? lucideProvider : remixProvider;
+    let results;
+    try {
+      results = await searchIconifySet(provider.id, query, limit, 0, {
+        strict: true,
+        ...(isLucide ? { fallbackNames: lucideFallbackNames(), defaultCredit: LUCIDE_DEFAULT_CREDIT } : {})
+      });
+    } catch (err) {
+      const detail = message(err);
+      if (opts.json) {
+        console.log(JSON.stringify({ ok: false, source: provider.id, query, error: detail }, null, 2));
+      } else {
+        console.error(`${source} search failed: ${detail}`);
+      }
+      return 1;
+    }
     const elements = results.map((r) => {
       const inserted = provider.insert(r, { x: 0, y: 0 });
       return Promise.resolve(inserted).then((res) => ({

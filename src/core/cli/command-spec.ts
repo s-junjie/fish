@@ -64,7 +64,9 @@ export const COMMANDS: CommandSpec[] = [
           on("--geometry"),
           on("--audit"),
           of("--audit-tolerance", "--audit-tolerance N"),
-          on("--strict-assets")
+          on("--strict-assets"),
+          of("--page", "--page <id>"),
+          on("--all-pages")
         ]
       }
     ]

@@ -1,50 +1,123 @@
-import { DesignDocument, DesignElement, ComponentElement, InstanceElement, AssetRef, Paint } from "../dsl/types";
+import {
+  ComponentElement,
+  ComponentSetElement,
+  DesignDocument,
+  DesignElement,
+  InstanceElement
+} from "../dsl/types";
+import { STYLE_BINDING_FIELDS } from "../dsl/constants";
 import { getActivePage, updateActivePageElements } from "../dsl/document-ops";
-import { paintLayers } from "../dsl/image-fill";
-import { normalizeDesignDocument } from "../dsl/normalize";
 import { createId } from "../id";
 import { isContainer, flattenElements } from "../geometry/tree-ops";
+import { documentFromHtml, readDocument } from "../persistence/container";
+import { collectReferencedStyles, collectReferencedTokens } from "./clipboard-payload";
+import { syncDualStorage } from "./style-ops";
 
-const DOC_SCRIPT_RE = /<script\s+id=["']design-doc["'][^>]*>([\s\S]*?)<\/script>/i;
+export type ImportedComponentRoot = ComponentElement | ComponentSetElement;
+
+function deepClone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function mintFreeId(taken: Set<string>, prefix: string): string {
+  let id = createId(prefix);
+  while (taken.has(id)) id = createId(prefix);
+  taken.add(id);
+  return id;
+}
+
+function mapTargetPath(target: string, idMap: Map<string, string>): string {
+  if (!target.includes("/")) return idMap.get(target) ?? target;
+  return target
+    .split("/")
+    .map((step) => idMap.get(step) ?? step)
+    .join("/");
+}
 
 /**
  * FISH has no team library — a file is the whole world. Cross-document reuse is
  * a plain file read instead: no account, no sync, no network.
  */
 export function parseFishDocument(text: string): DesignDocument | null {
-  const match = text.match(DOC_SCRIPT_RE);
-  if (!match) return null;
-  try {
-    return JSON.parse(match[1].trim()) as DesignDocument;
-  } catch {
-    return null;
+  return documentFromHtml(text) ?? null;
+}
+
+function collectRootsFromList(list: readonly DesignElement[], out: ImportedComponentRoot[]): void {
+  for (const el of list) {
+    // A componentSet carries its variant components as direct children, so it
+    // travels whole instead of being broken into ungrouped components.
+    if (el.type === "componentSet" || el.type === "component") {
+      out.push(el as ImportedComponentRoot);
+      continue;
+    }
+    if (isContainer(el) && el.children) {
+      collectRootsFromList(el.children, out);
+    }
   }
 }
 
-export function collectForeignComponents(doc: DesignDocument): ComponentElement[] {
+export function collectForeignComponents(doc: DesignDocument): ImportedComponentRoot[] {
   const pages =
     doc.pages && doc.pages.length > 0 ? doc.pages : [{ children: getActivePage(doc).children || [] }];
-  const out: ComponentElement[] = [];
+  const out: ImportedComponentRoot[] = [];
   for (const page of pages) {
-    for (const el of flattenElements(page.children || [])) {
-      if (el.type === "component") out.push(el as ComponentElement);
-    }
+    collectRootsFromList(page.children || [], out);
   }
   return out;
 }
 
-function remapSubtree(el: DesignElement, idMap: Map<string, string>): DesignElement {
-  const next: DesignElement = { ...el, id: idMap.get(el.id) || el.id };
+function remapSubtree(
+  el: DesignElement,
+  idMap: Map<string, string>,
+  legacySetIdMap: Map<string, string>,
+  styleIdMap: Map<string, string>
+): DesignElement {
+  const next: DesignElement = { ...el, id: idMap.get(el.id) ?? el.id };
+  const loose = next as unknown as Record<string, unknown>;
+
   if (next.type === "instance") {
     const inst = next as InstanceElement;
-    next.componentId = idMap.get(inst.componentId) || inst.componentId;
+    inst.componentId = idMap.get(inst.componentId) ?? inst.componentId;
+    if (Array.isArray(inst.overrides)) {
+      inst.overrides = inst.overrides.map((o) => {
+        const targetId = mapTargetPath(o.targetId, idMap);
+        let value = o.value;
+        if (
+          (o.property === "fillStyleId" ||
+            o.property === "strokeStyleId" ||
+            o.property === "textStyleId" ||
+            o.property === "effectStyleId") &&
+          typeof o.value === "string" &&
+          styleIdMap.has(o.value)
+        ) {
+          value = styleIdMap.get(o.value)!;
+        }
+        return targetId === o.targetId && value === o.value ? o : { ...o, targetId, value };
+      });
+    }
   }
-  const onPath = (next as any).onPath;
+
+  if (next.type === "component" && typeof loose.setId === "string") {
+    loose.setId = idMap.get(loose.setId) ?? legacySetIdMap.get(loose.setId) ?? loose.setId;
+  }
+
+  const onPath = loose.onPath as { pathId?: string } | undefined;
   if (onPath && typeof onPath.pathId === "string") {
-    (next as any).onPath = { ...onPath, pathId: idMap.get(onPath.pathId) || onPath.pathId };
+    loose.onPath = { ...onPath, pathId: idMap.get(onPath.pathId) ?? onPath.pathId };
   }
+
+  for (const key of STYLE_BINDING_FIELDS) {
+    const bound = loose[key];
+    if (typeof bound === "string" && styleIdMap.has(bound)) {
+      loose[key] = styleIdMap.get(bound);
+    }
+  }
+
   if (isContainer(next) && next.children) {
-    return { ...next, children: next.children.map((c) => remapSubtree(c, idMap)) };
+    return {
+      ...next,
+      children: next.children.map((c) => remapSubtree(c, idMap, legacySetIdMap, styleIdMap))
+    };
   }
   return next;
 }
@@ -56,7 +129,8 @@ export interface ComponentImportResult {
 }
 
 /**
- * Copies every component of a source document into the target. Ids are reminted
+ * Copies every component (and component set) of a source document into the
+ * target without importing source images/assets. Ids are reminted collision-free
  * because ids are only unique per document — a colliding id would make an
  * existing instance silently resolve to the imported master.
  */
@@ -64,71 +138,71 @@ export function importComponentsFromDocument(
   target: DesignDocument,
   source: DesignDocument
 ): ComponentImportResult {
-  // The source is a file we did not write. Run it through the same normalizer
-  // the load path uses, so legacy forms (a `type:"image"` element, `group`, a
-  // single `fill`) arrive canonical before anything below reads them — an
-  // un-migrated image element would otherwise import with no bitmap at all.
-  const sourceComponents = collectForeignComponents(normalizeDesignDocument(source).document);
+  const normalizedSource = readDocument(source);
+  const sourceComponents = collectForeignComponents(normalizedSource);
   if (sourceComponents.length === 0) return { doc: target, names: [], error: "no-components" };
 
+  const takenElements = new Set<string>();
+  for (const page of target.pages || []) {
+    for (const el of flattenElements(page.children || [])) takenElements.add(el.id);
+  }
+  for (const el of flattenElements(getActivePage(target).children || [])) takenElements.add(el.id);
+
+  const takenStyles = new Set((target.styles || []).map((s) => s.id));
+
   const idMap = new Map<string, string>();
-  for (const comp of sourceComponents) {
-    idMap.set(comp.id, createId("comp"));
-    for (const child of flattenElements(comp.children || [])) {
-      idMap.set(child.id, createId("el"));
+  const mintTreeIds = (el: DesignElement): void => {
+    if (!idMap.has(el.id)) {
+      const prefix = el.type === "componentSet" ? "cset" : el.type === "component" ? "comp" : "el";
+      idMap.set(el.id, mintFreeId(takenElements, prefix));
+    }
+    if (isContainer(el)) {
+      for (const child of el.children || []) mintTreeIds(child);
+    }
+  };
+  for (const root of sourceComponents) mintTreeIds(root);
+
+  const legacySetIdMap = new Map<string, string>();
+  for (const root of sourceComponents) {
+    for (const el of flattenElements([root])) {
+      if (el.type === "component" && el.setId && !idMap.has(el.setId) && !legacySetIdMap.has(el.setId)) {
+        legacySetIdMap.set(el.setId, mintFreeId(takenElements, "cset"));
+      }
     }
   }
 
-  const imported = sourceComponents.map((comp) =>
-    remapSubtree(comp, idMap) as ComponentElement
+  const referencedStyles = collectReferencedStyles(normalizedSource.styles, sourceComponents);
+  const styleIdMap = new Map<string, string>();
+  for (const style of referencedStyles) {
+    styleIdMap.set(style.id, mintFreeId(takenStyles, "style"));
+  }
+  const remintedStyles = referencedStyles.map((s) =>
+    deepClone({ ...s, id: styleIdMap.get(s.id) ?? s.id })
   );
 
-  // Images inside the components point at the source file's assets; those bytes
-  // have to travel with them or the copy renders empty. An image is a fill, so
-  // the reference is scanned on the layers rather than on the element.
-  const existing = new Set((target.assets || []).map((a) => a.id));
-  const assetMap = new Map<string, string>();
-  const copied: AssetRef[] = [];
-  for (const comp of imported) {
-    for (const el of flattenElements([comp])) {
-      for (const paint of paintLayers(el as any)) {
-        if (paint.type !== "image") continue;
-        const assetId = paint.assetId;
-        if (!assetId || assetMap.has(assetId) || existing.has(assetId)) continue;
-        const ref = (source.assets || []).find((a) => a.id === assetId);
-        if (!ref) continue;
-        const nextId = existing.has(assetId) ? createId("asset") : assetId;
-        assetMap.set(assetId, nextId);
-        copied.push({ ...ref, id: nextId });
-      }
-    }
-  }
-  if (assetMap.size > 0) {
-    for (const comp of imported) {
-      for (const el of flattenElements([comp])) {
-        const layers = (el as { fills?: Paint[] }).fills;
-        if (!layers) continue;
-        let touched = false;
-        const next = layers.map((p) => {
-          if (p.type !== "image") return p;
-          const remapped = assetMap.get(p.assetId);
-          if (!remapped || remapped === p.assetId) return p;
-          touched = true;
-          return { ...p, assetId: remapped };
-        });
-        // Replace rather than mutate: the cloned subtree still shares the layer
-        // array with the source document.
-        if (touched) (el as { fills?: Paint[] }).fills = next;
-      }
-    }
-  }
+  const existingTokenIds = new Set((target.tokens || []).map((t) => t.id));
+  const copiedTokens = collectReferencedTokens(normalizedSource.tokens, sourceComponents)
+    .filter((t) => !existingTokenIds.has(t.id))
+    .map((t) => deepClone(t));
+
+  const mergedStyles = [...(target.styles || []), ...remintedStyles];
+  const mergedTokens = [...(target.tokens || []), ...copiedTokens];
+  const tables = { tokens: mergedTokens, styles: mergedStyles };
+
+  const imported = sourceComponents.map((root) =>
+    syncDualStorage(
+      remapSubtree(deepClone(root), idMap, legacySetIdMap, styleIdMap),
+      tables
+    ) as ImportedComponentRoot
+  );
 
   const page = getActivePage(target);
   const nextDoc = updateActivePageElements(target, [...page.children, ...imported]);
   return {
     doc: {
       ...nextDoc,
-      assets: [...(nextDoc.assets || []), ...copied],
+      ...(mergedStyles.length > 0 || target.styles ? { styles: mergedStyles } : {}),
+      ...(mergedTokens.length > 0 ? { tokens: mergedTokens } : {}),
       updatedAt: new Date().toISOString()
     },
     names: imported.map((c) => c.name || c.id)

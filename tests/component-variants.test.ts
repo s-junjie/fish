@@ -54,6 +54,7 @@ import {
 } from "../src/core/layout/component-set";
 import { relayoutDocumentTree } from "../src/core/layout/auto-layout";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
+import { documentToPlainObject } from "../src/core/document-json";
 import { applyOps } from "../src/core/ops/apply-ops";
 import { resolveInstanceChildren } from "../src/core/interactions/instance-resolve";
 
@@ -849,7 +850,7 @@ describe("a set survives the load path", () => {
     expect(strict.repairs.some((r) => r.message.includes('"variant"'))).toBe(true);
   });
 
-  it("says so when a set is handed an auto-layout, which it cannot use", () => {
+  it("preserves Auto-Layout on a componentSet and lays out variants without fitComponentSet override", () => {
     const { document, repairs } = normalizeDesignDocument(
       {
         version: "0.1",
@@ -862,17 +863,39 @@ describe("a set survives the load path", () => {
             y: 0,
             width: 10,
             height: 10,
-            ...flattenLayout({ mode: "flex", direction: "row" }),
+            sizing: { width: "fit-content", height: "fit-content" },
+            ...flattenLayout({ mode: "flex", direction: "row", gap: 12, padding: 16 }),
             children: [
-              { id: "c_a", type: "component", x: 0, y: 0, width: 10, height: 10, children: [] }
+              { id: "c_a", type: "component", x: 0, y: 0, width: 60, height: 32, children: [] },
+              { id: "c_b", type: "component", x: 0, y: 0, width: 80, height: 32, children: [] }
             ]
           }
         ]
       } as never,
       { preserveUnknown: true }
     );
-    expect(layoutOf(getActivePage(document).children[0])).toBeUndefined();
-    expect(repairs.some((r) => r.path === "/elements/0/layout")).toBe(true);
+    expect(repairs).toEqual([]);
+    const normalizedSet = getActivePage(document).children[0] as ComponentSetElement;
+    expect(layoutOf(normalizedSet)).toMatchObject({ mode: "flex", direction: "row", gap: 12, padding: 16 });
+
+    const laidOut = relayoutDocumentTree([normalizedSet])[0] as ComponentSetElement;
+    expect(laidOut.width).toBe(16 + 60 + 12 + 80 + 16);
+    expect(laidOut.height).toBe(16 + 32 + 16);
+    expect(laidOut.children[0]).toMatchObject({ id: "c_a", x: 16, y: 16 });
+    expect(laidOut.children[1]).toMatchObject({ id: "c_b", x: 16 + 60 + 12, y: 16 });
+
+    const collapsed = relayoutDocumentTree([{ ...normalizedSet, collapsed: true }])[0] as ComponentSetElement;
+    expect(collapsed.width).toBe(16 + 60 + 16);
+    expect(collapsed.height).toBe(16 + 32 + 16);
+
+    const roundTripped = normalizeDesignDocument(documentToPlainObject({ ...document, pages: [{ ...getActivePage(document), children: [laidOut] }] }));
+    expect(roundTripped.repairs).toEqual([]);
+    expect(layoutOf(getActivePage(roundTripped.document).children[0])).toMatchObject({
+      mode: "flex",
+      direction: "row",
+      gap: 12,
+      padding: 16
+    });
   });
 });
 

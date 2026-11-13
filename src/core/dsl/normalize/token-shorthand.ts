@@ -28,8 +28,8 @@
 import type { ColorToken, DesignToken, NumberToken } from "../types";
 import { normalizeTokens } from "./tokens";
 import { colorTokenValue, numberModeOf, numberTokenValue, themeOf } from "../token-value";
-import { bindNumberToken, writeNumberValue } from "../token-bindings";
-import { parseBorderShorthand } from "./stroke";
+import { bindNumberToken, CORNER_SLOTS, writeNumberValue } from "../token-bindings";
+import { cornerRadiusInput, parseBorderShorthand, parseRadiusString } from "./stroke";
 import { parseBoxShadows } from "../../import/css-values";
 import { canonicalKey, isPlainObject, type NormalizationRepair } from "./shared";
 
@@ -579,7 +579,32 @@ function applyToElement(
       // after the id is resolved.
       const draft = edit();
       draft.tokenBindings = { ...(draft.tokenBindings as Record<string, string>), [prop]: token.id };
+      if (CORNER_SLOTS[prop] !== undefined && draft.borderRadius === undefined) {
+        const radiusRaw = cornerRadiusInput(draft);
+        const radius =
+          typeof radiusRaw === "string"
+            ? parseRadiusString(
+                radiusRaw,
+                typeof el.width === "number" && typeof el.height === "number"
+                  ? { width: el.width, height: el.height }
+                  : undefined
+              )
+            : Array.isArray(radiusRaw) || typeof radiusRaw === "number"
+              ? radiusRaw
+              : undefined;
+        if (radius !== undefined) draft.borderRadius = radius;
+      }
       out = writeNumberValue(out, prop, value);
+      if (prop === "strokeWidth" && !Array.isArray(out.strokes)) {
+        out = { ...out, strokeWidth: value };
+      }
+      for (const own of Object.keys(out)) {
+        const target = NUMBER_SLOTS[canonicalKey(own)];
+        if (!target || own === target) continue;
+        if (target === prop || (CORNER_SLOTS[prop] !== undefined && target === "borderRadius")) {
+          delete (out as Record<string, unknown>)[own];
+        }
+      }
     }
   }
 

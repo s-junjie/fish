@@ -23,11 +23,7 @@ export const STACK_OR_WRAP: KeyRule = {
       return true;
     }
     const frame = ctx.primarySelected;
-    // A component set arranges nothing: its variants are positioned freely and
-    // its box comes from `fitComponentSet`, so a stack on one would be dropped
-    // again by the next relayout. The shortcut is a no-op on it rather than a
-    // half-applied edit.
-    if (!frame || !isContainer(frame) || ctx.selectedIds.size !== 1 || frame.type === "componentSet") return false;
+    if (!frame || !isContainer(frame) || ctx.selectedIds.size !== 1) return false;
     swallow(e);
     const target = frame as FrameElement;
     const isStack = layoutOf(target)?.mode === "flex";

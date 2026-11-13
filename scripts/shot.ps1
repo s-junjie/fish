@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Render a FISH document on Windows with nothing but a browser already on the machine.
   No npm, no Node, no Playwright: Edge/Chrome --headless is part of Windows.
@@ -23,6 +23,9 @@ param (
 
   [Parameter()]
   [string]$Element = "",
+
+  [Parameter()]
+  [string]$Page = "",
 
   [Parameter()]
   [switch]$DebugMode
@@ -93,7 +96,7 @@ try {
   # statically extract canvas dimensions from <script id="design-doc">.
   # This avoids launching a headless browser twice and eliminates Preact mount lag on large files.
   $staticWindow = $null
-  if (-not $Element) {
+  if (-not $Element -and -not $Page) {
     try {
       $fileHead = Get-Content -Path $Doc -TotalCount 2000 -Raw -Encoding utf8
       $scriptMatch = [regex]::Match($fileHead, '<script id="design-doc"[^>]*>(.*?)</script>', [System.Text.RegularExpressions.RegexOptions]::Singleline)
@@ -126,8 +129,11 @@ try {
   } else {
     # Pass 1: dump DOM to read fish-report for elements or fallback
     $reportQuery = "view=canvas&report=1&scale=$Scale"
+    if ($Page) {
+      $reportQuery += "&page=$([System.Uri]::EscapeDataString($Page))"
+    }
     if ($Element) {
-      $reportQuery += "&element=$Element"
+      $reportQuery += "&element=$([System.Uri]::EscapeDataString($Element))"
     }
     $pass1Url = "$fileUrl`?$reportQuery"
 
@@ -171,6 +177,9 @@ try {
 
   # Pass 2: screenshot
   $pass2Query = "view=canvas"
+  if ($Page) {
+    $pass2Query += "&page=$([System.Uri]::EscapeDataString($Page))"
+  }
   if ($origin) {
     $pass2Query += "&origin=$origin"
   }

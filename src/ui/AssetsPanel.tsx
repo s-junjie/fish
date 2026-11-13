@@ -1,12 +1,13 @@
 import { useState, useEffect, useMemo, useRef } from "preact/hooks";
 import { memo } from "./memo";
 import { t } from "../i18n";
-import { Trash2, Upload } from "lucide-react";
+import { LayoutGrid, LayoutList, Trash2, Upload } from "lucide-react";
 import { Button } from "./Button";
 import { SegmentedControl } from "./SegmentedControl";
 import { TEXT_FIELD_CLASS } from "./ScrubInput";
 import { FILE_DROP_BUTTON_CLASS, FILE_DROP_RESTING_CLASS } from "./file-drop-style";
-import { AssetCard, ComponentCard, thumbnailContext } from "./assets/asset-cards";
+import { AssetCard, AssetsViewMode, ComponentCard, thumbnailContext } from "./assets/asset-cards";
+import { filterAssets, filterComponentItems } from "./assets/asset-filter";
 import { groupComponentSets } from "../core/interactions/component-inventory";
 import { videoAssetIds } from "../core/interactions/video-loader";
 import type { ComponentEntry } from "../core/interactions/component-inventory";
@@ -27,7 +28,8 @@ export interface AssetsPanelProps {
 }
 
 const EMPTY_HINT_CLASS = "px-2 py-6 text-center text-row leading-snug text-ink-muted select-none";
-const DEBOUNCE_MS = 250;
+const DEBOUNCE_MS = 150;
+const VIEW_MODE_STORAGE_KEY = "fish_assets_view_mode_v1";
 
 /**
  * A member's caption inside an expanded set: its coordinates, without the set's
@@ -96,6 +98,15 @@ export const AssetsPanel = memo(function AssetsPanelInner({
   const [docTab, setDocTab] = useState<"images" | "components">(() =>
     assets.length === 0 && components.length > 0 ? "components" : "images"
   );
+  const [viewMode, setViewMode] = useState<AssetsViewMode>(() => {
+    try {
+      const saved = window.localStorage?.getItem(VIEW_MODE_STORAGE_KEY);
+      if (saved === "grid" || saved === "list") return saved;
+    } catch {
+      // ignore in sandboxed environments without allow-same-origin
+    }
+    return "grid";
+  });
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState("");
   /** Which variant sets are showing their members. */
@@ -109,43 +120,23 @@ export const AssetsPanel = memo(function AssetsPanelInner({
     });
 
   useEffect(() => {
+    try {
+      window.localStorage?.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
+    } catch {
+      // ignore in sandboxed environments without allow-same-origin
+    }
+  }, [viewMode]);
+
+  useEffect(() => {
     const id = setTimeout(() => setSearch(query), DEBOUNCE_MS);
     return () => clearTimeout(id);
   }, [query]);
 
-  const docAssets = useMemo(() => {
-    if (!search.trim()) return assets;
-    const q = search.trim().toLowerCase();
-    return assets.filter((a) => a.name.toLowerCase().includes(q));
-  }, [assets, search]);
+  const docAssets = useMemo(() => filterAssets(assets, search), [assets, search]);
 
   const docComponents = useMemo(() => {
     const { sets, singles } = groupComponentSets(docRef.current, components);
-    const q = search.trim().toLowerCase();
-    const matches = (e: ComponentEntry) =>
-      e.name.toLowerCase().includes(q) ||
-      (
-        e.variantProperties
-          ? Object.values(e.variantProperties).some((v) => v.toLowerCase().includes(q))
-          : false
-      );
-
-    const keptSets = q
-      ? sets
-          .map((s) => ({ ...s, members: s.members.filter(matches) }))
-          .filter((s) => s.members.length > 0 || s.name.toLowerCase().includes(q))
-          .map((s) => ({
-            ...s,
-            defaultMember: s.members.find((m) => m.id === s.defaultMember.id) || s.members[0]
-          }))
-          .filter((s) => s.defaultMember)
-      : sets;
-
-    const keptSingles = q ? singles.filter(matches) : singles;
-    return [
-      ...keptSets.map((s) => ({ kind: "set" as const, set: s, entry: s.defaultMember })),
-      ...keptSingles.map((e) => ({ kind: "single" as const, entry: e }))
-    ];
+    return filterComponentItems(sets, singles, search);
   }, [components, search, docRef]);
 
   const thumbCtx = useMemo(() => thumbnailContext(docRef), [docRef]);
@@ -154,6 +145,7 @@ export const AssetsPanel = memo(function AssetsPanelInner({
   const videoIds = videoAssetIds(docRef.current);
 
   const unusedCount = assets.filter((a) => (usage?.get(a.id) ?? 0) === 0).length;
+  const hasSets = docComponents.some((c) => c.kind === "set");
 
   return (
     <div className="flex-1 min-h-0 flex flex-col" data-asset-page="__doc__">
@@ -171,7 +163,7 @@ export const AssetsPanel = memo(function AssetsPanelInner({
         </div>
 
         {(docTab === "images" ? assets.length > 0 : components.length > 0) && (
-          <div className="pb-2">
+          <div className="flex items-center gap-1.5 pb-2">
             <input
               type="text"
               name="asset-search"
@@ -179,21 +171,49 @@ export const AssetsPanel = memo(function AssetsPanelInner({
               placeholder={t("assets.search")}
               onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
               data-testid="assets-search"
-              className={`${TEXT_FIELD_CLASS} cursor-text`}
+              className={`${TEXT_FIELD_CLASS} flex-1 cursor-text`}
+            />
+            <SegmentedControl<AssetsViewMode>
+              items={[
+                {
+                  value: "grid",
+                  icon: <LayoutGrid size={12} />,
+                  title: t("assets.viewGrid"),
+                  attrs: {
+                    "data-testid": "assets-view-grid",
+                    "aria-label": t("assets.viewGrid"),
+                    "aria-pressed": String(viewMode === "grid")
+                  }
+                },
+                {
+                  value: "list",
+                  icon: <LayoutList size={12} />,
+                  title: t("assets.viewList"),
+                  attrs: {
+                    "data-testid": "assets-view-list",
+                    "aria-label": t("assets.viewList"),
+                    "aria-pressed": String(viewMode === "list")
+                  }
+                }
+              ]}
+              value={viewMode}
+              onChange={setViewMode}
+              rowProps={{ "data-asset-view-toggle": "true" }}
+              className="shrink-0"
             />
           </div>
         )}
       </div>
 
-      {/* Grid container */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-2" data-asset-scroll>
+      {/* Items container */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-2" data-asset-scroll data-asset-view={viewMode}>
         {docTab === "images" && docAssets.length === 0 && (
           <div className={EMPTY_HINT_CLASS}>
             {t("assets.noResults")}
           </div>
         )}
-        {docTab === "images" && (
-          <div className="grid grid-cols-2 gap-1.5 px-1">
+        {docTab === "images" && docAssets.length > 0 && (
+          <div className={viewMode === "list" ? "flex flex-col gap-0.5 px-1" : "grid grid-cols-2 gap-1.5 px-1 items-start"}>
             {docAssets.map((a) => (
               <AssetCard
                 key={a.id}
@@ -201,6 +221,7 @@ export const AssetsPanel = memo(function AssetsPanelInner({
                 isVideo={videoIds.has(a.id)}
                 usage={usage?.get(a.id) ?? 0}
                 onInsert={onInsert}
+                viewMode={viewMode}
               />
             ))}
           </div>
@@ -219,8 +240,8 @@ export const AssetsPanel = memo(function AssetsPanelInner({
             )}
           </div>
         )}
-        {docTab === "components" && (
-          <div className="grid grid-cols-2 gap-1.5 px-1">
+        {docTab === "components" && docComponents.length > 0 && (
+          <div className={viewMode === "list" ? "flex flex-col gap-0.5 px-1" : "grid grid-cols-2 gap-1.5 px-1 items-start"}>
             {docComponents.flatMap((card) => {
               if (card.kind !== "set") {
                 return [
@@ -230,6 +251,8 @@ export const AssetsPanel = memo(function AssetsPanelInner({
                     ctx={thumbCtx}
                     onInsert={onInsert}
                     onLocate={onLocateComponent}
+                    viewMode={viewMode}
+                    reserveExpanderSlot={hasSets}
                   />
                 ];
               }
@@ -245,23 +268,23 @@ export const AssetsPanel = memo(function AssetsPanelInner({
                   locateId={locateId}
                   name={card.set.name}
                   count={card.set.members.length}
-                  subtitle={`${card.set.members.length} variants`}
                   onToggleVariants={() => toggleSetExpanded(card.set.setId)}
                   expanded={expanded}
+                  viewMode={viewMode}
                 />
               ];
               if (expanded) {
-                // The members are a GROUP inside the grid, not two more cards in
-                // it: a recessed, indented box with a hairline down its left edge
-                // is what tells a reader that these four belong to the card
-                // above rather than sitting beside it.
                 cards.push(
                   <div
                     key={`members_${card.set.setId}`}
                     data-asset-variant-group={card.set.setId}
-                    className="col-span-2 ml-0.5 border-l border-rule pl-1.5 pt-0.5"
+                    className={
+                      viewMode === "list"
+                        ? "ml-2 border-l border-rule pl-1.5 flex flex-col gap-0.5"
+                        : "col-span-2 ml-0.5 border-l border-rule pl-1.5 pt-0.5"
+                    }
                   >
-                    <div className="grid grid-cols-2 gap-1.5">
+                    <div className={viewMode === "list" ? "flex flex-col gap-0.5" : "grid grid-cols-2 gap-1.5 items-start"}>
                       {card.set.members.map((member) => (
                         <ComponentCard
                           key={member.id}
@@ -271,6 +294,7 @@ export const AssetsPanel = memo(function AssetsPanelInner({
                           onLocate={onLocateComponent}
                           variant
                           name={coordsLabel(member.variantProperties)}
+                          viewMode={viewMode}
                         />
                       ))}
                     </div>

@@ -38,7 +38,7 @@ export const normalizeContainer: ElementBranch = ({ el, base, path, repairs, typ
   // definitions and paints nothing, so it has no corners to smooth.
   if (type !== "componentSet") normalizeCornerControls(el, base, true);
 
-  if (ownLayout && type !== "componentSet") Object.assign(base, flattenLayout(ownLayout));
+  if (ownLayout) Object.assign(base, flattenLayout(ownLayout));
 
   // Guides are the author's ruler over this box, so they belong to the two types
   // that HAVE a box the author lays out in. A componentSet is fitted to its
@@ -59,18 +59,6 @@ export const normalizeContainer: ElementBranch = ({ el, base, path, repairs, typ
   }
 
   if (type === "componentSet") {
-    // Reported, not dropped: a set is a group of definitions and a stack is
-    // what arranges artwork. The key survives as written so the author can see
-    // that their file still declares one, and the set lays its children out
-    // itself (`fitComponentSet`).
-    if (ownLayout) {
-      repairs.push({
-        kind: "layout",
-        path: `${path}/layout`,
-        message:
-          'type "componentSet" has no Auto-Layout; its variants are positioned freely and the set fits itself. The declared layout was ignored.'
-      });
-    }
     if (asBoolean(el.collapsed) === true) base.collapsed = true;
     // A bare string for one value is coerced rather than dropped: it reads as
     // an axis with a single option, which is what an author who wrote

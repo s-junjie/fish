@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from "preact/hooks";
 import { memo } from "../memo";
 import { tabClass } from "../panel-tabs-style";
-import { DesignElement, DesignDocument, ElementType, InstanceElement, TextElement } from "../../core/dsl/types";
+import { AutoLayoutFields, DesignElement, DesignDocument, ElementType, InstanceElement, TextElement } from "../../core/dsl/types";
 import { updateActivePageElements } from "../../core/dsl/document-ops";
+import { layoutOf } from "../../core/dsl/layout-flat";
 import { findMasterComponent } from "../../core/interactions/component-inventory";
 import { resolveInstanceBox } from "../../core/interactions/instance-inherit";
 import { resolveInstanceContent } from "../../core/interactions/instance-resolve";
@@ -736,7 +737,7 @@ function InspectorPanelBase({
                 selectedElements={selectedElements}
                 doc={doc}
                 docRef={docRef}
-                showSize={!editingPathElement && !isScaleToolActive && !isComponentSet}
+                showSize={!editingPathElement && !isScaleToolActive && (!isComponentSet || Boolean(layoutOf(primarySelected as AutoLayoutFields)))}
                 multiBounds={multiBounds}
                 onMutate={onMutate}
                 onCommitSnapshot={onCommitSnapshot}

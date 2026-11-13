@@ -189,3 +189,29 @@ export function laidOutDocument(doc: DesignDocument, raw: unknown): LaidOutDocum
     findings: flowFindings(laid, authoredCoordinates(raw))
   };
 }
+
+/** Every page laid out in sequence, with the ignored-coordinate findings keyed by page id. */
+export function laidOutAllPages(
+  doc: DesignDocument,
+  raw: unknown
+): LaidOutDocument & { findingsByPage: Map<string, LayoutFinding[]> } {
+  if (!doc.pages || doc.pages.length === 0) {
+    return { document: doc, findings: [], findingsByPage: new Map() };
+  }
+  const authored = authoredCoordinates(raw);
+  const resolveInstanceSize = instanceSizeResolver(doc);
+  const findingsByPage = new Map<string, LayoutFinding[]>();
+  const allFindings: LayoutFinding[] = [];
+  const pages = doc.pages.map((page) => {
+    const laid = relayoutDocumentTree(page.children ?? [], resolveInstanceSize);
+    const pageFindings = flowFindings(laid, authored);
+    findingsByPage.set(page.id, pageFindings);
+    allFindings.push(...pageFindings);
+    return { ...page, children: laid };
+  });
+  return {
+    document: { ...doc, pages },
+    findings: allFindings,
+    findingsByPage
+  };
+}

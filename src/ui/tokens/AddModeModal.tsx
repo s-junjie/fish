@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "preact/hooks";
+import { createPortal } from "preact/compat";
 import { X } from "lucide-react";
 import { t } from "../../i18n";
 import { Button } from "../Button";
@@ -38,7 +39,7 @@ export function AddModeModal({ isOpen, onClose, onAdd }: AddModeModalProps) {
     if (e.key === "Escape") onClose();
   };
 
-  return (
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -89,6 +90,7 @@ export function AddModeModal({ isOpen, onClose, onAdd }: AddModeModalProps) {
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
