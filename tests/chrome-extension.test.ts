@@ -39,6 +39,18 @@ describe("Chrome Extension", () => {
     expect(content).toContain("removeAttribute(\"srcset\")");
   });
 
+  // The capture script runs in an isolated world with `chrome.runtime` in scope,
+  // so page-controlled text may never be handed to `innerHTML`, and a canvas swap
+  // may not happen before the two trees are paired by index.
+  it("content.js keeps page text out of innerHTML and defers the canvas swap", () => {
+    const content = fs.readFileSync(path.join(extDir, "content.js"), "utf-8");
+    expect(content).not.toContain("toast.innerHTML");
+    expect(content).toContain("toast.replaceChildren(");
+    expect(content).toContain("escapeHtmlText(title)");
+    expect(content).toContain("canvasSwaps.push(");
+    expect(content).toContain("for (const swap of canvasSwaps)");
+  });
+
   it("buildChromeExtension copies background.js, manifest.json and content.js to dist", () => {
     buildChromeExtension();
     expect(fs.existsSync(path.join(distDir, "manifest.json"))).toBe(true);

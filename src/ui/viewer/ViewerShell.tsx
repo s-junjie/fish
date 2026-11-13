@@ -161,6 +161,10 @@ export function ViewerShell({ doc, docRef, readOnly = false }: ViewerShellProps)
   useEffect(() => {
     if (!present.active) return;
     const onKeyDown = (event: KeyboardEvent) => {
+      // The deck swallows every key it recognises, so an IME composition has to
+      // be let through first: Escape there cancels the candidate list, and
+      // exiting the deck on it would take the text being typed with it.
+      if (event.isComposing || (event as any).keyCode === 229) return;
       if (isBrowserReservedKey(event)) return;
       if (presentKey(event, presentKeysRef.current)) return;
       event.preventDefault();

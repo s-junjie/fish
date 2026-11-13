@@ -25,6 +25,7 @@ import { LATEST_DOCUMENT_VERSION } from "../dsl/version";
 import { DEFAULT_VIEWPORT_HEIGHT, DEFAULT_VIEWPORT_WIDTH } from "../import/html-types";
 import type { DesignDocument } from "../dsl/types";
 import type { HarnessResult } from "./html-harness";
+import { resolveTemplatePath } from "./template-path";
 
 const HARNESS_FILE = "html-harness.js";
 const HARNESS_TIMEOUT_MS = 120_000;
@@ -160,20 +161,6 @@ function canvasOf(root: { width?: unknown; height?: unknown } | undefined, width
     height: num(root?.height, height),
     background: { type: "solid" as const, color: "#FFFFFF" }
   };
-}
-
-function resolveTemplatePath(templateFile: string): string | null {
-  if (fs.existsSync(templateFile)) return templateFile;
-  const candidates = [
-    path.join("templates", templateFile),
-    path.join(path.dirname(process.argv[1]), "templates", path.basename(templateFile)),
-    path.join(path.dirname(process.argv[1]), "templates", "blank.fish.html"),
-    path.join("templates", "blank.fish.html"),
-    path.join(path.dirname(process.argv[1]), "blank.fish.html"),
-    path.join("blank.fish.html")
-  ];
-  for (const c of candidates) if (fs.existsSync(c)) return c;
-  return null;
 }
 
 export async function importHtmlPage(htmlFile: string, opts: ImportOptions): Promise<number> {

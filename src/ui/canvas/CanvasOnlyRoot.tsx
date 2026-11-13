@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "preact/hooks";
+import { useMemo, useRef, useState } from "preact/hooks";
 import { getActivePage } from "../../core/dsl/document-ops";
 import { flattenElements } from "../../core/geometry/tree-ops";
 import { useBlockBrowserZoom } from "../hooks/useBlockBrowserZoom";
@@ -8,6 +8,7 @@ import { useFishBridge } from "../hooks/useFishBridge";
 import { useFontStatusSync } from "../hooks/useFontStatusSync";
 import { useHeadlessReport } from "../hooks/useHeadlessReport";
 import { useReadOnlyLock } from "../hooks/useReadOnlyLock";
+import { useTestBridge } from "../hooks/useTestBridge";
 import { CanvasOnlyView } from "./CanvasOnlyView";
 
 export interface CanvasOnlyRootProps {
@@ -30,7 +31,7 @@ const EMBED_VIEWPORT = { zoom: 1, pan: { x: 0, y: 0 } };
  */
 export function CanvasOnlyRoot({ readOnly }: CanvasOnlyRootProps) {
   useBlockBrowserZoom();
-  const { store, doc, docRef } = useEditorStore();
+  const { store, doc, docRef, commitSnapshot, undo, redo } = useEditorStore();
   useReadOnlyLock(store, readOnly);
   // Before anything paints: `missing` is a fact about the file on this machine,
   // and the export reads it without ever touching the canvas renderer.
@@ -51,6 +52,15 @@ export function CanvasOnlyRoot({ readOnly }: CanvasOnlyRootProps) {
     zoom: EMBED_VIEWPORT.zoom,
     pan: EMBED_VIEWPORT.pan
   });
+
+  // `__FISH_BRIDGE__` is how a probe puts a document on this surface at all: the
+  // embed has no file picker and no layers panel. It lived in the single entry
+  // before the shells were split, and leaving it out here silently stranded every
+  // spec that measures the embed (`link`, `typography`). Selection is state a
+  // viewing surface never uses, but the bridge's shape is the editor's, and a
+  // second shape would be a second contract.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  useTestBridge({ docRef, selectedIds, setSelectedIds, commitSnapshot, undo, redo });
 
   return (
     <CanvasOnlyView

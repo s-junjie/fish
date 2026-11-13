@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { getActivePage } from "../src/core/dsl/document-ops";
-import { serializeSelf, createEmptyDocument } from "../src/core/data-bridge";
+import { serializeSelf, createEmptyDocument, documentFromHtml } from "../src/core/data-bridge";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
 import { DesignDocument } from "../src/core/dsl/types";
 
@@ -44,6 +44,21 @@ describe("FISH M0 Round-Trip & Pristine Shell Serialization", () => {
     const parsedBack = JSON.parse(match![1]);
     expect(parsedBack.name).toBe("</script><script>alert(1)</script>");
     expect(parsedBack.docId).toBe(doc.docId);
+  });
+
+  it("keeps a literal backslash-u003c intact instead of un-escaping it first", () => {
+    // The writer escapes `</` as `\u003c/`. A reader that rewrote `\u003c` back
+    // to `<` before parsing turned a payload that *quotes* the escape sequence
+    // (`\\u003c` on disk) into `\<`, which is not a JSON escape — the whole
+    // document then failed to load and the file was reported as unreadable.
+    const doc = createEmptyDocument();
+    doc.name = "literal \\u003c and </script>";
+
+    const html = serializeSelf(doc);
+    expect(html).toContain("\\\\u003c");
+
+    const read = documentFromHtml(html);
+    expect(read?.name).toBe("literal \\u003c and </script>");
   });
 
   it("keeps `$1` / `$&` in the document out of the replacement pattern", () => {

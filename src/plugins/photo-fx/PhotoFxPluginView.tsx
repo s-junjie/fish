@@ -369,7 +369,7 @@ export function PhotoFxPluginView({ context }: PhotoFxPluginViewProps) {
           )}
 
           {/* Zoom Control Badge */}
-          <div className="absolute top-2 right-2 flex items-center gap-1 bg-panel/85 backdrop-blur-sm border border-rule rounded-sm px-1 py-0.5 text-unit text-ink-dim shadow-sm z-10">
+          <div className="absolute top-2 right-2 flex items-center gap-1 bg-panel/85 backdrop-blur-sm border border-rule rounded-sm px-1 py-0.5 text-unit text-ink-dim shadow-panel z-10">
             <button
               type="button"
               onClick={() => {
@@ -882,7 +882,7 @@ export function PhotoFxPluginView({ context }: PhotoFxPluginViewProps) {
                   title={`${strings.transparentBg}: ${options.transparentBg ? "ON" : "OFF"}`}
                   className={`h-[25px] w-[25px] flex items-center justify-center rounded-swatch border transition-colors cursor-pointer flex-none ${
                     options.transparentBg
-                      ? "border-brand text-brand bg-brand-wash shadow-sm"
+                      ? "border-brand text-brand bg-brand-wash"
                       : "border-rule text-ink-dim hover:text-ink bg-inset hover:border-rule-strong"
                   }`}
                 >

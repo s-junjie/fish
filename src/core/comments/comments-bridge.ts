@@ -46,21 +46,31 @@ export function onCommentsReplaced(listener: (comments: FishCommentsDocument) =>
   return () => commentsReplacedListeners.delete(listener);
 }
 
-export function parseCommentsBlock(html: string): FishCommentsDocument {
-  const body = COMMENTS_BLOCK_RE.exec(html)?.[1]?.trim();
-  if (!body) return createEmptyCommentsDocument();
+/**
+ * `JSON.parse` already decodes `\u003c`, which is how a `</script>` inside a
+ * string is allowed to survive the block. Rewriting the escapes before parsing
+ * turns a literal `\u003c` in a comment body into `\<` — invalid JSON — and the
+ * whole thread list is then dropped as unreadable.
+ */
+function readCommentsJson(text: string): FishCommentsDocument | null {
   try {
-    const parsed = JSON.parse(body.replace(/\\u003c/g, "<"));
+    const parsed = JSON.parse(text);
     if (parsed && typeof parsed === "object" && Array.isArray(parsed.threads)) {
       return {
         version: parsed.version || "0.1",
         threads: parsed.threads
       };
     }
-    return createEmptyCommentsDocument();
-  } catch {
-    return createEmptyCommentsDocument();
+  } catch (err) {
+    console.warn("FISH: Failed to parse embedded #fish-comments JSON:", err);
   }
+  return null;
+}
+
+export function parseCommentsBlock(html: string): FishCommentsDocument {
+  const body = COMMENTS_BLOCK_RE.exec(html)?.[1]?.trim();
+  if (!body) return createEmptyCommentsDocument();
+  return readCommentsJson(body) ?? createEmptyCommentsDocument();
 }
 
 export function loadInitialComments(): FishCommentsDocument {
@@ -71,18 +81,7 @@ export function loadInitialComments(): FishCommentsDocument {
   if (!scriptEl || !scriptEl.textContent || !scriptEl.textContent.trim()) {
     return createEmptyCommentsDocument();
   }
-  try {
-    const parsed = JSON.parse(scriptEl.textContent.replace(/\\u003c/g, "<"));
-    if (parsed && typeof parsed === "object" && Array.isArray(parsed.threads)) {
-      return {
-        version: parsed.version || "0.1",
-        threads: parsed.threads
-      };
-    }
-  } catch (err) {
-    console.warn("FISH: Failed to parse embedded #fish-comments JSON:", err);
-  }
-  return createEmptyCommentsDocument();
+  return readCommentsJson(scriptEl.textContent) ?? createEmptyCommentsDocument();
 }
 
 export function spliceCommentsBlock(html: string, comments: FishCommentsDocument): string {

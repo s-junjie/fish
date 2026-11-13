@@ -72,15 +72,20 @@ jobs:
         if: github.event_name != 'pull_request'
         run: npm run update:verify
 
-      # 94 of 108 suites pass on a clean build of this commit; the 13 failures are
-      # in zoom, SVG import and inspector specs that this change does not touch
-      # (no `src/` file is modified). Informational until they are fixed, so the
-      # required check is not red from the first public commit.
+      # Non-blocking on purpose: this suite measures painted glyphs and pixels,
+      # and a runner's font stack is not this repository's, so a red X here is a
+      # statement about the machine as often as about the commit.
+      #
+      # Not swallowed on purpose: `|| true` forced the exit code to 0, which
+      # turned `steps.e2e.outcome` into "success" and made the report step below
+      # unreachable — the only two ways a failure could have been noticed. The
+      # runner's own exit code has to reach the step, or "informational" means
+      # "invisible".
       - name: E2E
         if: github.event_name != 'pull_request'
         id: e2e
         continue-on-error: true
-        run: npm run test:e2e || true
+        run: npm run test:e2e
 
       - name: Keep the E2E report
         if: steps.e2e.outcome == 'failure'

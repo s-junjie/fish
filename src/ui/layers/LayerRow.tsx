@@ -253,7 +253,7 @@ export function LayerRow({
         </div>
 
         {el.isMask && (
-          <span className={`shrink-0 text-meta bg-brand-wash text-brand border border-brand/30 px-1 py-0.2 rounded-ctl ${marksYieldOnHover}`}>
+          <span className={`shrink-0 text-meta bg-brand-wash text-brand border border-brand/30 px-1 py-0.5 rounded-ctl ${marksYieldOnHover}`}>
             Mask
           </span>
         )}
@@ -269,7 +269,7 @@ export function LayerRow({
           <span
             data-layer-theme-mode={el.id}
             title={`${t("tokens.themeMode")}: ${themeModeLabel || el.themeMode}`}
-            className={`shrink-0 text-meta bg-raised text-ink-muted border border-rule px-1 py-0.2 rounded-ctl uppercase ${marksYieldOnHover}`}
+            className={`shrink-0 text-meta bg-raised text-ink-muted border border-rule px-1 py-0.5 rounded-ctl uppercase ${marksYieldOnHover}`}
           >
             {themeModeLabel || el.themeMode}
           </span>
@@ -279,7 +279,7 @@ export function LayerRow({
           <span
             data-layer-number-mode={el.id}
             title={`${t("tokens.numberMode")}: ${numberModeLabel || el.numberMode}`}
-            className={`shrink-0 text-meta bg-raised text-ink-muted border border-rule px-1 py-0.2 rounded-ctl uppercase ${marksYieldOnHover}`}
+            className={`shrink-0 text-meta bg-raised text-ink-muted border border-rule px-1 py-0.5 rounded-ctl uppercase ${marksYieldOnHover}`}
           >
             {numberModeLabel || el.numberMode}
           </span>

@@ -21,11 +21,19 @@
 //   - `label` is not in the attribute set: in this codebase `label` is a
 //     component prop far more often than it is markup.
 
-import { readdirSync, readFileSync, statSync } from "fs";
+import { readdirSync, readFileSync, statSync, existsSync } from "fs";
 import path from "path";
 import { describe, expect, it } from "vitest";
 
-const UI_DIR = path.resolve(process.cwd(), "src/ui");
+/**
+ * Everything that renders UI.
+ *
+ * `src/plugins/**` ships views of its own and was never scanned, and
+ * `src/main.tsx` mounts the three shells — a rule that stops at a directory
+ * boundary is a rule about a directory, not about the app.
+ */
+const UI_DIRS = [path.resolve(process.cwd(), "src/ui"), path.resolve(process.cwd(), "src/plugins")];
+const UI_ENTRY = path.resolve(process.cwd(), "src/main.tsx");
 
 /** `hover:bg-[#1a1a1a]` — a Tailwind colour utility whose value is a raw hex. */
 const HEX_UTILITY =
@@ -285,6 +293,69 @@ const SIDE_WITH_SIZE = /^(?:[trblxy]|x|y|s|e|w|n|ne|nw|se|sw)-(?:\d+|auto|full|p
 const SIDE_OR_EDGE = /^(?:[trblxy]?|x|y|s|e|w|n|ne|nw|se|sw)$/;
 
 /**
+ * The class lists a `className` can actually produce.
+ *
+ * A template literal is not one list: `${on ? "bg-brand" : "bg-raised"}` is two,
+ * and blanking the expression — what this used to do — threw both away. Every
+ * conditional branch is therefore extracted as its own body, so a violation that
+ * only exists in one branch is still a violation.
+ */
+function classNameBodies(code: string): string[] {
+  const bodies: string[] = [];
+  for (const m of code.matchAll(/className="([^"\n]*)"/g)) bodies.push(m[1]);
+  for (const m of code.matchAll(/className=\{`([\s\S]*?)`\}/g)) bodies.push(...templateBodies(m[1]));
+  // `className={on ? "a" : "b"}` — no template, so no `${…}` to walk.
+  for (const m of code.matchAll(/className=\{([^`}]*)\}/g)) {
+    if (m[1].includes('"') || m[1].includes("'")) bodies.push(...literalsInExpression(m[1]));
+  }
+  return bodies;
+}
+
+/** The string literals one expression can contribute, nested templates included. */
+function literalsInExpression(expr: string): string[] {
+  const out: string[] = [];
+  for (const m of expr.matchAll(/"([^"\n]*)"|'([^'\n]*)'/g)) out.push(m[1] ?? m[2] ?? "");
+  for (const m of expr.matchAll(/`([^`]*)`/g)) out.push(...templateBodies(m[1]));
+  return out;
+}
+
+/** One body per class list a template literal can produce. */
+function templateBodies(body: string): string[] {
+  const bodies: string[] = [];
+  let head = "";
+  let i = 0;
+  while (i < body.length) {
+    const open = body.indexOf("${", i);
+    if (open < 0) {
+      head += body.slice(i);
+      break;
+    }
+    head += body.slice(i, open);
+    // Walk to the matching `}`, skipping string literals and nested templates so
+    // an object literal or a nested `${}` inside the expression cannot end it.
+    let depth = 0;
+    let quote: string | null = null;
+    let j = open + 1;
+    for (; j < body.length; j++) {
+      const ch = body[j];
+      if (quote) {
+        if (ch === "\\") j++;
+        else if (ch === quote) quote = null;
+        continue;
+      }
+      if (ch === '"' || ch === "'" || ch === "`") quote = ch;
+      else if (ch === "{") depth++;
+      else if (ch === "}" && --depth === 0) break;
+    }
+    bodies.push(...literalsInExpression(body.slice(open + 2, j)));
+    head += " ";
+    i = j + 1;
+  }
+  bodies.unshift(head);
+  return bodies;
+}
+
+/**
  * Every `className` value in the source, as a list of its tokens.
  *
  * Scoped deliberately. An earlier version of this check matched colour-shaped
@@ -296,17 +367,11 @@ const SIDE_OR_EDGE = /^(?:[trblxy]?|x|y|s|e|w|n|ne|nw|se|sw)$/;
  * markup, and only the extraction tells the two apart.
  */
 function classNameTokens(code: string): string[] {
-  const bodies: string[] = [];
-  for (const m of code.matchAll(/className="([^"\n]*)"/g)) bodies.push(m[1]);
-  // A template literal's ${…} holds expressions, not class names.
-  for (const m of code.matchAll(/className=\{`([^`]*)`\}/g)) {
-    bodies.push(m[1].replace(/\$\{[^}]*\}/g, " "));
-  }
   const tokens: string[] = [];
-  for (const body of bodies) {
+  for (const body of classNameBodies(code)) {
     for (const raw of body.split(/\s+/)) {
       const tok = raw.trim();
-      if (tok && !tok.includes("${")) tokens.push(tok);
+      if (tok) tokens.push(tok);
     }
   }
   return tokens;
@@ -347,7 +412,7 @@ function proseLiterals(code: string): string[] {
 }
 
 describe("ui tokenization and i18n (AGENTS.md §3, §4)", () => {
-  const files = walk(UI_DIR);
+  const files = [...UI_DIRS.flatMap((dir) => walk(dir)), ...(existsSync(UI_ENTRY) ? [UI_ENTRY] : [])];
   const themeColors = themeColorNames();
 
   it("scans the whole ui tree", () => {
@@ -361,6 +426,7 @@ describe("ui tokenization and i18n (AGENTS.md §3, §4)", () => {
 
   for (const file of files) {
     const rel = path.relative(process.cwd(), file);
+    const isPlugin = rel.startsWith(`src${path.sep}plugins${path.sep}`);
     const allowReason = ALLOW[path.basename(file)];
     const raw = readFileSync(file, "utf8");
     // Two views of the same file, on purpose:
@@ -378,7 +444,12 @@ describe("ui tokenization and i18n (AGENTS.md §3, §4)", () => {
     describe(rel, () => {
       it("uses no ad-hoc hex colour utility", () => {
         if (allowReason) return;
-        const hits = [...code.matchAll(HEX_UTILITY)].map((m) => m[0]);
+        // `code` has every template literal blanked, so a hex inside
+        // `className={`…`}` — which is most of them — was invisible. The
+        // extracted bodies are the half that can prove it.
+        const hits = [code, ...classNameBodies(raw)]
+          .flatMap((text) => [...text.matchAll(HEX_UTILITY)])
+          .map((m) => m[0]);
         expect(hits, `${rel}: use a tailwind.config.js token (AGENTS.md §3)`).toEqual([]);
       });
 
@@ -416,10 +487,17 @@ describe("ui tokenization and i18n (AGENTS.md §3, §4)", () => {
         ).toEqual([]);
       });
 
-      it("routes user-facing strings through t()", () => {
-        const hits = [...attributeLiterals(code), ...proseLiterals(code)];
-        expect(hits, `${rel}: use t("scope.key") (AGENTS.md §4)`).toEqual([]);
-      });
+      // A plugin view carries its own string table (`src/plugins/*/i18n.ts`,
+      // reached through `getStrings()`), because its bundle cannot see the
+      // shell's dictionary. `t("scope.key")` is the contract for `src/ui`, not
+      // for a plugin — the styling rules above and below are the ones that
+      // apply to both, and they are the reason this tree is scanned at all.
+      if (!isPlugin) {
+        it("routes user-facing strings through t()", () => {
+          const hits = [...attributeLiterals(code), ...proseLiterals(code)];
+          expect(hits, `${rel}: use t("scope.key") (AGENTS.md §4)`).toEqual([]);
+        });
+      }
 
       it("sets only real font weights", () => {
         const hits = classNameTokens(raw).map(stripVariants).filter((t) => BANNED_WEIGHT.test(t));

@@ -3,7 +3,9 @@
 //   node scripts/test-fast.mjs            auto-detect changed src/ files
 //   node scripts/test-fast.mjs <file...>  run explicit vitest targets
 //
-// Mapping rule: a changed src/foo/bar.ts runs every tests/**/bar*.test.ts.
+// Mapping rule: a changed src/foo/bar.ts runs every tests/**/bar*.test.ts and
+// bar*.test.tsx — two of the suites ride on JSX (`token-tag`, `html-embed-lazy`),
+// and a glob that only names `.ts` silently skipped them.
 // A change under src/core/ ripples widely, so it falls back to the full unit
 // suite (safe, still skips tsc + e2e). No src changes -> full unit for safety.
 // This intentionally never runs tsc or the Playwright e2e suite; use
@@ -31,7 +33,7 @@ function gitChanged() {
 
 function findTestsFor(name) {
   try {
-    return execSync(`find tests -name '${name}*.test.ts'`, { cwd: root })
+    return execSync(`find tests \\( -name '${name}*.test.ts' -o -name '${name}*.test.tsx' \\)`, { cwd: root })
       .toString().split("\n").map((s) => s.trim()).filter(Boolean);
   } catch {
     return [];

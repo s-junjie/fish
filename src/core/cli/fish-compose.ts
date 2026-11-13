@@ -5,27 +5,12 @@ import { normalizeDesignDocument } from "../dsl/normalize";
 import { compactDocumentJson, documentJson } from "../document-json";
 import { embedLocalDocumentAssets } from "./fish-assets";
 import { dialectMismatch, DOC_BLOCK_RE, injectDocumentBlock } from "./doc-source";
+import { resolveTemplatePath } from "./template-path";
 import { laidOutDocument } from "../layout-report";
 
 // ---------------------------------------------------------------------------
 // compose
 // ---------------------------------------------------------------------------
-
-function resolveTemplatePath(templateFile: string): string | null {
-  if (fs.existsSync(templateFile)) return templateFile;
-  const candidates = [
-    path.join("templates", templateFile),
-    path.join(path.dirname(process.argv[1]), "templates", path.basename(templateFile)),
-    path.join(path.dirname(process.argv[1]), "templates", "blank.fish.html"),
-    path.join("templates", "blank.fish.html"),
-    path.join(path.dirname(process.argv[1]), "blank.fish.html"),
-    path.join("blank.fish.html")
-  ];
-  for (const c of candidates) {
-    if (fs.existsSync(c)) return c;
-  }
-  return null;
-}
 
 export async function compose(jsonFile: string, templateFile: string, opts: { out?: string; compact?: boolean }): Promise<number> {
   let raw: string;

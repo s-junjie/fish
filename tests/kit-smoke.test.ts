@@ -50,6 +50,27 @@ whenBuilt("the downloaded kit runs on its own", () => {
     expect(report.ok).toBe(true);
   });
 
+  // `--out` with no template argument is the shortest form in the skill, and the
+  // only one that has to find the shipped shell by itself: the caller's cwd is a
+  // project directory, not the kit root.
+  it("composes with the default shell when the caller stands outside the kit", () => {
+    const dir = tmpdir();
+    const json = path.join(dir, "design.json");
+    const out = path.join(dir, "draft.fish.html");
+    fs.writeFileSync(
+      json,
+      JSON.stringify({
+        version: "0.1",
+        name: "Default shell",
+        canvas: { width: 400, height: 300 },
+        elements: []
+      })
+    );
+
+    run(["compose", json, "--out", out]);
+    expect(JSON.parse(run(["check", out, "--json"])).ok).toBe(true);
+  });
+
   it("runs the launcher, which is the command every instruction names", () => {
     const help = execFileSync(LAUNCHER, ["--help"], { cwd: tmpdir(), encoding: "utf-8" });
     expect(help).toContain("assets");

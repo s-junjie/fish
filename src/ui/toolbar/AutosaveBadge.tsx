@@ -5,6 +5,7 @@ import type { AutosaveStatus } from "../../core/persistence/autosave-controller"
 import { Button } from "../Button";
 import { MENU_ITEM_CLASS, MENU_SEPARATOR_CLASS, MENU_SHORTCUT_CLASS, POPOVER_SURFACE_CLASS } from "../menu-style";
 import { ROW_CLASS } from "../row-style";
+import { useDismiss } from "../hooks/useDismiss";
 
 interface AutosaveBadgeProps {
   autosaveStatus: AutosaveStatus | null;
@@ -99,29 +100,11 @@ export function AutosaveBadge(props: AutosaveBadgeProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Close popover when clicking outside or pressing Escape
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handlePointerDown = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setIsOpen(false);
-      }
-    };
-
-    window.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isOpen]);
+  // `containerRef` wraps the trigger and the popover, so both count as inside —
+  // the rule this panel used to hand-roll. `useDismiss` is the same rule with the
+  // IME guard and the panel stack the hand-rolled pair never had.
+  const closePopover = useCallback(() => setIsOpen(false), []);
+  useDismiss(isOpen, closePopover, containerRef);
 
   const handleCopyPath = useCallback((e: MouseEvent) => {
     e.stopPropagation();

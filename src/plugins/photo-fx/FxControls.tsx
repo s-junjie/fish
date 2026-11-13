@@ -171,7 +171,7 @@ export function InstrumentSlider({
           </div>
           {/* 11px Square Knob (conforms to DESIGN.md Instrument Amber) */}
           <div
-            className="absolute top-1/2 w-[11px] h-[11px] -mt-[5.5px] -ml-[5.5px] rounded-[1px] bg-ink shadow-[0_1px_3px_rgba(0,0,0,0.6)] pointer-events-none"
+            className="absolute top-1/2 w-[11px] h-[11px] -mt-[5.5px] -ml-[5.5px] rounded-[1px] bg-ink border border-rule-strong pointer-events-none"
             style={{ left: `${pct}%` }}
           />
         </div>

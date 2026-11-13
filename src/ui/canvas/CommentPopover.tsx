@@ -144,6 +144,9 @@ export function CommentPopover({
       className={`${POPOVER_SURFACE_CLASS} px-2.5 pt-2 pb-2.5 flex flex-col gap-2 font-sans text-ui text-ink`}
       onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => {
+        // Escape belongs to the IME while it is composing: the key cancels the
+        // candidate list, not the card the candidate is being typed into.
+        if (e.isComposing || (e as any).keyCode === 229) return;
         if (e.key === "Escape") onClose();
       }}
     >

@@ -111,7 +111,7 @@ export function IconsPluginView({ context }: IconsPluginViewProps) {
           onClick={() => setProviderType("lucide")}
           className={`flex-1 h-6 rounded-ctl text-ui transition-colors ${
             providerType === "lucide"
-              ? "bg-field text-ink font-medium shadow-sm"
+              ? "bg-field text-ink font-medium"
               : "text-ink-muted hover:text-ink"
           }`}
         >
@@ -122,7 +122,7 @@ export function IconsPluginView({ context }: IconsPluginViewProps) {
           onClick={() => setProviderType("remix")}
           className={`flex-1 h-6 rounded-ctl text-ui transition-colors ${
             providerType === "remix"
-              ? "bg-field text-ink font-medium shadow-sm"
+              ? "bg-field text-ink font-medium"
               : "text-ink-muted hover:text-ink"
           }`}
         >

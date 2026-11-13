@@ -71,6 +71,31 @@ ${commentsJson}
     expect(emptySpliced).toContain('id="design-doc"');
   });
 
+  it("round-trips a message that quotes the \\u003c escape sequence", () => {
+    const comments: FishCommentsDocument = {
+      ...sampleComments,
+      threads: [
+        {
+          ...sampleComments.threads[0],
+          messages: [
+            {
+              ...sampleComments.threads[0].messages[0],
+              content: "Write \\u003c when you mean a literal </script> escape."
+            }
+          ]
+        }
+      ]
+    };
+
+    const serialized = serializeSelf(createEmptyDocument(), undefined, { comments });
+    expect(serialized).toContain("\\\\u003c");
+
+    const parsed = parseCommentsBlock(serialized);
+    expect(parsed.threads[0].messages[0].content).toBe(
+      "Write \\u003c when you mean a literal </script> escape."
+    );
+  });
+
   it("serializeSelf writes and preserves #fish-comments", () => {
     const doc = createEmptyDocument();
     const serialized = serializeSelf(doc, undefined, { comments: sampleComments });

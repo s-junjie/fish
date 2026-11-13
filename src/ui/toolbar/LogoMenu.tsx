@@ -44,7 +44,7 @@ export function LogoMenu({ status }: LogoMenuProps) {
         onClick={() => (status.panelOpen ? status.closePanel() : status.openPanel())}
         className={`relative shrink-0 flex items-center justify-center w-7 h-7 rounded-ctl transition-all duration-200 select-none ${
           pending
-            ? "bg-brand/15 hover:bg-brand/25 ring-1 ring-brand/50 shadow-[0_0_8px_rgba(232,163,61,0.25)] text-ink"
+            ? "bg-brand/15 hover:bg-brand/25 ring-1 ring-brand/50 text-ink"
             : status.panelOpen
               ? "bg-raised text-ink"
               : "text-ink hover:bg-raised/70 active:bg-raised"

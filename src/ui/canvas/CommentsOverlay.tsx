@@ -231,6 +231,7 @@ export function CommentsOverlay({
       }
     };
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.isComposing || (e as any).keyCode === 229) return;
       if (e.key === "Escape") closeAll();
     };
     document.addEventListener("mousedown", onPointerDown, true);

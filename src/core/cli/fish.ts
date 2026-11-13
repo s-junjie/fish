@@ -45,7 +45,7 @@ const USAGE = `fish — the FISH agent CLI (nothing to install)
   ./fish comments resolve <doc.fish.html> <threadId> [--reply <text>]
   ./fish import <page.html> [-o|--out FILE] [--viewport N] [--viewport-height N] [--name N] [--template FILE] [--compact] [--json]
   ./fish compose <design.json | -> <template.fish.html> [-o|--out FILE] [--compact]
-  ./fish export <doc.fish.html> [-o|--out FILE] [--scale N] [--element ID]
+  ./fish export <doc.fish.html> [-o|--out FILE] [--scale N] [--element ID] [--format png]
 
 check    normalize + validate the document block and print what the engine would change.
 brief    report the tokens, styles, components, assets and fonts the document already carries.

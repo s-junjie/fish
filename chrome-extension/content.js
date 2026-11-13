@@ -41,8 +41,15 @@
       `;
       (document.body || document.documentElement).appendChild(toast);
     }
-    const icon = isError ? `<span style="color: #EF4444; font-weight: 700;">✕</span>` : `<span style="color: #F59E0B; font-weight: 700;">✓</span>`;
-    toast.innerHTML = `${icon} ${message}`;
+    // Built as nodes rather than markup: `message` carries an exception's own
+    // text, and a content script parses `innerHTML` in its isolated world —
+    // where a stray tag from the page would run with the extension's messaging.
+    const icon = document.createElement("span");
+    icon.style.cssText = isError ? "color: #EF4444; font-weight: 700;" : "color: #F59E0B; font-weight: 700;";
+    icon.textContent = isError ? "✕" : "✓";
+    const text = document.createElement("span");
+    text.textContent = message;
+    toast.replaceChildren(icon, text);
     toast.style.opacity = "1";
     setTimeout(() => {
       if (toast) {
@@ -533,8 +540,13 @@
   async function serializeSubtree(node, isPickedElement = false) {
     try {
       const clone = node.cloneNode(true);
+      const canvasSwaps = [];
 
-      // 1. Turn canvas elements into png images if possible
+      // 1. Capture canvas pixels. The node swap is deferred to the very end:
+      //    `replaceWith` drops a canvas's fallback children from the clone, and
+      //    steps 2–3 pair the two trees by flat index — one dropped node shifts
+      //    every later pair by one, so a page with `<canvas>…fallback…</canvas>`
+      //    styled the wrong elements and inlined the wrong images.
       try {
         const origCanvases = node.querySelectorAll ? [node, ...node.querySelectorAll("canvas")] : [];
         const cloneCanvases = clone.querySelectorAll ? [clone, ...clone.querySelectorAll("canvas")] : [];
@@ -546,7 +558,7 @@
                 const img = document.createElement("img");
                 img.src = dataUrl;
                 img.className = origCanvases[i].className;
-                cloneCanvases[i].replaceWith(img);
+                canvasSwaps.push({ from: cloneCanvases[i], to: img });
               }
             } catch {
               // Ignore tainted or WebGL canvas errors
@@ -691,11 +703,30 @@
         }
       }
 
+      // Deferred step 1: the canvas keeps the styles it was inlined with, and the
+      // swap can no longer move the indices steps 2–3 paired.
+      for (const swap of canvasSwaps) {
+        const style = swap.from.getAttribute("style");
+        if (style) swap.to.setAttribute("style", style);
+        swap.from.replaceWith(swap.to);
+      }
+
       return clone.outerHTML || clone.innerHTML;
     } catch (err) {
       console.warn("FISH: serializeSubtree encountered an error, falling back:", err);
       return node.outerHTML || node.innerHTML;
     }
+  }
+
+  /**
+   * The envelope is an HTML string built from page-controlled text: a title of
+   * `x</title><script>…` and a CSS rule whose value contains `</style>` would
+   * each close their block, and the capture is opened as a document later.
+   * Escaping is per context — `&<>` in text, `<\/` inside CSS, where the
+   * backslash is a no-op to the parser but hides the tag from the HTML scanner.
+   */
+  function escapeHtmlText(value) {
+    return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
   function buildHtmlEnvelope(bodyHtml, title) {
@@ -704,9 +735,9 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>${title}</title>
+  <title>${escapeHtmlText(title)}</title>
   <style>
-    ${styles}
+    ${styles.replace(/<\/(style)/gi, "<\\/$1")}
   </style>
 </head>
 <body style="margin:0;padding:0;background:transparent;">

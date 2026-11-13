@@ -56,7 +56,7 @@ export function parseAssetsBlock(html: string): Record<string, string> {
   const body = ASSETS_BLOCK_RE.exec(html)?.[1]?.trim();
   if (!body) return {};
   try {
-    const parsed = JSON.parse(body.replace(/\\u003c/g, "<"));
+    const parsed = JSON.parse(body);
     return parsed && typeof parsed === "object" ? (parsed as Record<string, string>) : {};
   } catch {
     return {};
@@ -286,7 +286,9 @@ export function readDocumentFromHtml(html: string): ReadHtmlDocument | undefined
   const body = match?.[1]?.trim();
   if (!body) return undefined;
   try {
-    const read = readDocumentWithRepairs(parseLenientJson<DesignDocument>(body.replace(/\\u003c/g, "<")));
+    // No un-escaping before the parse: `JSON.parse` decodes `\u003c` itself, and
+    // rewriting escapes first corrupts a literal `\u003c` in the payload.
+    const read = readDocumentWithRepairs(parseLenientJson<DesignDocument>(body));
     return { document: mergeAssets(read.document, parseAssetsBlock(html)), repairs: read.repairs };
   } catch {
     return undefined;

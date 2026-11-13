@@ -9,14 +9,22 @@
  *
  * Enabled by `window.__FISH_PERF__ = true` before the shell boots (a query flag in
  * a probe), or from the console at any time. Marks are cheap when off: one
- * `typeof` per call site, no allocation.
+ * `typeof` and one property read per call site, no allocation.
  */
 
-const scope = typeof window !== "undefined" ? ((window as any).__FISH_PERF__ ? (window as any).performance : undefined) : undefined;
+/**
+ * Read per call, never cached at load: the documented way to use this is
+ * `window.__FISH_PERF__ = true` in the console of a session already running, and
+ * a module-level snapshot made that a no-op — every span stayed off while the
+ * doc promised otherwise.
+ */
+function perfActive(): boolean {
+  return typeof window !== "undefined" && Boolean((window as any).__FISH_PERF__);
+}
 
 /** Times `body` and records it as `name`. Returns whatever `body` returned. */
 export function measureSpan<T>(name: string, body: () => T): T {
-  if (!scope) return body();
+  if (!perfActive()) return body();
   const start = performance.now();
   try {
     return body();
