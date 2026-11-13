@@ -11,6 +11,12 @@ import { APP_VERSION } from "../src/core/version";
 import { checkAtLaunch, checkForUpdate } from "../src/core/update/check";
 import { buildUpdatedFile, downloadShell, assertUsableShell } from "../src/core/update/apply";
 import {
+  JUST_UPDATED_KEY,
+  consumeJustUpdated,
+  rememberJustUpdated
+} from "../src/core/update/config";
+import { resolveJustUpdatedCheck } from "../src/ui/hooks/useUpdateStatus";
+import {
   documentFromHtml,
   serializeSelf,
   createEmptyDocument,
@@ -318,5 +324,61 @@ describe("checkForUpdate", () => {
       expect(result).toEqual({ status: "disabled", reason: "not-configured" });
     }
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+function memoryStorage(): Storage {
+  const map = new Map<string, string>();
+  return {
+    get length() {
+      return map.size;
+    },
+    clear: () => map.clear(),
+    getItem: (key) => map.get(key) ?? null,
+    key: (i) => Array.from(map.keys())[i] ?? null,
+    removeItem: (key) => {
+      map.delete(key);
+    },
+    setItem: (key, val) => {
+      map.set(key, String(val));
+    }
+  };
+}
+
+describe("post-reload update state", () => {
+  it("reports current on the first reload once the running version matches what was written", () => {
+    expect(resolveJustUpdatedCheck("0.1.5", "0.1.5")).toEqual({ status: "current", version: "0.1.5" });
+    expect(resolveJustUpdatedCheck("0.1.4", "0.1.5")).toEqual({ status: "current", version: "0.1.5" });
+  });
+
+  it("returns null when no update was written or reload still booted an older runtime", () => {
+    expect(resolveJustUpdatedCheck(null, "0.1.5")).toBeNull();
+    expect(resolveJustUpdatedCheck("0.1.5", "0.1.4")).toBeNull();
+  });
+
+  it("stores the pending reload marker in sessionStorage and clears legacy localStorage on consume", () => {
+    const prevSession = Object.getOwnPropertyDescriptor(globalThis, "sessionStorage");
+    const prevLocal = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+    const session = memoryStorage();
+    const local = memoryStorage();
+    Object.defineProperty(globalThis, "sessionStorage", { configurable: true, value: session });
+    Object.defineProperty(globalThis, "localStorage", { configurable: true, value: local });
+
+    try {
+      rememberJustUpdated("0.1.5");
+      expect(session.getItem(JUST_UPDATED_KEY)).toBe("0.1.5");
+      expect(local.getItem(JUST_UPDATED_KEY)).toBeNull();
+      expect(consumeJustUpdated()).toBe("0.1.5");
+      expect(consumeJustUpdated()).toBeNull();
+
+      local.setItem(JUST_UPDATED_KEY, "0.1.5");
+      expect(consumeJustUpdated()).toBe("0.1.5");
+      expect(local.getItem(JUST_UPDATED_KEY)).toBeNull();
+    } finally {
+      if (prevSession) Object.defineProperty(globalThis, "sessionStorage", prevSession);
+      else delete (globalThis as { sessionStorage?: unknown }).sessionStorage;
+      if (prevLocal) Object.defineProperty(globalThis, "localStorage", prevLocal);
+      else delete (globalThis as { localStorage?: unknown }).localStorage;
+    }
   });
 });

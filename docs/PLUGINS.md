@@ -258,12 +258,29 @@ evaluation or first render). Inside a plugin built outside this tree, utility cl
 are not guaranteed to exist in the host stylesheet; treat `--fish-*` variables as the
 stable surface and keep plugin-specific selectors under `[data-fish-plugin="<id>"]`.
 
-A plugin appears in the **Resources (Shift+I)** popover only **after** it is installed —
-this build has no idea which plugins exist. The way in is "Load plugin file…": the
-signature is checked against the built-in public key, and the manifest inside tells the
-shell what it just installed. Right-clicking an installed row offers **Remove plugin**,
-which drops the bundle from storage and closes the panel if it was showing. See
-§5 below for the format and the trust chain.
+The **Resources (Shift+I)** popover has two ways in, and both end at the same check:
+the file's signature against the one public key the shell was built with.
+
+- **A row from the catalog.** `catalog.json` lists what its origin publishes; the
+  popover fetches `plugins/<id>/<version>/plugin.js` from the same origin. Nothing is
+  installed until a row's button is pressed, so an unreachable catalog costs the rows,
+  not the panel.
+- **"Load plugin file…"** — a file from disk, which needs no catalog at all. This is
+  the one path that works offline.
+
+Right-clicking an installed row offers **Remove plugin**, which drops the bundle from
+storage and closes the panel if it was showing. See §5 below for the format and the
+trust chain.
+
+**In dev, the catalog is local.** `npm run dev` serves `dist-plugins` at the published
+shape — `/catalog.json` and `/plugins/<id>/<version>/plugin.js` — so the rows are the
+bundles `npm run plugin:build` just wrote, signed with `.fish-plugin-key.json`, which
+is the key the dev shell trusts. The published catalog is signed with the release key
+and every row from it is refused: one build, one anchor, no downgrade. To install a
+published bundle instead, point the shell at that key
+(`FISH_PLUGIN_PUBLIC_KEY="$(cat release/keys/plugin-public.json)" npm run dev`) and
+expect your own builds to be the ones refused. The `localStorage` key
+`fish:pluginCatalogUrl` overrides the origin without a rebuild.
 
 ---
 

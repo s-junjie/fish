@@ -6,6 +6,7 @@ import preact from "@preact/preset-vite";
 import { viteSingleFile } from "vite-plugin-singlefile";
 import { lucideCompactPlugin } from "./scripts/vite-plugin-lucide-compact";
 import { i18nIndexPlugin } from "./scripts/vite-plugin-i18n-index";
+import { buildCatalog, readPlugins } from "./scripts/lib/plugin-catalog.mjs";
 import { coverBlockHtml, insertCoverBlock } from "./src/core/cover-block";
 import { buildDefaultCover } from "./src/ui/default-cover";
 import fs from "node:fs";
@@ -99,7 +100,7 @@ const ASSETS_BLOCK_RE = /<script\s+id=["']fish-assets["'][^>]*>[\s\S]*?<\/script
 // rewrites that same file afterwards; the size it ends up at is printed by the
 // step that writes it, which is the only place a number about it would be true.
 
-export default defineConfig({
+const config = {
   define: {
     __FISH_APP_VERSION__: JSON.stringify(pkg.version),
     __FISH_UPDATE_MANIFEST_URL__: JSON.stringify(updateManifestUrl),
@@ -177,6 +178,53 @@ export default defineConfig({
           next();
         });
       }
+    },
+    {
+      name: "fish-dev-plugin-catalog",
+      // A dev shell trusts the key `.fish-plugin-key.json` was signed with, so the
+      // only bundles it can install are the ones under `dist-plugins`. Serving them
+      // at the published shape (`/catalog.json`, `/plugins/<id>/<version>/plugin.js`)
+      // keeps dev and release on one install path; reaching for the published
+      // catalog instead hands the shell bundles signed by the release key, and every
+      // row is refused — which is what a dev build must do, having only one anchor.
+      apply: "serve",
+      configureServer(server) {
+        const root = process.cwd();
+        server.middlewares.use((req, res, next) => {
+          const url = (req.url ?? "").split("?")[0];
+          if (url === "/catalog.json") {
+            try {
+              const plugins = readPlugins(path.resolve(root, "dist-plugins"));
+              res.setHeader("Content-Type", "application/json; charset=utf-8");
+              res.setHeader("Cache-Control", "no-store");
+              res.end(JSON.stringify(buildCatalog(appVersion, plugins)));
+            } catch (err) {
+              // The popover treats an unreachable catalog as "no rows", which is
+              // right for a user and silent for a developer: say it here, once per
+              // request the panel actually makes.
+              server.config.logger.warn(`[plugins] ${err instanceof Error ? err.message : String(err)}`);
+              res.statusCode = 404;
+              res.setHeader("Content-Type", "text/plain; charset=utf-8");
+              res.end(`${err instanceof Error ? err.message : String(err)}\nrun: node scripts/build-plugin.mjs --all`);
+            }
+            return;
+          }
+          const bundle = /^\/plugins\/([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)\/plugin\.js$/.exec(url);
+          if (bundle) {
+            const file = path.resolve(root, "dist-plugins", bundle[1], bundle[2], "plugin.js");
+            if (fs.existsSync(file)) {
+              res.setHeader("Content-Type", "text/javascript; charset=utf-8");
+              res.setHeader("Cache-Control", "no-store");
+              res.end(fs.readFileSync(file));
+            } else {
+              res.statusCode = 404;
+              res.end(`not built: ${bundle[1]}@${bundle[2]}\n`);
+            }
+            return;
+          }
+          next();
+        });
+      }
     }
   ],
   esbuild: {
@@ -231,4 +279,18 @@ export default defineConfig({
     hookTimeout: 30000,
     exclude: ["**/node_modules/**", "**/dist/**", "**/tests/e2e/**", "**/scratch/**", "scratch/**"]
   }
+};
+
+/**
+ * Where `fetchPluginCatalog` looks in dev — the middleware above, at the path the
+ * published site uses. A local override still wins: `localStorage` key
+ * `fish:pluginCatalogUrl` in `catalog.ts`.
+ */
+export default defineConfig(({ command }) => {
+  // `vite preview` serves a built shell, not the dev server, and keeps the
+  // published origin. So does the test run, which loads this config too.
+  const isDevServer = command === "serve" && !process.env.VITEST && process.env.NODE_ENV !== "production";
+  return isDevServer
+    ? { ...config, define: { ...config.define, __FISH_PLUGIN_CATALOG_URL__: JSON.stringify("/catalog.json") } }
+    : config;
 });

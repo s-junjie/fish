@@ -25,38 +25,12 @@ import { check } from "./fish-check";
 import { apply } from "./fish-apply";
 import { compose } from "./fish-compose";
 import { exportDocument } from "./fish-export";
+import { commandSpec, parseArgs, renderUsage } from "./command-spec";
 
 const USAGE = `fish — the FISH agent CLI (nothing to install)
 
   ./fish --version [--check]
-  ./fish check <doc.fish.html | doc.json> [--json] [--strict] [--geometry] [--audit] [--audit-tolerance N] [--strict-assets]
-  ./fish brief <doc.fish.html | doc.json> [--json]
-  ./fish inspect <elementId> <doc.fish.html | doc.json> [--all] [--json]
-  ./fish compact <doc.fish.html | doc.json> [-o|--out FILE]
-  ./fish assets <doc.fish.html | doc.json> [--json]
-  ./fish assets search <query> [--source openverse|lucide|ri] [--limit N] [--add-to <doc>] [--pick N] [--embed] [--to <elementId>] [--replace] [--json]
-  ./fish assets import <file...> <doc.fish.html> [--name N] [--to <elementId>] [--replace] [--json]
-  ./fish assets embed <doc.fish.html> (--id <assetId> | --all) [--json]
-  ./fish apply <ops.json | '[{"op":"patch",...}]'> <doc.fish.html> [-o|--out FILE] [--compact] [--json]
-  ./fish comments list|pending <doc.fish.html>
-  ./fish comments context <doc.fish.html> <threadId>
-  ./fish comments suggest <doc.fish.html> <threadId> --summary <text> --ops <ops.json|'[...]'>
-  ./fish comments reply <doc.fish.html> <threadId> --text <text>
-  ./fish comments resolve <doc.fish.html> <threadId> [--reply <text>]
-  ./fish import <page.html> [-o|--out FILE] [--viewport N] [--viewport-height N] [--name N] [--template FILE] [--compact] [--json]
-  ./fish compose <design.json | -> <template.fish.html> [-o|--out FILE] [--compact]
-  ./fish export <doc.fish.html> [-o|--out FILE] [--scale N] [--element ID] [--format png]
-
-check    normalize + validate the document block and print what the engine would change.
-brief    report the tokens, styles, components, assets and fonts the document already carries.
-inspect  report ONE element: the box it actually got, its effective style, its parents,
-         and — for an instance — the slots its overrides may address.
-compact  emit the canonical compact JSON of a document, assets preserved.
-assets   inspect doc.assets[] with the size each one costs; search, import or embed.
-apply    run the macro-ops of the authoring guide against the document block, in place.
-compose  inject a design.json into the shell without regex pitfalls or string corruption.
-import   measure a page in a real browser and emit an editable document.
-export   render a PNG of a document through a headless browser (PNG only).
+${renderUsage()}
 
 Exit codes: 0 clean, 1 an error diagnostic or a failed op, 2 bad usage.
 
@@ -110,112 +84,53 @@ function main(argv: string[]): number | Promise<number> {
 /** Everything the pre-flight decided not to answer: the command itself. */
 function dispatch(argv: string[]): number | Promise<number> {
   const [command, ...rest] = argv;
-  const flags = new Set(rest.filter((a) => a.startsWith("--")));
+  const spec = commandSpec(command);
+  if (!spec) return usage(`unknown command "${command}"`);
 
-  // Extract flag values so they do not bleed into positional args
-  const getOpt = (long: string, short?: string): string | undefined => {
-    const lIdx = rest.indexOf(long);
-    if (lIdx >= 0 && lIdx + 1 < rest.length) return rest[lIdx + 1];
-    if (short) {
-      const sIdx = rest.indexOf(short);
-      if (sIdx >= 0 && sIdx + 1 < rest.length) return rest[sIdx + 1];
-    }
-    return undefined;
+  // Against the command's own table, so a flag the command does not read is
+  // refused here instead of being parsed and then silently dropped.
+  const parsed = parseArgs(rest, spec);
+  if (!parsed.ok) return usage(parsed.message);
+
+  const { values, positionals: args } = parsed.value;
+  const valueOf = (name: string): string | undefined => {
+    const value = values.get(name);
+    return typeof value === "string" ? value : undefined;
+  };
+  const numberOf = (name: string): number | undefined => {
+    const value = valueOf(name);
+    return value !== undefined ? Number(value) : undefined;
   };
 
-  const out = getOpt("--out", "-o");
-  const format = getOpt("--format");
-  const scaleStr = getOpt("--scale");
-  const scale = scaleStr !== undefined ? Number(scaleStr) : undefined;
-  const element = getOpt("--element");
-  const source = getOpt("--source");
-  const limitStr = getOpt("--limit");
-  const limit = limitStr !== undefined ? Number(limitStr) : undefined;
-  const addTo = getOpt("--add-to");
-  const to = getOpt("--to");
-  const pickStr = getOpt("--pick");
-  const pick = pickStr !== undefined ? Number(pickStr) : undefined;
-  const id = getOpt("--id");
-  const name = getOpt("--name");
-  const viewportStr = getOpt("--viewport");
-  const viewport = viewportStr !== undefined ? Number(viewportStr) : undefined;
-  const viewportHeightStr = getOpt("--viewport-height");
-  const viewportHeight = viewportHeightStr !== undefined ? Number(viewportHeightStr) : undefined;
-  const template = getOpt("--template");
-  const auditTolerance = auditToleranceOf(getOpt("--audit-tolerance"));
-  const summary = getOpt("--summary");
-  const ops = getOpt("--ops");
-  const reply = getOpt("--reply");
-  const text = getOpt("--text");
-
-  // Collect positional arguments, skipping known flags and their values
-  const skipIndices = new Set<number>();
-  for (let i = 0; i < rest.length; i++) {
-    const a = rest[i];
-    if (a.startsWith("--")) {
-      skipIndices.add(i);
-      if (
-        [
-          "--out",
-          "--format",
-          "--scale",
-          "--element",
-          "--source",
-          "--limit",
-          "--add-to",
-          "--to",
-          "--pick",
-          "--id",
-          "--name",
-          "--viewport",
-          "--viewport-height",
-          "--template",
-          "--audit-tolerance",
-          "--summary",
-          "--ops",
-          "--reply",
-          "--text"
-        ].includes(a) &&
-        i + 1 < rest.length
-      ) {
-        skipIndices.add(i + 1);
-      }
-    } else if (a === "-o" && i + 1 < rest.length) {
-      skipIndices.add(i);
-      skipIndices.add(i + 1);
-    }
-  }
-  const args = rest.filter((_, idx) => !skipIndices.has(idx));
-
   const opts = {
-    json: flags.has("--json"),
-    strict: flags.has("--strict"),
-    geometry: flags.has("--geometry"),
-    audit: flags.has("--audit"),
-    strictAssets: flags.has("--strict-assets"),
-    compact: flags.has("--compact"),
-    embed: flags.has("--embed"),
-    all: flags.has("--all"),
-    replace: flags.has("--replace"),
-    out,
-    format,
-    scale,
-    element,
-    source,
-    limit,
-    addTo,
-    to,
-    pick,
-    id,
-    name,
-    viewport,
-    viewportHeight,
-    template,
-    auditTolerance,
-    summary,
-    ops,
-    reply,
-    text
+    json: values.has("--json"),
+    strict: values.has("--strict"),
+    geometry: values.has("--geometry"),
+    audit: values.has("--audit"),
+    strictAssets: values.has("--strict-assets"),
+    compact: values.has("--compact"),
+    embed: values.has("--embed"),
+    all: values.has("--all"),
+    replace: values.has("--replace"),
+    out: valueOf("--out"),
+    format: valueOf("--format"),
+    scale: numberOf("--scale"),
+    element: valueOf("--element"),
+    source: valueOf("--source"),
+    limit: numberOf("--limit"),
+    addTo: valueOf("--add-to"),
+    to: valueOf("--to"),
+    pick: numberOf("--pick"),
+    id: valueOf("--id"),
+    name: valueOf("--name"),
+    viewport: numberOf("--viewport"),
+    viewportHeight: numberOf("--viewport-height"),
+    template: valueOf("--template"),
+    auditTolerance: auditToleranceOf(valueOf("--audit-tolerance")),
+    summary: valueOf("--summary"),
+    ops: valueOf("--ops"),
+    reply: valueOf("--reply"),
+    text: valueOf("--text")
   };
   if (command === "check") {
     if (args.length < 1) return usage("check needs a document");

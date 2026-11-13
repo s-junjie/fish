@@ -54,6 +54,23 @@ function writeStorage(key: string, value: string | null): void {
   }
 }
 
+function readSessionStorage(key: string): string | null {
+  try {
+    return globalThis.sessionStorage?.getItem(key) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSessionStorage(key: string, value: string | null): void {
+  try {
+    if (value === null) globalThis.sessionStorage?.removeItem(key);
+    else globalThis.sessionStorage?.setItem(key, value);
+  } catch {
+    // Ignore when sessionStorage is unavailable.
+  }
+}
+
 let cachedKey: { json: string; key: JsonWebKey | null } | null = null;
 
 /**
@@ -108,17 +125,20 @@ export function setAutoCheckEnabled(on: boolean): void {
 }
 
 /**
- * The version that was just written to disk, if this tab is the one that wrote
- * it. Cleared on read, so the reload it authorises nags exactly once.
+ * The version that was just written in place, if this tab is the one that wrote
+ * it. Stored in sessionStorage so file:// tabs do not bleed across files, and
+ * cleared on read so a single reload settles the state.
  */
 export function consumeJustUpdated(): string | null {
-  const value = readStorage(JUST_UPDATED_KEY);
-  if (value) writeStorage(JUST_UPDATED_KEY, null);
-  return value;
+  const sessionValue = readSessionStorage(JUST_UPDATED_KEY);
+  const legacyValue = readStorage(JUST_UPDATED_KEY);
+  if (sessionValue) writeSessionStorage(JUST_UPDATED_KEY, null);
+  if (legacyValue) writeStorage(JUST_UPDATED_KEY, null);
+  return sessionValue ?? legacyValue;
 }
 
 export function rememberJustUpdated(version: string): void {
-  writeStorage(JUST_UPDATED_KEY, version);
+  writeSessionStorage(JUST_UPDATED_KEY, version);
 }
 
 /** WebCrypto is the floor for the whole feature: no key, no verify, no update. */

@@ -4,6 +4,7 @@ import {
   getFileHandle,
   setFileHandle,
   openedFileName,
+  openedFilePath,
   pickerStartIn,
   type PickerStartIn,
   payloadHashFromHtml,
@@ -19,21 +20,33 @@ import { createHandleStore, type HandleStore, type FileSystemFileHandleLike } fr
 const backend = hasIndexedDb() ? new IdbBackend() : new MemoryBackend();
 const handleStore: HandleStore = createHandleStore(backend);
 
+/**
+ * Scope persisted file handles to the opened `file://` path when available so
+ * copies with the same `fish:fileId` in different directories never reuse each
+ * other's write-back handles.
+ */
+export function handleStoreKey(
+  fileId: string,
+  filePath: string | undefined = openedFilePath()
+): string {
+  return filePath ? `${fileId}::${filePath}` : fileId;
+}
+
 /** Persist the active handle under `docId` so it survives a page reload. */
 export async function persistHandle(docId: string): Promise<void> {
   const h = getFileHandle();
-  if (h) await handleStore.save(docId, h as FileSystemFileHandleLike);
+  if (h) await handleStore.save(handleStoreKey(docId), h as FileSystemFileHandleLike);
 }
 
 /** Restore a persisted handle for `fileId` into the active session. */
 export async function loadHandle(fileId: string): Promise<void> {
-  const h = await handleStore.load(fileId);
+  const h = await handleStore.load(handleStoreKey(fileId));
   if (h) setFileHandle(h);
 }
 
 /** Forget a persisted handle that turned out not to be this file. */
 export async function forgetHandle(fileId: string): Promise<void> {
-  await handleStore.clear(fileId);
+  await handleStore.clear(handleStoreKey(fileId));
 }
 
 /**

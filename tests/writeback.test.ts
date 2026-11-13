@@ -6,6 +6,8 @@ import {
   writeBackFile,
   persistHandle,
   loadHandle,
+  forgetHandle,
+  handleStoreKey,
   pickWritebackFile,
   saveAsCopyName,
   verifyPickedFile,
@@ -416,5 +418,42 @@ describe("handle persistence", () => {
     expect(await requestWritebackPermission()).toBe("prompt");
     setFileHandle(null);
     expect(await queryWritebackPermission()).toBe("unsupported");
+  });
+
+  it("isolates persisted handles by file:// path so same-name copies do not collide", async () => {
+    const prevWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+    const setPath = (pathname: string) => {
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        value: { location: { protocol: "file:", pathname } }
+      });
+    };
+
+    try {
+      setPath("/tmp/dir-a/voya.fish.html");
+      expect(handleStoreKey("file_voya")).toBe("file_voya::/tmp/dir-a/voya.fish.html");
+      const handleA = { ...fakeHandle("granted"), name: "voya.fish.html" };
+      setFileHandle(handleA);
+      await persistHandle("file_voya");
+
+      // Opening a same-name copy with the same fileId in another folder must not restore handleA.
+      setFileHandle(null);
+      setPath("/tmp/dir-b/voya.fish.html");
+      await loadHandle("file_voya");
+      expect(getFileHandle()).toBeNull();
+
+      // Reopening the original path still restores handleA, and forgetting clears only that path.
+      setPath("/tmp/dir-a/voya.fish.html");
+      await loadHandle("file_voya");
+      expect(getFileHandle()).toBe(handleA);
+
+      await forgetHandle("file_voya");
+      setFileHandle(null);
+      await loadHandle("file_voya");
+      expect(getFileHandle()).toBeNull();
+    } finally {
+      if (prevWindow) Object.defineProperty(globalThis, "window", prevWindow);
+      else delete (globalThis as { window?: unknown }).window;
+    }
   });
 });

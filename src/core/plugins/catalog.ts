@@ -40,7 +40,9 @@ export function catalogUrl(): string {
 }
 
 export function pluginBundleUrl(manifest: PluginManifest, catalogBaseUrl?: string): string {
-  const base = (catalogBaseUrl ?? catalogUrl()).replace(/\/catalog\.json(\?.*)?$/i, "");
+  const base = (catalogBaseUrl ?? catalogUrl())
+    .replace(/\/catalog\.json(\?.*)?$/i, "")
+    .replace(/\/+$/, "");
   return `${base}/plugins/${manifest.id}/${manifest.version}/plugin.js`;
 }
 

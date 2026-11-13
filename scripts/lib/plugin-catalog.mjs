@@ -54,15 +54,25 @@ export function readPlugins(dir) {
 }
 
 /**
- * The catalog is informational: the shipped shell has no catalog reader, and
- * inventing one here would claim a plugin-update feature that does not exist.
- * It is still signed-file-derived and hash-bearing, so a mirror can be checked.
+ * Every id appears once, at its newest version.
+ *
+ * `readPlugins` reads what is on disk, and a build directory that was never
+ * cleared keeps older versions next to the new one. The resources popover keys
+ * its rows by id, so a second row for the same plugin is a duplicate key and an
+ * install button that would fetch an old bundle.
  */
 export function buildCatalog(appVersion, plugins) {
+  const newest = new Map();
+  for (const entry of plugins) {
+    const current = newest.get(entry.manifest.id);
+    if (!current || compareNumeric(entry.manifest.version, current.manifest.version) > 0) {
+      newest.set(entry.manifest.id, entry);
+    }
+  }
   return {
     app: "fish",
     version: appVersion,
-    plugins: plugins.map((entry) => entry.manifest)
+    plugins: Array.from(newest.values(), (entry) => entry.manifest)
   };
 }
 

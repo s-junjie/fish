@@ -8,6 +8,7 @@ import {
   consumeJustUpdated,
   disabledReason,
   isConfigured,
+  isNewer,
   setAutoCheckEnabled,
   type ApplyOutcome,
   type DisabledReason,
@@ -48,6 +49,23 @@ export interface UpdateStatus {
   checkNow: () => void;
   update: () => void;
   reload: () => void;
+}
+
+/**
+ * Resolve the post-reload check state from `consumeJustUpdated()`.
+ *
+ * When the reloaded runtime matches (or exceeds) the written version, report it
+ * as current instead of re-arming `applied` — otherwise the user sees a second
+ * "reload to finish" prompt inside the new version. If the reload still booted
+ * an older version (e.g. a handle pointed to a copy elsewhere), return null so
+ * the normal launch check runs rather than trapping the tab in a reload loop.
+ */
+export function resolveJustUpdatedCheck(
+  justInstalled: string | null,
+  currentVersion: string
+): UpdateCheck | null {
+  if (!justInstalled || isNewer(justInstalled, currentVersion)) return null;
+  return { status: "current", version: currentVersion };
 }
 
 /**
@@ -119,9 +137,9 @@ export function useUpdateStatus(
     // A file this tab just rewrote is already the new version. Asking the server
     // again would find nothing, and finding nothing is what the panel would then
     // report — so the version is read from the write instead.
-    const justInstalled = consumeJustUpdated();
-    if (justInstalled) {
-      setApplied({ ok: true, method: "in-place", version: justInstalled });
+    const justInstalledCheck = resolveJustUpdatedCheck(consumeJustUpdated(), APP_VERSION);
+    if (justInstalledCheck) {
+      setCheck(justInstalledCheck);
       return;
     }
     const timer = setTimeout(() => {

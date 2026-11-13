@@ -152,7 +152,6 @@ export async function applyUpdate(
       setOpenedFileHash(saved.payloadHash);
     }
     setPristineHtml(shell);
-    rememberJustUpdated(release.version);
     return {
       ok: true,
       method: typeof (globalThis as { showSaveFilePicker?: unknown }).showSaveFilePicker === "function"

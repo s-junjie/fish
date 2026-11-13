@@ -302,16 +302,26 @@ export function ResourcesPopover({ onClose, onOpenPlugin, anchorRef }: Resources
               )}
             </>
           )}
+        </div>
 
-          {error && (
-            <div className="px-2 py-1.5 text-ui text-coral font-sans break-words">{error}</div>
-          )}
+        {/* Outside the list on purpose: at `max-h-80` a full catalog pushes this
+            band below the fold, and the one message a user needs is the one they
+            would then have to scroll to find. */}
+        {error && (
+          <div
+            role="alert"
+            className="px-3 py-2 border-t border-rule text-ui text-measure-coral font-sans break-words"
+          >
+            {error}
+          </div>
+        )}
 
+        <div className="p-1.5 pt-0">
           <button
             type="button"
             disabled={installing}
             onClick={pickFile}
-            className="mt-1 flex items-center gap-2 px-2 py-1.5 rounded-ctl text-ui text-ink-muted hover:text-ink hover:bg-surface transition-colors font-sans disabled:opacity-60"
+            className="flex w-full items-center gap-2 px-2 py-1.5 rounded-ctl text-ui text-ink-muted hover:text-ink hover:bg-surface transition-colors font-sans disabled:opacity-60"
           >
             <Upload size={13} className="flex-none" />
             <span className="truncate">
