@@ -329,7 +329,7 @@ export function ScrubInput({
     <div
       title={title}
       className={`group flex items-center ${compact ? "h-5" : "h-[25px]"
-        } bg-inset rounded-swatch overflow-hidden text-ui ${className}`}
+        } ${className.includes("bg-") ? "" : "bg-inset"} rounded-swatch overflow-hidden text-ui ${className}`}
     >
       {label ? (
         /* The key is `flex-none` and wears no divider: the demo runs `.k` straight

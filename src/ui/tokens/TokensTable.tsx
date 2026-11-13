@@ -166,10 +166,10 @@ function NumberModeCell({
         <div className="flex-1 min-w-0">
           <ScrubInput
             compact
-            label="px"
+            label=""
             value={currentVal}
             onChange={(num) => onValueChange(token, modeId, num)}
-            className={`w-full ${!hasOverride ? "opacity-50 hover:opacity-100" : ""}`}
+            className={`w-full bg-transparent ${!hasOverride ? "opacity-50 hover:opacity-100" : ""}`}
           />
         </div>
       </div>

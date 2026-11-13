@@ -12,13 +12,10 @@ import {
   reorderNumberTokens
 } from "../../core/interactions/number-token-ops";
 import {
-  getActiveNumberMode,
   getDocumentNumberModes,
-  switchDocumentNumberMode,
   updateNumberTokenWithModes
 } from "../../core/interactions/mode-ops";
 import { t } from "../../i18n";
-import { Select } from "../Select";
 import { CategoryIcon } from "../tokens/CategoryIcon";
 import { TokenList } from "./TokenList";
 import { NumberTokenEditorDraft, NumberTokenEditorPanel } from "./NumberTokenEditorPanel";
@@ -49,10 +46,8 @@ export function NumberTokenList({ doc, docRef, commitSnapshot }: NumberTokenList
     commitSnapshot({ ...docRef.current, tokens: mergeNumberTokenOrder(docRef.current.tokens ?? [], next) });
   };
 
-  // The NUMBER axis owns everything in this list: its columns, its active
-  // selection, and the ids its values are filed under.
+  // The NUMBER axis owns everything in this list: its columns and the ids its values are filed under.
   const modes = getDocumentNumberModes(doc);
-  const activeNumberMode = getActiveNumberMode(doc);
 
   const save = (draft: NumberTokenEditorDraft) => {
     const current = docRef.current;
@@ -101,16 +96,14 @@ export function NumberTokenList({ doc, docRef, commitSnapshot }: NumberTokenList
       row={(token) => ({
         id: token.id,
         name: token.name,
-        subtitle: `${numberModeLabels(token, modes).join(", ")} · ${t(
-          `tokens.categories.${token.category ?? "spacing"}` as any
-        )}`,
+        subtitle: numberModeLabels(token, modes).join(", "),
         preview: (
           <div className={NUMBER_TOKEN_PREVIEW_CLASS}>
             <CategoryIcon category={token.category} />
           </div>
         ),
         ghostSwatch: "rgba(155,164,171,.35)",
-        ghostLabel: `${token.name} (${token.value}px)`
+        ghostLabel: `${token.name} (${token.value})`
       })}
       rootAttr={{ "data-number-tokens": "1" }}
       sectionId="number-tokens"
@@ -122,27 +115,6 @@ export function NumberTokenList({ doc, docRef, commitSnapshot }: NumberTokenList
       dropTestId="number-token-drop-indicator"
       editTitle={t("tokens.editNumberAction")}
       deleteTitle={t("tokens.deleteNumberAction")}
-      trailing={
-        /* One mode is not a choice: with a single number axis entry the list
-           shows that entry's values, and a switcher would name a switch nobody
-           can flip. */
-        modes.length > 1 ? (
-          <Select
-            value={activeNumberMode}
-            onChange={(next) => commitSnapshot(switchDocumentNumberMode(docRef.current, next))}
-            title={t("tokens.numberMode")}
-            aria-label={t("tokens.numberMode")}
-            data-number-mode-switcher="1"
-            className="w-24"
-          >
-            {modes.map((mode) => (
-              <option key={mode.id} value={mode.id}>
-                {mode.name}
-              </option>
-            ))}
-          </Select>
-        ) : null
-      }
       onReorder={handleReorder}
       onDelete={(token) => commitSnapshot(removeTokenFromDoc(docRef.current, token.id))}
       onOpen={openEditor}

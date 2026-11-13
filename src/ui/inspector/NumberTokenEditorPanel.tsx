@@ -76,7 +76,7 @@ export function NumberTokenEditorPanel({
       label: baseMode.name,
       control: (
         <div className="flex-1 min-w-0">
-          <ScrubInput label="px" value={value} onChange={setValue} unit="px" className="w-full" />
+          <ScrubInput label="" value={value} onChange={setValue} className="w-full" />
         </div>
       )
     },
@@ -88,7 +88,7 @@ export function NumberTokenEditorPanel({
         control: (
           <div className="flex-1 min-w-0">
             <ScrubInput
-              label="px"
+              label=""
               value={mVal}
               placeholder={String(value)}
               onChange={(v) => setModeValue(m.id, v)}
@@ -107,7 +107,6 @@ export function NumberTokenEditorPanel({
                   </button>
                 ) : null
               }
-              unit="px"
               className="w-full"
             />
           </div>

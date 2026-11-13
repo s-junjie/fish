@@ -35,8 +35,6 @@ interface TokenListProps<T> {
   dropTestId: string;
   editTitle: string;
   deleteTitle: string;
-  /** Extra header controls beside the `+` (the NUMBER axis' mode switcher). */
-  trailing?: ComponentChildren;
   onReorder: (fromRow: number, insertBeforeRow: number) => void;
   onDelete: (token: T) => void;
   onOpen: (id: string, anchor: HTMLElement) => void;
@@ -63,7 +61,6 @@ export function TokenList<T>({
   dropTestId,
   editTitle,
   deleteTitle,
-  trailing,
   onReorder,
   onDelete,
   onOpen,
@@ -89,19 +86,16 @@ export function TokenList<T>({
         id={sectionId}
         title={sectionTitle}
         trailing={
-          <div className="flex items-center gap-1.5">
-            {trailing}
-            <Button
-              size="icon"
-              type="button"
-              {...createAttr}
-              title={createTitle}
-              aria-label={createTitle}
-              onClick={(event) => onNew(event.currentTarget)}
-            >
-              <Plus size={13} />
-            </Button>
-          </div>
+          <Button
+            size="icon"
+            type="button"
+            {...createAttr}
+            title={createTitle}
+            aria-label={createTitle}
+            onClick={(event) => onNew(event.currentTarget)}
+          >
+            <Plus size={13} />
+          </Button>
         }
       >
         {tokens.length === 0 ? null : (

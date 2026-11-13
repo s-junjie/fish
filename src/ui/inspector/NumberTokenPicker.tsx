@@ -86,7 +86,7 @@ export function NumberTokenPicker({
         return {
           id: tok.id,
           name: tok.name,
-          subtitle: `${modeVal}px · ${t("tokens.uses", { n: uses })}`,
+          subtitle: `${modeVal} · ${t("tokens.uses", { n: uses })}`,
           preview: (
             <div className={NUMBER_TOKEN_OPTION_PREVIEW_CLASS}>
               <CategoryIcon category={tok.category} />

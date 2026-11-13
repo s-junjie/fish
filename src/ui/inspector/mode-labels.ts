@@ -29,7 +29,7 @@ export function colorModeLabels(token: ColorToken, modes: DocumentMode[]): strin
 }
 
 export function numberModeLabels(token: NumberToken, modes: DocumentMode[]): string[] {
-  return modesHoldingValue(token, modes).map(
-    (mode) => `${getNumberTokenModeValue(token, mode.id)}px`
+  return modesHoldingValue(token, modes).map((mode) =>
+    String(getNumberTokenModeValue(token, mode.id))
   );
 }

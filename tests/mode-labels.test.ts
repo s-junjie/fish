@@ -52,7 +52,7 @@ describe("colorModeLabels", () => {
 describe("numberModeLabels", () => {
   it("reads a single value when the token has one number", () => {
     expect(numberModeLabels(createNumberToken("space/md", 16, "spacing"), LIGHT_DARK)).toEqual([
-      "16px"
+      "16"
     ]);
   });
 
@@ -65,6 +65,6 @@ describe("numberModeLabels", () => {
       { dark: 20 }
     );
 
-    expect(numberModeLabels(token, LIGHT_DARK)).toEqual(["16px", "20px"]);
+    expect(numberModeLabels(token, LIGHT_DARK)).toEqual(["16", "20"]);
   });
 });
