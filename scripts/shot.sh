@@ -186,12 +186,24 @@ HINT
   fi
 }
 
+# Virtual time the screenshot pass is allowed before the frame is captured.
+#
+# `--screenshot` fires on the load event, and a webfont that has not arrived by
+# then is not a rendering detail: the document is laid out in JS, so every
+# hugging box and every text height is measured against whatever face is
+# available. The picture then shows the FALLBACK metrics while the same file
+# opened by hand a moment later is correct — a difference that reads as "my
+# instance is squashed" rather than "the shot was early". The report pass below
+# has always waited; this makes the pixels wait the same way.
+SETTLE_MS="${FISH_SHOT_SETTLE_MS:-5000}"
+
 shoot_once() { # <url-query> <dest.png> <window>
   local shoot_err="$TMP/shoot.err"
   if [ "$DEBUG" = "1" ]; then
-    echo "[DEBUG] shoot cmd: $BROWSER ${CHROME_FLAGS[*]} --force-device-scale-factor=$SCALE --window-size=$3 --screenshot=$2 file://$ABS?$1" >&2
+    echo "[DEBUG] shoot cmd: $BROWSER ${CHROME_FLAGS[*]} --virtual-time-budget=$SETTLE_MS --force-device-scale-factor=$SCALE --window-size=$3 --screenshot=$2 file://$ABS?$1" >&2
   fi
   "$BROWSER" "${CHROME_FLAGS[@]}" \
+    --virtual-time-budget="$SETTLE_MS" \
     --force-device-scale-factor="$SCALE" \
     --window-size="$3" --screenshot="$2" "file://$ABS?$1" 2>"$shoot_err" || true
 }
@@ -265,8 +277,10 @@ case "$WINDOW" in
   *) WINDOW="1440x900" ;;
 esac
 
-# Pass 2 — the picture. A screenshot is the one thing the headless CLI waits for
-# correctly, so the pixels are the browser's job and only the aim is ours.
+# Pass 2 — the picture. The pixels are the browser's job and only the aim is
+# ours, but "the browser's job" starts at the load event, which is before a
+# webfont has necessarily arrived — so this pass now spends virtual time before
+# it captures, the way the report pass always has. See SETTLE_MS.
 shoot "view=canvas${PAGE_PARAM}${ORIGIN:+&origin=$ORIGIN}" "$OUT" "$WINDOW"
 [ -s "$OUT" ] || { echo "no image produced (window $WINDOW)" >&2; exit 1; }
 

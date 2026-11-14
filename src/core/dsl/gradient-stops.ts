@@ -1,6 +1,24 @@
 import type { GradientStop } from "./types";
+import { isColorValue } from "./color-value";
 
 export type { GradientStop };
+
+/**
+ * A repair sink, structurally typed so this module does not have to import the
+ * normalizer's own type back — `normalize/paint` imports THIS file, and the
+ * dependency only needs to run one way. `kind` is `string` rather than the
+ * normalizer's union for the same reason a structural type exists at all: a
+ * literal here would make `NormalizationRepair[]` (whose `kind` is the wider
+ * union) unassignable to it.
+ */
+export interface StopRepair {
+  kind: string;
+  path: string;
+  message: string;
+  severity?: "info";
+}
+
+type Repairs = StopRepair[];
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -22,22 +40,72 @@ function stopOffset(stop: unknown, index: number, count: number): number {
   return count <= 1 ? 0 : Math.round((index / (count - 1)) * 1e4) / 1e4;
 }
 
-/** Canonical `stops`, or undefined when there is no array to read. */
-export function canonicalGradientStops(raw: unknown): GradientStop[] | undefined {
-  if (!Array.isArray(raw) || raw.length === 0) return undefined;
-  return raw.map((stop, index) => {
+/**
+ * Canonical `stops`, or undefined when there is no array to read.
+ *
+ * A stop this cannot read is DROPPED and reported, never defaulted. It used to
+ * default to `#FFFFFF`, which is how a `[color, offset]` pair or a `{ colour,
+ * at }` typo became a white solid with no repair: every unreadable stop landed
+ * on the same colour, the ramp judged itself flat, and the paint collapsed to
+ * that colour. Refusing the entry leaves the author's own `from` / `to` (or
+ * nothing at all) in charge, and `check` says which stop was refused and why.
+ *
+ * A stop carrying only `tokenId` is the one exception: its colour is
+ * materialised from the token table after normalization, so dropping it here
+ * would delete a binding that resolves one pass later.
+ */
+export function canonicalGradientStops(
+  raw: unknown,
+  path?: string,
+  repairs?: Repairs
+): GradientStop[] | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  const at = (index: number): string => (path ? `${path}/${index}` : `stops[${index}]`);
+  const refuse = (index: number, message: string): void => {
+    repairs?.push({ kind: "paint", path: at(index), message });
+  };
+  if (!Array.isArray(raw)) {
+    repairs?.push({
+      kind: "paint",
+      path: path ?? "stops",
+      message: `stops must be an array of { "color": "#RRGGBB", "offset": 0..1 }; this ${typeof raw} was ignored`
+    });
+    return undefined;
+  }
+  if (raw.length === 0) return undefined;
+  const out: GradientStop[] = [];
+  raw.forEach((stop, index) => {
     const tokenId = isPlainObject(stop) && typeof stop.tokenId === "string" ? stop.tokenId.trim() : "";
-    return {
-      color:
-        typeof stop === "string"
-          ? stop
-          : isPlainObject(stop) && typeof stop.color === "string" && stop.color
-            ? stop.color
-            : "#FFFFFF",
+    const colour =
+      typeof stop === "string"
+        ? stop
+        : isPlainObject(stop) && typeof stop.color === "string"
+          ? stop.color
+          : "";
+    if (!colour) {
+      if (tokenId) {
+        out.push({ color: "#FFFFFF", offset: stopOffset(stop, index, raw.length), tokenId });
+        return;
+      }
+      refuse(
+        index,
+        Array.isArray(stop)
+          ? "a stop is an object, not a [color, offset] pair — write { \"color\": \"#RRGGBB\", \"offset\": 0..1 }; this stop was dropped"
+          : 'stop has no "color" — write { "color": "#RRGGBB", "offset": 0..1 }; this stop was dropped'
+      );
+      return;
+    }
+    if (!isColorValue(colour)) {
+      refuse(index, `colour ${JSON.stringify(colour)} is not a CSS colour; this stop was dropped`);
+      return;
+    }
+    out.push({
+      color: colour,
       offset: stopOffset(stop, index, raw.length),
       ...(tokenId ? { tokenId } : {})
-    };
+    });
   });
+  return out.length > 0 ? out : undefined;
 }
 
 /**

@@ -1,4 +1,4 @@
-import { DesignElement, Effect, LiquidGlassEffect } from "../../core/dsl/types";
+import { DesignElement, Effect, LiquidGlassEffect, RectElement } from "../../core/dsl/types";
 import type { CornerRadius } from "../../core/dsl/types";
 import {
   GLASS_RIM_FLOOR,
@@ -9,23 +9,10 @@ import {
   liquidGlassParams
 } from "../../core/dsl/liquid-glass";
 import { getShapeLocalPath } from "../../core/geometry/gradient-utils";
-import { cornerRadiiOf, effectiveCornerSmoothing } from "../../core/geometry/shape-path";
+import { cornerRadiiOf, effectiveCornerSmoothing, rectToPathData } from "../../core/geometry/shape-path";
 import { isContainer } from "../../core/geometry/tree-ops";
 import { BAKE_CACHE_BYTES, createBakeCache, dataUriCost } from "./glass-bake-cache";
 import { AnalyticShape, evalAnalyticSdf, getWorkCanvas, samplePathField } from "./glass-field";
-
-/**
- * Liquid Glass, baked into the bitmaps an SVG filter and rim overlay consume.
- *
- *  1. **the displacement field** — one PNG per unique geometry/scale/refraction,
- *     R and G carrying the INWARD normal of the shape scaled by the convex bevel
- *     deflection profile, which `feDisplacementMap` turns into a convex lens bend
- *     of the backdrop (magnifying interior content outward toward the rim, matching
- *     Figma's native Glass filter).
- *  2. **the specular rim overlay** — an element-sized PNG for the directional
- *     specular light projected onto the bevel from `lightAngle` and spread inward
- *     by `Splay`, including secondary internal reflection on the opposite rim.
- */
 
 export interface GlassField {
   /** PNG data URI. R/G = inward normal × deflection profile, encoded around 128. */
@@ -108,10 +95,18 @@ export function glassEffectOf(effects: Effect[] | undefined): LiquidGlassEffect 
   );
 }
 
+export interface GlassBakeBox {
+  width: number;
+  height: number;
+  borderRadius?: CornerRadius;
+  borderRadiusY?: CornerRadius;
+  cornerSmoothing?: number;
+}
+
 export function bakeGlass(
   el: DesignElement,
   effects: Effect[] | undefined,
-  size?: { width: number; height: number },
+  box?: GlassBakeBox,
   deviceScale = 1
 ): GlassBake | null {
   if (typeof document === "undefined" || el.type === "text") return null;
@@ -119,16 +114,26 @@ export function bakeGlass(
   if (!effect) return null;
 
   const params = liquidGlassParams(effect);
-  const width = Math.max(1, Math.round(size?.width ?? el.width));
-  const height = Math.max(1, Math.round(size?.height ?? el.height));
-  const smoothing = effectiveCornerSmoothing(
-    (el as { cornerSmoothing?: number }).cornerSmoothing,
-    (el as { borderRadius?: CornerRadius }).borderRadius,
-    width,
-    height
-  );
-  const analytic = analyticShapeOf(el, width, height, smoothing);
-  const lazyPathD = analytic ? "" : getShapeLocalPath(el);
+  const width = Math.max(1, Math.round(box?.width ?? el.width));
+  const height = Math.max(1, Math.round(box?.height ?? el.height));
+  const borderRadius = box ? box.borderRadius : (el as { borderRadius?: CornerRadius }).borderRadius;
+  const borderRadiusY = box ? box.borderRadiusY : ((el.sizing as any)?.borderRadiusY as CornerRadius | undefined);
+  const rawSmoothing = box ? box.cornerSmoothing : (el as { cornerSmoothing?: number }).cornerSmoothing;
+  const smoothing = effectiveCornerSmoothing(rawSmoothing, borderRadius, width, height);
+  const analytic = analyticShapeOf(el, width, height, smoothing, borderRadius, borderRadiusY);
+  const resolvePathD = () => {
+    if (el.type === "instance" && box) {
+      return rectToPathData({
+        width,
+        height,
+        borderRadius,
+        cornerSmoothing: rawSmoothing,
+        sizing: borderRadiusY !== undefined ? { borderRadiusY } : undefined
+      } as RectElement);
+    }
+    return getShapeLocalPath(el);
+  };
+  const lazyPathD = analytic ? "" : resolvePathD();
   const scale = Math.max(1, deviceScale);
 
   const shapeKey = analytic
@@ -156,7 +161,7 @@ export function bakeGlass(
   const hit = bakeCache.get(key);
   if (hit) return hit;
 
-  const pathD = lazyPathD || getShapeLocalPath(el);
+  const pathD = lazyPathD || resolvePathD();
   const dv = glassDerived(params, width, height);
   let bake: GlassBake | null = null;
   try {
@@ -215,11 +220,13 @@ export function glassBackdropCss(elId: string, bake: GlassBake): string {
 
 /* ---------------------------------------------------------------- geometry */
 
-function analyticShapeOf(
+export function analyticShapeOf(
   el: DesignElement,
   width: number,
   height: number,
-  smoothing: number
+  smoothing: number,
+  borderRadius?: CornerRadius,
+  borderRadiusY?: CornerRadius
 ): AnalyticShape | null {
   if (el.type === "line" || el.type === "arrow") return null;
   if (
@@ -235,8 +242,8 @@ function analyticShapeOf(
     return { kind: "ellipse" };
   }
   if (el.type === "rect" || el.type === "text" || el.type === "instance" || isContainer(el)) {
-    if ((el.sizing as any)?.borderRadiusY !== undefined) return null;
-    const radii = cornerRadiiOf((el as { borderRadius?: CornerRadius }).borderRadius, width, height);
+    if (borderRadiusY !== undefined) return null;
+    const radii = cornerRadiiOf(borderRadius, width, height);
     return { kind: "rect", radii, smoothing };
   }
   return null;

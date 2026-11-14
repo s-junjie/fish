@@ -60,7 +60,7 @@ export function renderEffectFilterDef(
     input = appendColorFilterNodes(primitives, colorFilter, input, `cf-${el.id}`);
   }
 
-  const hasInterior = hasOwnInteriorFills(el);
+  const hasInterior = hasOwnInteriorFills(el, box);
 
   // Render effects from top to bottom (UI row order: top-most first)
   const uiEffects = cssPaintOrder(activeEffects);
@@ -84,13 +84,13 @@ export function renderEffectFilterDef(
       const blurVal = Math.max(0, shadow.blur ?? 4);
       const spread = shadow.spread ?? 0;
       const knockOutInterior =
-        hasBackdropSurface(el) ||
-        hasBlendOnlyFills(el) ||
+        hasBackdropSurface(el, box) ||
+        hasBlendOnlyFills(el, box) ||
         Boolean(shadow.blendMode && shadow.blendMode !== "normal");
       const silhouette =
         spread === 0 && (!knockOutInterior || hasInterior)
           ? null
-          : shadowSilhouette(el, spread, !knockOutInterior, region, el);
+          : shadowSilhouette(el, spread, !knockOutInterior, region, el, box);
       const spreadSource = silhouette
         ? pushSilhouetteImage(primitives, `fx-${idx}-drop-sil`, silhouette)
         : spread === 0
@@ -109,7 +109,7 @@ export function renderEffectFilterDef(
       const reuseSpreadSilForCut = Boolean(knockOutInterior && spread === 0 && silhouette);
       const baseSil =
         knockOutInterior && !useAlphaCut && !reuseSpreadSilForCut
-          ? shadowSilhouette(el, 0, false, region, el)
+          ? shadowSilhouette(el, 0, false, region, el, box)
           : null;
       const needsCut = useAlphaCut || reuseSpreadSilForCut || Boolean(baseSil);
       const rawColorResult = needsCut ? `fx-${idx}-drop-raw-color` : colorResult;
@@ -206,8 +206,8 @@ export function renderEffectFilterDef(
       const targetIdx = innerPos >= 0 ? innerIndices[innerIndices.length - 1 - innerPos] : idx;
       const inner = uiEffects[targetIdx] as InnerShadowEffect;
       const baseSil =
-        hasBackdropSurface(el) && !hasInterior
-          ? shadowSilhouette(el, 0, false, region, el)
+        hasBackdropSurface(el, box) && !hasInterior
+          ? shadowSilhouette(el, 0, false, region, el, box)
           : null;
       input = pushInnerShadow(
         primitives,
@@ -222,7 +222,7 @@ export function renderEffectFilterDef(
         "SourceAlpha",
         inner.blendMode,
         pixelScale,
-        (inner.spread ?? 0) === 0 ? null : shadowSilhouette(el, -(inner.spread ?? 0), false, region, el),
+        (inner.spread ?? 0) === 0 ? null : shadowSilhouette(el, -(inner.spread ?? 0), false, region, el, box),
         baseSil
       );
     } else if (ef.type === "layer-blur") {

@@ -38,7 +38,8 @@ import {
   normalizePatchedElement,
   parentBoxOf,
   patchDerivedClone,
-  preparePatch
+  preparePatch,
+  unknownAuthoredKey
 } from "./patch-props";
 import { REPEAT_IDENT, substituteTemplate } from "./repeat-template";
 import { applyComponentIntent } from "./component-intent";
@@ -149,6 +150,11 @@ function applyOne(doc: DesignDocument, raw: unknown): { doc: DesignDocument; out
       const props = raw.props;
       if (!isObj(props)) return fail("patch needs `props: { ... }`", targetId);
       if (derived) return patchDerivedClone(doc, derived, props);
+      // Before anything is written: a prop the element vocabulary has no reader
+      // for is a typo, not a value. Writing it and letting `check` complain on
+      // the NEXT command is how `patched widht` shipped with exit 0.
+      const unreadable = target ? unknownAuthoredKey(props, target.type) : null;
+      if (unreadable) return fail(unreadable, targetId);
       const parent = targetId ? findParentById(els, targetId) : null;
       const parentLayout = parent ? (layoutOf(parent) ?? null) : null;
       const vars = collectVariables(doc.variables);
@@ -202,6 +208,8 @@ function applyOne(doc: DesignDocument, raw: unknown): { doc: DesignDocument; out
     case "replace": {
       const element = raw.element;
       if (!isObj(element)) return fail("replace needs `element: { ... }`", targetId);
+      const unreadable = unknownAuthoredKey(element, str(element.type) ?? target?.type ?? "");
+      if (unreadable) return fail(unreadable, targetId);
       if (derived) return refuseDerived(doc, op, derived);
       // The replacement is a fresh subtree the normalizer has never seen, so it
       // takes the same fold `insert` takes: a CSS-spelled body ("color",
@@ -265,6 +273,8 @@ function applyOne(doc: DesignDocument, raw: unknown): { doc: DesignDocument; out
     case "insert": {
       const element = raw.element;
       if (!isObj(element)) return fail("insert needs `element: { ... }`");
+      const unreadable = unknownAuthoredKey(element, str(element.type) ?? "");
+      if (unreadable) return fail(unreadable);
       const id = str(element.id) ?? mintId("el");
       const parentId = str(raw.parentId);
       const parent = parentId ? findElementById(els, parentId) : null;

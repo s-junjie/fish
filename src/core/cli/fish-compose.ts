@@ -4,7 +4,7 @@ import { parseLenientJson } from "../dsl/lenient-json";
 import { normalizeDesignDocument } from "../dsl/normalize";
 import { compactDocumentJson, documentJson } from "../document-json";
 import { embedLocalDocumentAssets } from "./fish-assets";
-import { dialectMismatch, DOC_BLOCK_RE, injectDocumentBlock } from "./doc-source";
+import { dialectMismatch, DOC_BLOCK_RE, injectDocumentBlock, reportRepairs } from "./doc-source";
 import { resolveTemplatePath } from "./template-path";
 import { laidOutDocument } from "../layout-report";
 
@@ -69,7 +69,8 @@ export async function compose(jsonFile: string, templateFile: string, opts: { ou
   // re-print the file it had just parsed, so a document that needed normalizing
   // was written back un-normalized — a different dialect on disk than the
   // clipboard would have produced.
-  const canonical = normalizeDesignDocument(doc).document;
+  const normalized = normalizeDesignDocument(doc);
+  const canonical = normalized.document;
   const serialized = opts.compact ? compactDocumentJson(canonical) : documentJson(canonical);
   const jsonStr = serialized.replace(/<\//g, "\\u003c/");
   const target = opts.out ?? resolvedTemplate;
@@ -85,5 +86,13 @@ export async function compose(jsonFile: string, templateFile: string, opts: { ou
   fs.writeFileSync(target, assembled);
   const note = embedded.count > 0 ? `, embedded ${embedded.count} local asset(s)` : "";
   console.log(`composed ${jsonFile} into ${target} (${assembled.length} bytes${note})`);
-  return 0;
+  // Written anyway: the file is what the author needs in order to see what was
+  // made of their document. The exit code is what stops a pipeline that would
+  // otherwise screenshot it.
+  const lossy = reportRepairs(
+    normalized.repairs,
+    jsonFile,
+    `Fix the source and compose again; \`fish check ${jsonFile}\` lists the same repairs.`
+  );
+  return lossy > 0 ? 1 : 0;
 }

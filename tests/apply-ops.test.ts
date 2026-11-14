@@ -745,3 +745,55 @@ describe("a `transform` patch replaces the fields it can express", () => {
     expect(byId(next, "r")!.skewY).toBeUndefined();
   });
 });
+
+/**
+ * The op that reports `ok` while its key never became a field is the failure
+ * these guard: `apply` used to write the typo verbatim (`preserveUnknown`) and
+ * exit 0, and the schema only spoke on the NEXT `check`, after the key was in
+ * the file.
+ */
+describe("a key the dialect cannot read fails the op that carries it", () => {
+  it("refuses a misspelt patch property and names the one it meant", () => {
+    const { outcomes } = applyOps(doc([frame("f")]), [
+      { op: "patch", targetId: "f", props: { widht: 100 } }
+    ]);
+    expect(outcomes[0].ok).toBe(false);
+    expect(outcomes[0].detail).toBe('unknown property "widht" is unsupported (did you mean width?)');
+  });
+
+  it("refuses the same typo on insert and on replace", () => {
+    const inserted = applyOps(doc([frame("f")]), [
+      { op: "insert", parentId: "f", element: { id: "n", type: "rect", widht: 10 } }
+    ]);
+    expect(inserted.outcomes[0].ok).toBe(false);
+
+    const replaced = applyOps(doc([frame("f")]), [
+      { op: "replace", targetId: "f", element: { id: "f", type: "frame", backgorund: "#FFF" } }
+    ]);
+    expect(replaced.outcomes[0].ok).toBe(false);
+    expect(replaced.outcomes[0].detail).toContain("did you mean background?");
+  });
+
+  it("still accepts the authoring spellings the readers relocate", () => {
+    const start = doc([
+      { ...frame("f"), type: "text", content: "hi", style: { fontFamily: "Inter", fontSize: 16 } } as DesignElement
+    ]);
+    const { outcomes } = applyOps(start, [
+      // `font-size` / `text-align` are folded into `style`; `left` / `top` are
+      // the positioning pair the reader takes as x/y.
+      { op: "patch", targetId: "f", props: { "font-size": "24px", "text-align": "center", left: 16, top: 32 } }
+    ]);
+    expect(outcomes[0].ok).toBe(true);
+  });
+
+  it("moves the layer when the patch names the axis by its CSS alias", () => {
+    // The stored `x` is the OLD position: left beside it makes the fold resolve
+    // as "left ignored", so the patch has to replace the axis it names.
+    const { doc: next, outcomes } = applyOps(doc([frame("f")]), [
+      { op: "patch", targetId: "f", props: { left: 16, top: 32 } }
+    ]);
+    expect(outcomes[0].ok).toBe(true);
+    expect(byId(next, "f")!.x).toBe(16);
+    expect(byId(next, "f")!.y).toBe(32);
+  });
+});

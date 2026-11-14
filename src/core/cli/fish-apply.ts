@@ -1,7 +1,8 @@
 import fs from "node:fs";
-import { readDocument, DOC_BLOCK_RE } from "./doc-source";
+import { readDocument, DOC_BLOCK_RE, reportRepairs } from "./doc-source";
 import { parseLenientJson } from "../dsl/lenient-json";
 import { normalizeDesignDocument } from "../dsl/normalize";
+import type { NormalizationRepair } from "../dsl/normalize/shared";
 import { applyOps } from "../ops/apply-ops";
 import { compactDocumentJson, documentJson } from "../document-json";
 
@@ -30,7 +31,14 @@ export function apply(opsArg: string, file: string, opts: { json: boolean; out?:
   // document is read once here exactly as the app reads it on load.
   const normalized = normalizeDesignDocument(doc).document;
   const result = applyOps(normalized, ops);
-  const serialized = opts.compact ? compactDocumentJson(result.doc) : documentJson(result.doc);
+  // Serializing is where a value the patch could not express is finally dropped:
+  // the text is the canonical document, so the loss is invisible to anything that
+  // reads the file afterwards. Collected here so the op cannot report `ok` for a
+  // declaration that never landed.
+  const repairs: NormalizationRepair[] = [];
+  const serialized = opts.compact
+    ? compactDocumentJson(result.doc, (repair) => repairs.push(repair))
+    : documentJson(result.doc, (repair) => repairs.push(repair));
   const json = serialized.replace(/<\//g, "\\u003c/");
   const target = opts.out ?? src.file;
   const next = src.html
@@ -39,13 +47,29 @@ export function apply(opsArg: string, file: string, opts: { json: boolean; out?:
   fs.writeFileSync(target, next);
 
   const failed = result.outcomes.filter((o) => !o.ok);
-  if (opts.json) {
-    console.log(JSON.stringify({ ok: failed.length === 0, file: target, outcomes: result.outcomes }, null, 2));
-  } else {
+  // Outcomes first, then what the write dropped: `ok patch …` directly above an
+  // error about the same op reads as a contradiction, and the error is the one
+  // that decides the exit code.
+  if (!opts.json) {
     console.log(`${target}`);
     for (const o of result.outcomes) {
       console.log(`  ${o.ok ? "ok  " : "FAIL"} ${o.op}${o.id ? ` ${o.id}` : ""} — ${o.detail}`);
     }
   }
-  return failed.length === 0 ? 0 : 1;
+  const lossy = reportRepairs(repairs, target, "Fix the op and apply it again.");
+  if (opts.json) {
+    console.log(
+      JSON.stringify(
+        {
+          ok: failed.length === 0 && lossy === 0,
+          file: target,
+          outcomes: result.outcomes,
+          ...(repairs.length > 0 ? { repairs } : {})
+        },
+        null,
+        2
+      )
+    );
+  }
+  return failed.length === 0 && lossy === 0 ? 0 : 1;
 }

@@ -1,6 +1,43 @@
 import fs from "node:fs";
 import { parseLenientJson } from "../dsl/lenient-json";
 import { LATEST_DOCUMENT_VERSION } from "../dsl/version";
+import type { NormalizationRepair } from "../dsl/normalize/shared";
+
+/**
+ * Say what a writer dropped, and how many of those changed the document.
+ *
+ * Every text writer goes through `canonicalDocument`, which normalizes: the bytes
+ * that land on disk are the REPAIRED document, so the repair is the last moment
+ * the loss exists at all — `check` on the output finds nothing to report, because
+ * the dropped value is gone. A command that writes and stays silent about this is
+ * the reason `fills: ["#FFF → #000"]` could compose into a white box, pass
+ * `check`, and only look wrong in a screenshot.
+ *
+ * An `info` repair is not a loss (the engine renamed a key it understood), so it
+ * is printed as a note and does not count. Returns the number of lossy repairs.
+ */
+export function reportRepairs(
+  repairs: readonly NormalizationRepair[],
+  source: string,
+  hint?: string
+): number {
+  let lossy = 0;
+  for (const repair of repairs) {
+    if (repair.severity === "info") {
+      console.error(`note: ${repair.path} — ${repair.message}`);
+      continue;
+    }
+    lossy++;
+    console.error(`error: ${repair.path} — ${repair.message}`);
+  }
+  if (lossy > 0) {
+    console.error(
+      `${source}: ${lossy} repair(s) changed the document — what was written is the REPAIRED one.` +
+        (hint ? ` ${hint}` : "")
+    );
+  }
+  return lossy;
+}
 
 export const DOC_BLOCK_RE = /<script\s+id=["']design-doc["'][^>]*>([\s\S]*?)<\/script>/i;
 

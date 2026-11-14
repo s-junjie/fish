@@ -125,3 +125,66 @@ export function unusedAssetIds(doc: DesignDocument): string[] {
   const counts = assetUsageCounts(doc);
   return (doc.assets ?? []).map((asset) => asset.id).filter((id) => !counts.has(id));
 }
+
+export interface DanglingAssetRef {
+  assetId: string;
+  /** The element that names it — absent for a canvas background or a style. */
+  elementId?: string;
+  /** The key the id was written under (`assetId`, `posterAssetId`, an override). */
+  property: string;
+}
+
+/**
+ * Every asset reference `doc.assets[]` does not declare.
+ *
+ * This is the one asset problem nothing downstream can recover from: the paint
+ * has no bitmap, so the layer draws nothing while the document stays perfectly
+ * valid — `check` calls it clean, `shot` produces a picture with the image
+ * missing, and only a human looking at the PNG notices. Unlike a remote URL,
+ * there is no environment in which a dangling id renders, which is why `check`
+ * grades it as an error rather than a `--strict-assets` warning.
+ *
+ * The walk is the same shape as `countInto` (overrides, posters and paints this
+ * build has not heard of all name an asset the same way) and carries the nearest
+ * element id down with it, so the finding can name the layer.
+ */
+export function danglingAssetRefs(doc: DesignDocument): DanglingAssetRef[] {
+  const declared = new Set((doc.assets ?? []).map((asset) => asset.id));
+  const out: DanglingAssetRef[] = [];
+  const seen = new Set<string>();
+  const note = (id: string, elementId: string | undefined, property: string): void => {
+    if (!id || declared.has(id)) return;
+    const key = `${elementId ?? ""}\u0000${id}\u0000${property}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ assetId: id, property, ...(elementId ? { elementId } : {}) });
+  };
+  const visit = (value: unknown, owner: string | undefined): void => {
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item, owner);
+      return;
+    }
+    const record = value as Record<string, unknown>;
+    // An element is the only object with both an id and a type; a paint layer has
+    // a type and no id, so the reference is attributed to the layer that holds it.
+    const ownerId = typeof record.id === "string" && typeof record.type === "string" ? record.id : owner;
+    const property = record.property;
+    const overridden = record.value;
+    if ((property === "assetId" || property === "posterAssetId") && typeof overridden === "string") {
+      note(overridden, ownerId, property);
+    }
+    for (const [key, child] of Object.entries(record)) {
+      if ((key === "assetId" || key === "posterAssetId") && typeof child === "string") {
+        note(child, ownerId, key);
+        continue;
+      }
+      visit(child, ownerId);
+    }
+  };
+  for (const page of doc.pages ?? []) visit(page.children, undefined);
+  if (!doc.pages?.length) visit(getActivePage(doc).children, undefined);
+  visit(doc.canvas, undefined);
+  visit(doc.styles, undefined);
+  return out;
+}

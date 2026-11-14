@@ -1,4 +1,4 @@
-import type { AutoLayout, DesignDocument, DesignElement } from "../dsl/types";
+import type { AutoLayout, DesignDocument, DesignElement, ElementType } from "../dsl/types";
 import { getActivePage } from "../dsl/document-ops";
 import { OVERRIDABLE_PROPERTIES } from "../dsl/constants";
 import { commitInstanceOverrides, type InstanceSelection } from "../interactions/instance-resolve";
@@ -6,7 +6,7 @@ import { findParentById } from "../geometry/tree-ops";
 import { FLAT_LAYOUT_KEYS, layoutOf } from "../dsl/layout-flat";
 import { resolveContentInsets } from "../layout/box";
 import { resolveStrokeWeights } from "../geometry/stroke-utils";
-import { normalizeElement } from "../dsl/normalize/element";
+import { normalizeElement, isPositionAlias, positionAxisOf, unknownElementKey } from "../dsl/normalize/element";
 import { canonicalKey, pxLength } from "../dsl/normalize/shared";
 import type { NormalizationRepair } from "../dsl/normalize/shared";
 import {
@@ -16,7 +16,7 @@ import {
   type ShorthandModes
 } from "../dsl/normalize/token-shorthand";
 import { withoutNumberBinding } from "../dsl/token-bindings";
-import { FLAT_TEXT_KEYS } from "../dsl/normalize/css-absorb";
+import { FLAT_TEXT_KEYS, flatKeyHint } from "../dsl/normalize/css-absorb";
 import { CSS_KEY_MAP } from "../dsl/css-spelling";
 import {
   collectVariables,
@@ -194,6 +194,34 @@ const isConcreteSizeValue = (value: unknown): boolean =>
   typeof value === "number" || pxLength(value) !== undefined || hasTokenSyntax(value);
 
 /**
+ * The first prop the patch surface cannot consume, or null.
+ *
+ * A patch runs against the STORED shape, and the writer keeps keys it does not
+ * know (`preserveUnknown`), so a misspelt property was written verbatim and
+ * reported as `patched widht` — the schema's complaint only arrived on the next
+ * `check`, one command after the key was already in the file.
+ *
+ * "Consume" is the patch surface's question, not the normalizer's: `font-size`
+ * and `text-align` are authoring spellings the readers relocate into `style`, so
+ * they are not stored fields and must not be refused here. `flatKeyHint` is that
+ * answer — it is non-null exactly when a relocation table knows the key — and
+ * everything left over is graded through the normalizer's own predicate, so the
+ * two commands cannot disagree.
+ */
+export function unknownAuthoredKey(props: Record<string, unknown>, type: string): string | null {
+  for (const key of Object.keys(props)) {
+    // Input-only aliases: the normalizer folds these at the door, so a patch that
+    // names one is understood even though no vocabulary key matches it.
+    if (isPositionAlias(key)) continue;
+    if (flatKeyHint(key, type as ElementType)) continue;
+    const mapped = PATCH_KEY_FOLD[canonicalKey(key)] ?? key;
+    const problem = unknownElementKey(mapped, type as ElementType);
+    if (problem) return problem;
+  }
+  return null;
+}
+
+/**
  * The patch surface speaks the same dialect as the file, while the document the
  * op runs on holds stored fields. A CSS key must therefore REPLACE the stored
  * field it names before the two are merged — otherwise the reader sees both and
@@ -216,10 +244,21 @@ export function preparePatch(
   props = folded;
   const propCanon = new Set(Object.keys(props).map(canonicalKey));
   const has = (...names: string[]): boolean => names.some((name) => propCanon.has(canonicalKey(name)));
+  // An input-only axis alias REPLACES the axis it names. The stored `x` is the
+  // OLD position: leaving it beside the patch's `left` gives the fold two
+  // spellings of one axis, which resolves as "left ignored" — so a patch asking
+  // to move the layer would report that the move it wrote was discarded.
+  for (const key of Object.keys(props)) {
+    const axis = positionAxisOf(key);
+    if (axis) delete out[axis];
+  }
   const css = Object.entries(props).some(([key, value]) => {
     const canon = canonicalKey(key);
     return (
       CSS_PATCH_SPELLINGS.has(canon) ||
+      // An axis alias only becomes `x`/`y` inside the normalizer, so a patch that
+      // names one has to take the CSS route or it would store a key nobody reads.
+      isPositionAlias(key) ||
       hasTokenSyntax(value) ||
       (STRING_LENGTH_AXES.has(canon) && typeof value === "string") ||
       // CSS's one percent property: "50%" is a number the clamp must see, so a
@@ -468,7 +507,16 @@ export function normalizePatchedElement(
       message: `"${hit.text}": no custom property (define it in "variables" or add a fallback)`
     });
   }
-  const normalized = normalizeElement(resolved, "/patch", 0, [], "el_", parentLayout, true, undefined, undefined, undefined, options.parentBox);
+  // Only what was DROPPED is worth failing an op over: an `info` repair is the
+  // engine renaming a key it understood, and failing a patch for that would make
+  // every ordinary CSS-spelled patch an error. A refused colour is not that — it
+  // leaves the layer with no fill at all, so `ok` on that op is the lie the
+  // comment above is about.
+  const elementRepairs: NormalizationRepair[] = [];
+  const normalized = normalizeElement(resolved, "/patch", 0, elementRepairs, "el_", parentLayout, true, undefined, undefined, undefined, options.parentBox);
+  for (const repair of elementRepairs) {
+    if (repair.severity !== "info") options.onRepair?.(repair);
+  }
   return (normalized ?? resolved) as unknown as DesignElement;
 }
 

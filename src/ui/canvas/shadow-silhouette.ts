@@ -2,31 +2,10 @@ import { DesignElement, Paint, RectElement } from "../../core/dsl/types";
 import { clipsContent, type OverflowFields } from "../../core/dsl/overflow";
 import { cornerRadiiXYOf, ellipseToPathData, rectToPathData } from "../../core/geometry/shape-path";
 import { parseFloodColor } from "../../core/geometry/color-utils";
+import type { InstanceBox } from "../../core/interactions/instance-inherit";
 
-/**
- * A shadow's silhouette as GEOMETRY, for the elements whose outline is known.
- *
- * `spread` used to be spelled entirely with `feMorphology`, and that primitive
- * has two problems the geometry does not: Chromium clamps one primitive's radius
- * at 256 DEVICE pixels (`CanvasDefs`), and it costs O(radius) per pixel over the
- * whole filter region — measured 2.4 s for one frame of a 231x88 pill at 1000 %
- * zoom, against 33 ms for the same chain with the primitive removed. Its kernel
- * is also a SQUARE, so a rounded shape's spread came out with square corners
- * where CSS and Figma round them off.
- *
- * The silhouette rides an `feImage` because a filter cannot reference geometry
- * in the document (`href="#id"` paints nothing in Chromium), and because that
- * image is rasterised at the DEVICE resolution — it stays crisp at any zoom.
- * Dilation is exact as `fill + stroke` with round joins: the union of discs
- * along the outline IS the Minkowski sum, so this is a true rounded spread, and
- * it holds for every path FISH draws, corner smoothing included. Erosion has no
- * such spelling, so it is exact only for a rect, a full ellipse, or a clipped
- * container's box, and null everywhere else — the caller falls back.
- *
- * Null is always safe: the caller keeps the chain it has always emitted.
- */
+
 export interface SilhouetteImage {
-  /** `data:` URI of an SVG carrying the silhouette, in the element's local space. */
   uri: string;
   x: number;
   y: number;
@@ -35,8 +14,8 @@ export interface SilhouetteImage {
 }
 
 /** Half of the element's own stroke that lands OUTSIDE its shape. */
-function outerStrokeHalf(el: DesignElement): number | null {
-  const strokes = (el as any).strokes || [];
+function outerStrokeHalf(el: DesignElement, box?: InstanceBox | null): number | null {
+  const strokes = box ? box.strokes : (el as any).strokes || [];
   let half = 0;
   for (const s of strokes) {
     if (!s || s.enabled === false) continue;
@@ -51,29 +30,32 @@ function outerStrokeHalf(el: DesignElement): number | null {
 }
 
 /** Whether the element carries a backdrop surface (`liquid-glass` or `backdrop-blur`). */
-export function hasBackdropSurface(el: DesignElement): boolean {
-  return (el.effects ?? []).some(
+export function hasBackdropSurface(el: DesignElement, box?: InstanceBox | null): boolean {
+  const effects = box ? box.effects : el.effects ?? [];
+  return effects.some(
     (ef) => ef && ef.enabled !== false && (ef.type === "liquid-glass" || ef.type === "backdrop-blur")
   );
 }
 
 /** Whether the element's active fills are all non-normal blend-mode layers (e.g. iOS glass tint plates). */
-export function hasBlendOnlyFills(el: DesignElement): boolean {
-  if (el.fillEnabled === false) return false;
-  const active = (el.fills ?? []).filter((f) => f && f.enabled !== false);
+export function hasBlendOnlyFills(el: DesignElement, box?: InstanceBox | null): boolean {
+  if (box ? !box.fillsActive : el.fillEnabled === false) return false;
+  const fills = box ? box.fills : el.fills ?? [];
+  const active = fills.filter((f) => f && f.enabled !== false);
   return active.length > 0 && active.every((f) => Boolean(f.blendMode && f.blendMode !== "normal"));
 }
 
 /** Whether the element paints its interior at all. */
-export function hasOwnInteriorFills(el: DesignElement): boolean {
+export function hasOwnInteriorFills(el: DesignElement, box?: InstanceBox | null): boolean {
+  if (box) return box.fillsActive && box.fills.some((f) => f && f.enabled !== false);
   if (el.fillEnabled === false) return false;
   if ((el as any).fillStyleId) return false;
   return (el.fills ?? []).some((f) => f && f.enabled !== false);
 }
 
-function paintsInterior(el: DesignElement): boolean {
-  if (hasBackdropSurface(el)) return true;
-  return hasOwnInteriorFills(el);
+function paintsInterior(el: DesignElement, box?: InstanceBox | null): boolean {
+  if (hasBackdropSurface(el, box)) return true;
+  return hasOwnInteriorFills(el, box);
 }
 
 /**
@@ -84,15 +66,16 @@ function paintsInterior(el: DesignElement): boolean {
  * elements keep the alpha-based chain — otherwise every glass panel in the
  * document would suddenly cast a solid shadow.
  */
-function paintsOpaque(el: DesignElement): boolean {
-  const fills = (el.fills ?? []).filter((f) => f && f.enabled !== false);
+function paintsOpaque(el: DesignElement, box?: InstanceBox | null): boolean {
+  const rawFills = box ? (box.fillsActive ? box.fills : []) : el.fills ?? [];
+  const fills = rawFills.filter((f) => f && f.enabled !== false);
   if (fills.length === 0) return false;
   for (const f of fills) {
     if (f.type !== "solid") return false;
     if (f.blendMode && f.blendMode !== "normal") return false;
     if (parseFloodColor((f as { color: string }).color).floodOpacity * ((f as Paint).opacity ?? 1) < 1) return false;
   }
-  const strokes = (el as any).strokes || [];
+  const strokes = box ? box.strokes : (el as any).strokes || [];
   for (const s of strokes) {
     if (!s || s.enabled === false || !(Number(s.width) > 0)) continue;
     const paint = s.paint ?? s;
@@ -108,7 +91,20 @@ function paintsOpaque(el: DesignElement): boolean {
  * covers it. An unclipped frame paints the union of its children, which is not
  * an outline this module knows.
  */
-function containerBox(el: DesignElement): RectElement | null {
+function containerBox(el: DesignElement, box?: InstanceBox | null): RectElement | null {
+  if (el.type === "instance") {
+    if (!box) return null;
+    if (!clipsContent(box as OverflowFields)) return null;
+    if (!paintsInterior(el, box)) return null;
+    if (!(box.width > 0) || !(box.height > 0)) return null;
+    return {
+      width: box.width,
+      height: box.height,
+      borderRadius: box.borderRadius,
+      cornerSmoothing: box.cornerSmoothing,
+      sizing: box.borderRadiusY !== undefined ? { borderRadiusY: box.borderRadiusY } : undefined
+    } as RectElement;
+  }
   const type = el.type;
   if (type !== "frame" && type !== "component" && type !== "componentSet") return null;
   if (!clipsContent(el as OverflowFields)) return null;
@@ -118,28 +114,28 @@ function containerBox(el: DesignElement): RectElement | null {
 }
 
 /** The element's outline in its own local space, or null when it has none we know. */
-function outlineOf(el: DesignElement): string | null {
+function outlineOf(el: DesignElement, box?: InstanceBox | null): string | null {
   if (el.type === "rect") return rectToPathData(el as RectElement) || null;
   if (el.type === "ellipse") return ellipseToPathData(el as any) || null;
-  const box = containerBox(el);
-  return box ? rectToPathData(box) || null : null;
+  const container = containerBox(el, box);
+  return container ? rectToPathData(container) || null : null;
 }
 
 /** That outline moved in or out by `shift`, exactly. Rect, full ellipse, box. */
-function inflatedOutline(el: DesignElement, shift: number): string | null {
-  const box = el.type === "rect" ? (el as RectElement) : el.type === "ellipse" ? null : containerBox(el);
-  if (box) {
-    const width = box.width + shift * 2;
-    const height = box.height + shift * 2;
+function inflatedOutline(el: DesignElement, shift: number, box?: InstanceBox | null): string | null {
+  const rectBox = el.type === "rect" ? (el as RectElement) : el.type === "ellipse" ? null : containerBox(el, box);
+  if (rectBox) {
+    const width = rectBox.width + shift * 2;
+    const height = rectBox.height + shift * 2;
     if (!(width > 0) || !(height > 0)) return "";
     const [[tlX, trX, brX, blX], [tlY, trY, brY, blY]] = cornerRadiiXYOf(
-      box.borderRadius,
-      box.sizing?.borderRadiusY,
-      box.width,
-      box.height
+      rectBox.borderRadius,
+      rectBox.sizing?.borderRadiusY,
+      rectBox.width,
+      rectBox.height
     );
     return rectToPathData({
-      ...box,
+      ...rectBox,
       width,
       height,
       borderRadius: [
@@ -149,17 +145,17 @@ function inflatedOutline(el: DesignElement, shift: number): string | null {
         Math.max(0, blX + shift)
       ],
       sizing:
-        box.sizing?.borderRadiusY !== undefined
+        rectBox.sizing?.borderRadiusY !== undefined
           ? {
-              ...box.sizing,
-              borderRadiusY: [
-                Math.max(0, tlY + shift),
-                Math.max(0, trY + shift),
-                Math.max(0, brY + shift),
-                Math.max(0, blY + shift)
-              ]
-            }
-          : box.sizing
+            ...rectBox.sizing,
+            borderRadiusY: [
+              Math.max(0, tlY + shift),
+              Math.max(0, trY + shift),
+              Math.max(0, brY + shift),
+              Math.max(0, blY + shift)
+            ]
+          }
+          : rectBox.sizing
     });
   }
   if (el.type !== "ellipse") return null;
@@ -197,30 +193,30 @@ export function shadowSilhouette(
   outlineShift: number,
   requireOpaque: boolean,
   region: { x: number; y: number; width: number; height: number },
-  origin: { x: number; y: number }
+  origin: { x: number; y: number },
+  box?: InstanceBox | null
 ): SilhouetteImage | null {
   if (el.visible === false) return null;
-  const half = outerStrokeHalf(el);
+  const half = outerStrokeHalf(el, box);
   if (half === null) return null;
-  const interior = paintsInterior(el);
+  const interior = paintsInterior(el, box);
   if (!interior && !(half > 0)) return null;
-  if (requireOpaque && !paintsOpaque(el)) return null;
+  if (requireOpaque && !paintsOpaque(el, box)) return null;
 
   const reach = half + outlineShift;
   let body: string;
   if (reach > 0) {
-    const d = outlineOf(el);
+    const d = outlineOf(el, box);
     if (!d) return null;
-    body = `<path d="${d}" fill="${interior ? "#000000" : "none"}" stroke="#000000" stroke-width="${
-      reach * 2
-    }" stroke-linejoin="round" stroke-linecap="round"/>`;
+    body = `<path d="${d}" fill="${interior ? "#000000" : "none"}" stroke="#000000" stroke-width="${reach * 2
+      }" stroke-linejoin="round" stroke-linecap="round"/>`;
   } else if (interior) {
-    const d = inflatedOutline(el, outlineShift);
+    const d = inflatedOutline(el, outlineShift, box);
     if (d === null) return null;
     body = d === "" ? "" : `<path d="${d}" fill="#000000"/>`;
   } else {
     // A stroke-only element: the band thins but its centre line does not move.
-    const d = outlineOf(el);
+    const d = outlineOf(el, box);
     if (!d) return null;
     body =
       reach === 0

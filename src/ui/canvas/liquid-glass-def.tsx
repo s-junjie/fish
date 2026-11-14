@@ -22,7 +22,7 @@ export function renderLiquidGlassDef(
   const bake = bakeGlass(
     el,
     box?.effects ?? el.effects ?? [],
-    undefined,
+    box ?? undefined,
     viewScale
   );
   const field = bake?.field;

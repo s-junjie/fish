@@ -1,5 +1,6 @@
 import type { GradientStop, ImageCrop, ImagePaint, Paint, PaintStack, PatternAlignment, PatternMotif, PatternPaint, PatternTileType } from "../types";
 import { canonicalGradientStops, firstStopTokenId, gradientIsFlat } from "../gradient-stops";
+import { isColorValue } from "../color-value";
 import { clampCrop } from "../../geometry/image-crop";
 import { asNumber, clamp, opacityValue, canonicalKey, isPlainObject, FIT_ALIASES, NormalizationRepair } from "./shared";
 import { normalizeColorFilter } from "./text-sizing";
@@ -221,13 +222,36 @@ export function normalizePaintInner(
   path?: string,
   repairs?: NormalizationRepair[]
 ): Paint | undefined {
+  /**
+   * A colour the author wrote, or undefined when it is not a colour at all.
+   *
+   * Every ramp endpoint and solid colour goes through here, because SVG paints
+   * an unparseable value BLACK rather than refusing it — a fill spelled
+   * `"#FFF → #000"` used to be stored verbatim and shipped as a black box that
+   * `check` had no opinion about.
+   */
+  const readColor = (value: unknown, key: string): string | undefined => {
+    if (typeof value !== "string" || !value.trim()) return undefined;
+    const trimmed = value.trim();
+    if (isColorValue(trimmed)) return trimmed;
+    repairs?.push({
+      kind: "paint",
+      path: path ? `${path}/${key}` : key,
+      message: `${JSON.stringify(trimmed)} is not a CSS colour — SVG would paint it black, so it was dropped. Write "#RRGGBB", a colour function, or a $token`
+    });
+    return undefined;
+  };
+  const readStops = (paint: Record<string, unknown>) =>
+    canonicalGradientStops(paint.stops, path ? `${path}/stops` : undefined, repairs);
+
   if (typeof raw === "string" && raw.trim()) {
     const trimmed = raw.trim();
     if (/^(?:repeating-)?(?:linear|radial|conic)-gradient\(/i.test(trimmed)) {
       const parsed = paintFromBackgroundImage(trimmed, 100, 100);
       if (parsed) return parsed;
     }
-    return { type: "solid", color: trimmed };
+    const colour = readColor(trimmed, "color");
+    return colour ? { type: "solid", color: colour } : undefined;
   }
   if (!isPlainObject(raw)) return undefined;
 
@@ -237,15 +261,9 @@ export function normalizePaintInner(
   const withBlend = <T extends Paint>(paint: T): T => (blend.mode ? { ...paint, blendMode: blend.mode } : paint);
 
   if (type === "linear-gradient" || type === "gradient" || type === "lineargradient") {
-    const stops = canonicalGradientStops(raw.stops);
-    const from =
-      (typeof raw.from === "string" && raw.from) ||
-      (typeof raw.start === "string" && raw.start) ||
-      stops?.[0]?.color;
-    const to =
-      (typeof raw.to === "string" && raw.to) ||
-      (typeof raw.end === "string" && raw.end) ||
-      stops?.[stops.length - 1]?.color;
+    const stops = readStops(raw);
+    const from = readColor(raw.from, "from") || readColor(raw.start, "start") || stops?.[0]?.color;
+    const to = readColor(raw.to, "to") || readColor(raw.end, "end") || stops?.[stops.length - 1]?.color;
 
     if (from && to) {
       // A ramp with no interior variation is really a solid, and saying so keeps
@@ -288,19 +306,17 @@ export function normalizePaintInner(
   // Radial: centre colour `from`, edge colour `to` (the model's CSS-ish
   // spellings `inner`/`outer` are absorbed too).
   if (type === "radial-gradient" || type === "radialgradient" || type === "radial") {
-    const stops = canonicalGradientStops(raw.stops);
+    const stops = readStops(raw);
     const from =
-      (typeof raw.from === "string" && raw.from) ||
-      (typeof raw.inner === "string" && raw.inner) ||
-      (typeof raw.center === "string" && raw.center) ||
-      stops?.[0]?.color ||
-      undefined;
+      readColor(raw.from, "from") ||
+      readColor(raw.inner, "inner") ||
+      readColor(raw.center, "center") ||
+      stops?.[0]?.color;
     const to =
-      (typeof raw.to === "string" && raw.to) ||
-      (typeof raw.outer === "string" && raw.outer) ||
-      (typeof raw.edge === "string" && raw.edge) ||
-      stops?.[stops.length - 1]?.color ||
-      undefined;
+      readColor(raw.to, "to") ||
+      readColor(raw.outer, "outer") ||
+      readColor(raw.edge, "edge") ||
+      stops?.[stops.length - 1]?.color;
     if (from || to) {
       if (from && to && (stops ? !gradientIsFlat(stops) : from !== to)) {
         return withBlend({
@@ -321,17 +337,9 @@ export function normalizePaintInner(
   // / `stops` shape as the other ramps; `inner` / `outer` are absorbed because
   // an authored document may have been written against the radial spelling.
   if (type === "angular-gradient" || type === "angulargradient" || type === "angular" || type === "conic-gradient" || type === "conic") {
-    const stops = canonicalGradientStops(raw.stops);
-    const from =
-      (typeof raw.from === "string" && raw.from) ||
-      (typeof raw.inner === "string" && raw.inner) ||
-      stops?.[0]?.color ||
-      undefined;
-    const to =
-      (typeof raw.to === "string" && raw.to) ||
-      (typeof raw.outer === "string" && raw.outer) ||
-      stops?.[stops.length - 1]?.color ||
-      undefined;
+    const stops = readStops(raw);
+    const from = readColor(raw.from, "from") || readColor(raw.inner, "inner") || stops?.[0]?.color;
+    const to = readColor(raw.to, "to") || readColor(raw.outer, "outer") || stops?.[stops.length - 1]?.color;
     if (from || to) {
       if (from && to && (stops ? !gradientIsFlat(stops) : from !== to)) {
         return withBlend({
@@ -350,17 +358,9 @@ export function normalizePaintInner(
   // Diamond: the same centred shape as a radial, but the iso-lines are diamonds
   // (|dx|/rx + |dy|/ry = const) instead of ellipses.
   if (type === "diamond-gradient" || type === "diamondgradient" || type === "diamond") {
-    const stops = canonicalGradientStops(raw.stops);
-    const from =
-      (typeof raw.from === "string" && raw.from) ||
-      (typeof raw.inner === "string" && raw.inner) ||
-      stops?.[0]?.color ||
-      undefined;
-    const to =
-      (typeof raw.to === "string" && raw.to) ||
-      (typeof raw.outer === "string" && raw.outer) ||
-      stops?.[stops.length - 1]?.color ||
-      undefined;
+    const stops = readStops(raw);
+    const from = readColor(raw.from, "from") || readColor(raw.inner, "inner") || stops?.[0]?.color;
+    const to = readColor(raw.to, "to") || readColor(raw.outer, "outer") || stops?.[stops.length - 1]?.color;
     if (from || to) {
       if (from && to && (stops ? !gradientIsFlat(stops) : from !== to)) {
         return withBlend({
@@ -483,22 +483,28 @@ export function normalizePaintInner(
     return undefined;
   }
 
-  const color = typeof raw.color === "string" && raw.color;
   const tokenId =
     typeof raw.tokenId === "string" && raw.tokenId.trim() ? raw.tokenId.trim() : undefined;
+  const drafted = typeof raw.color === "string" ? raw.color : undefined;
+  // A bound colour is rewritten from the token table when bindings sync, so a
+  // broken value beside a live `tokenId` is not this pass's mistake to refuse.
+  const color = tokenId ? drafted : readColor(drafted, "color");
   if (color) {
     return withBlend({ type: "solid", color, ...(tokenId ? { tokenId } : {}) });
   }
 
   // Untyped but gradient-shaped: { from, to, angle }
   if (typeof raw.from === "string" && typeof raw.to === "string") {
-    const stops = canonicalGradientStops(raw.stops);
-    const flat = stops ? gradientIsFlat(stops) : raw.from === raw.to;
-    if (flat) return withBlend(solidFromRamp(raw.from, stops));
+    const stops = readStops(raw);
+    const from = readColor(raw.from, "from");
+    const to = readColor(raw.to, "to");
+    if (!from || !to) return undefined;
+    const flat = stops ? gradientIsFlat(stops) : from === to;
+    if (flat) return withBlend(solidFromRamp(from, stops));
     return withBlend({
       type: "linear-gradient",
-      from: raw.from,
-      to: raw.to,
+      from,
+      to,
       angle: asNumber(raw.angle) ?? 90,
       ...gradientExtras(raw, stops)
     });
@@ -756,6 +762,7 @@ export function normalizeFillStack(
 
   for (const alias of ["backgroundColor", "background-color", "background", "color"] as const) {
     const raw = el[alias];
+    if (raw === undefined || raw === null) continue;
     // `background` / `background-image` is a comma-separated layer list and CSS
     // paints the FIRST layer on top — the reverse of the DSL's bottom-first
     // stack. Split, then push in reverse so the top CSS layer lands last. A
@@ -778,6 +785,11 @@ export function normalizeFillStack(
       if (cropOverride) foldImagePlacement(out, cropOverride, path, repairs);
       return out;
     }
+    // The declaration was written and none of it parsed: stop here. Falling
+    // through to the next spelling would substitute a background the author did
+    // not ask for, and reading the same value twice (an absorbed kebab key
+    // arrives beside its canonical twin) reported one mistake as two.
+    return undefined;
   }
 
   if (cropOverride) foldImagePlacement(out, cropOverride, path, repairs);

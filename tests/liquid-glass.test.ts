@@ -17,6 +17,7 @@ import { liquidGlassFrom } from "../src/core/dsl/normalize/effects";
 import { LiquidGlassEffect, Paint } from "../src/core/dsl/types";
 import { resolveSolidPaintBlend } from "../src/ui/canvas/SvgShapeNode";
 import { backdropShapeStyle } from "../src/ui/canvas/backdrop-shape";
+import { analyticShapeOf } from "../src/ui/canvas/liquid-glass";
 
 // The effect's authoring surface IS the feature: a designer who has used Figma's
 // glass must find the same nine controls under the same names, or they cannot
@@ -399,6 +400,18 @@ describe("liquid glass fill opacity rendering and restoration", () => {
     const resolved = resolveSolidPaintBlend(restoredFill, [restoredFill], false, false);
     expect(resolved.opacity).toBe(1);
     expect(resolved.fillVal).toBe("#FFFFFF");
+  });
+});
+
+describe("glass geometry resolution for instances", () => {
+  it("uses resolved borderRadius and cornerSmoothing from the instance box rather than the bare InstanceElement", () => {
+    const inst = { id: "inst1", name: "Card", type: "instance", componentId: "comp1", x: 0, y: 0, width: 400, height: 100 } as any;
+    expect(analyticShapeOf(inst, 400, 100, 0.6, 32, undefined)).toEqual({
+      kind: "rect",
+      radii: [32, 32, 32, 32],
+      smoothing: 0.6
+    });
+    expect(analyticShapeOf(inst, 400, 100, 0, 32, [16, 16, 16, 16])).toBeNull();
   });
 });
 

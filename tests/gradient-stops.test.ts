@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { canonicalGradientStops } from "../src/core/dsl/gradient-stops";
 import { getGradientStops } from "../src/core/geometry/gradient-utils";
 import { normalizePaint } from "../src/core/dsl/normalize/paint";
+import type { NormalizationRepair } from "../src/core/dsl/normalize/shared";
 
 describe("canonicalGradientStops", () => {
   it("keeps 0..1 offsets directly", () => {
@@ -122,5 +123,84 @@ describe("CSS gradient string shorthand", () => {
         { color: "#0000FF", offset: 1 }
       ]);
     }
+  });
+});
+
+describe("unreadable paint colours are refused, never defaulted", () => {
+  const normalizeWithRepairs = (raw: unknown) => {
+    const repairs: NormalizationRepair[] = [];
+    return { paint: normalizePaint(raw, "/fills/0", repairs), repairs };
+  };
+
+  it("refuses a [color, offset] pair instead of turning the ramp white", () => {
+    const { paint, repairs } = normalizeWithRepairs({
+      type: "linear-gradient",
+      stops: [["#FF0000", 0], ["#0000FF", 1]]
+    });
+    // Two unreadable stops used to default to #FFFFFF, judge themselves flat and
+    // collapse the paint to a white solid that `check` called clean.
+    expect(paint).toBeUndefined();
+    expect(repairs.some((r) => /\[color, offset\] pair/.test(r.message))).toBe(true);
+    expect(repairs.every((r) => r.path.startsWith("/fills/0/stops/"))).toBe(true);
+  });
+
+  it("names a misspelt stop key rather than whitening it", () => {
+    const { paint, repairs } = normalizeWithRepairs({
+      type: "radial-gradient",
+      stops: [{ colour: "#FF0000", at: 0 }, { colour: "#0000FF", at: 1 }]
+    });
+    expect(paint).toBeUndefined();
+    expect(repairs.some((r) => /has no "color"/.test(r.message))).toBe(true);
+  });
+
+  it("keeps the stops it can read when one is unusable", () => {
+    const stops = canonicalGradientStops(
+      [{ color: "#FF0000", offset: 0 }, [255, 0, 0], { color: "#0000FF", offset: 1 }],
+      "/fills/0/stops",
+      []
+    );
+    expect(stops).toEqual([
+      { color: "#FF0000", offset: 0 },
+      { color: "#0000FF", offset: 1 }
+    ]);
+  });
+
+  it("refuses a solid colour that is not a colour", () => {
+    for (const raw of ["#FFF → #000", "#FF0000/#0000FF", "gradient red to blue"]) {
+      const { paint, repairs } = normalizeWithRepairs(raw);
+      expect(paint, raw).toBeUndefined();
+      expect(repairs[0]?.message, raw).toMatch(/not a CSS colour/);
+    }
+  });
+
+  it("keeps every legal colour spelling", () => {
+    const spellings = [
+      "#8AB4F8",
+      "#8AB4F8CC",
+      "white",
+      "rebeccapurple",
+      "rgb(0 0 0 / 50%)",
+      "oklch(0.7 0.15 200)",
+      "transparent",
+      "currentColor",
+      "$color-surface",
+      "var(--brand)"
+    ];
+    for (const colour of spellings) {
+      expect(normalizePaint({ type: "solid", color: colour }), colour).toEqual({ type: "solid", color: colour });
+    }
+  });
+
+  it("keeps a token-only stop for the binding pass to fill in", () => {
+    expect(canonicalGradientStops([{ tokenId: "tok_brand" }, { color: "#0000FF", offset: 1 }])).toEqual([
+      { color: "#FFFFFF", offset: 0, tokenId: "tok_brand" },
+      { color: "#0000FF", offset: 1 }
+    ]);
+  });
+
+  it("reports a stops value that is not an array", () => {
+    const repairs: NormalizationRepair[] = [];
+    expect(canonicalGradientStops("#FF0000", "/fills/0/stops", repairs)).toBeUndefined();
+    expect(repairs[0]?.message).toMatch(/must be an array/);
   });
 });

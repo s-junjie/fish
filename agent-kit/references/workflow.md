@@ -39,7 +39,7 @@ The one answer no document can give you is what the user already has: a moodboar
 Project categories guide the DSL choices:
 
 - `ui`: app screens, dashboards, landing pages → frames, auto-layout, 8px rhythm, components.
-- `graphic`: social cards, posters, covers → free placement IS the layout (auto-layout only where content repeats), declare `fonts[].src` for export, and say `overlap: "allowed"` on a frame whose type is composed to cross something.
+- `graphic`: social cards, posters, covers → wrap the entire design in one top-level frame (the poster artboard, with explicit dimensions and `clipsContent: true`; its `name` displays as the canvas artboard label above it, not in exports), use free placement inside it (auto-layout only where content repeats), declare `fonts[].src` for export, and say `overlap: "allowed"` on a frame whose type is composed to cross something.
 - `brand`: logos and marks → pure vector paths.
 - `dataviz`: charts, gauges, rings → sibling `ellipse` arcs.
 - `icon`: 24×24 paths.
@@ -47,28 +47,9 @@ Project categories guide the DSL choices:
 
 ---
 
-## 2. Two ways in
+## 2. Create with Compact JSON
 
-Both produce the same editable `*.fish.html`. Pick by the job; neither is mandatory.
-
-### HTML import — when layout fidelity is the hard part
-
-Write a static page with CSS flex/grid and real units, then let a browser measure it:
-
-```bash
-./tools/fish import page.html --out design.fish.html --viewport 1440
-./tools/fish check design.fish.html --geometry
-```
-
-Read the report before trusting it: `elementCount`, `maxDelta`, `downgraded`, `unmapped`, missing assets. `maxDelta: 0` and `unmapped: 0` means it came across whole.
-
-- **The imported file is the source from here on.** Iterate with `apply`.
-- **Never re-run `import` on a document you have edited.** It discards the edits; HTML is a seed, not a round-trip.
-- A `type: "html"` element is not this. It is a view-only iframe on the canvas; `dsl.md` § "HTML In" carries the DSL facts (page `id` → element id, seed-not-round-trip, embed limits).
-
-### Compact JSON — when exact control matters more
-
-Author JSON with the shorthands in `dsl.md`, then assemble it into the shell (`--out` defaults the template to `templates/blank.fish.html`; pass an explicit `<template.fish.html>` second if reusing a custom shell):
+Author DSL JSON with the shorthands in `dsl.md`, then assemble it into the shell (`--out` defaults the template to `templates/blank.fish.html`; pass an explicit `<template.fish.html>` second if reusing a custom shell):
 
 ```bash
 ./tools/fish compose design.json --out design.fish.html --compact
@@ -81,6 +62,10 @@ Or pipe it:
 { "version": "0.1", "canvas": { "width": 1440, "height": 900 }, "elements": [] }
 EOF
 ```
+
+`compose` normalizes before it writes, so the block in the file is the REPAIRED document, not the one you passed. It therefore prints every repair and **exits 1** when any of them changed what you wrote — fix the JSON and compose again, because `check` on the assembled file has nothing left to report (the broken value is already gone). A clean compose is the only one that exits 0. `apply` holds the same rule for the write: a CSS-spelled op whose value cannot be stored fails by name, and a run that dropped anything on the way out exits 1 even when the op itself ran.
+
+> **Migrating an existing HTML page:** Only when the user provides an existing `.html` file to convert, run `./tools/fish import page.html --out design.fish.html --viewport 1440` once as a seed, then iterate with `apply` — never re-run `import` over an edited `.fish.html` or it will discard edits (see `dsl.md` § "HTML In").
 
 ---
 
@@ -176,7 +161,7 @@ The full source table, credentials, licences and link-vs-embed rules are in `ass
 - `--embed` fetches a remote URL and inlines bytes; without it the document holds a link.
 - `--to` places the fill in the same run; without it the asset is only registered.
 - `--replace` swaps the image layers on the target and drops assets nothing points at any more.
-- `./tools/fish check <doc> --strict-assets` fails if any asset is still a URL.
+- `./tools/fish check <doc> --strict-assets` fails if any asset is still a URL. An `assetId` no `doc.assets[]` entry backs is an error with or without the flag: the fill is legal and paints nothing.
 
 ---
 
@@ -308,5 +293,6 @@ Rules that matter more than the sequence:
 
 **When the project is graphic, editorial or a deck** (`graphic`, `deck`)
 
+- [ ] A poster or single graphic lives inside one top-level frame (artboard dimensions, `clipsContent: true`, meaningful `name`), not as loose elements directly on the page.
 - [ ] Free placement is the layout: a poster or a cover is composed, not flowed. Auto-layout only where content actually repeats.
 - [ ] Deliberate layering says so — `overlap: "allowed"` on the composition root whose type crosses a shape or another text, covering everything it holds — so an accidental collision still reads as one.

@@ -123,7 +123,7 @@ export function InstanceNode({
      is the space the map has to be laid out in. */
   const glass = isMaskStencil
     ? null
-    : bakeGlass(el, activeEffects, { width: box.width, height: box.height }, ctx.rasterScale);
+    : bakeGlass(el, activeEffects, box, ctx.rasterScale);
   const backdropParts: string[] = [];
   for (const ef of activeEffects) {
     if (ef.type === "backdrop-blur") {

@@ -461,3 +461,47 @@ describe("normalize preserves the designated cover frame", () => {
     expect(second.document.thumbnailNodeId).toBe("f1");
   });
 });
+
+/**
+ * `x` / `y` read CSS's positioning pair (`el.x ?? el.left`), which means the
+ * value IS applied — and the key is then not a field any more. Reporting it as
+ * "unknown property" made `check` fail a document the engine had just honoured:
+ * the one direction a validator must never get wrong.
+ */
+describe("normalize reads the positioning pair instead of calling it unknown", () => {
+  it("keeps left/top as x/y and reports nothing", () => {
+    const { document, repairs } = normalizeDesignDocument(
+      doc([{ id: "c", type: "rect", left: 77, top: 91, width: 50, height: 50 }])
+    );
+    const el = document.pages![0].children[0] as unknown as Record<string, unknown>;
+    expect(el.x).toBe(77);
+    expect(el.y).toBe(91);
+    expect(el.left).toBeUndefined();
+    expect(repairs.filter((r) => r.kind === "dropped-property")).toEqual([]);
+  });
+
+  it("still refuses right / bottom / inset, which nothing reads", () => {
+    const { document, repairs } = normalizeDesignDocument(
+      doc([{ id: "c", type: "rect", right: 4, bottom: 6, inset: 2, width: 50, height: 50 }])
+    );
+    expect(repairs.filter((r) => r.kind === "dropped-property").map((r) => r.path)).toEqual([
+      "/pages/0/children/0/right",
+      "/pages/0/children/0/bottom",
+      "/pages/0/children/0/inset"
+    ]);
+    expect(document.pages![0].children[0] as unknown as Record<string, unknown>).not.toHaveProperty("right");
+  });
+
+  it("keeps the stored axis when both spellings arrive, and names the one dropped", () => {
+    const { document, repairs } = normalizeDesignDocument(
+      doc([{ id: "c", type: "rect", x: 5, y: 6, left: 77, top: 91, width: 50, height: 50 }])
+    );
+    const el = document.pages![0].children[0] as unknown as Record<string, unknown>;
+    expect(el.x).toBe(5);
+    expect(el.y).toBe(6);
+    expect(repairs.filter((r) => r.kind === "dropped-property").map((r) => r.path)).toEqual([
+      "/pages/0/children/0/left",
+      "/pages/0/children/0/top"
+    ]);
+  });
+});

@@ -187,12 +187,17 @@ try {
 
   $absOut = [System.IO.Path]::GetFullPath($Out)
   $windowDimensions = $window -replace 'x', ','
+  # `--screenshot` fires on the load event, which is before a webfont has
+  # necessarily arrived; the document is laid out in JS, so a late face means the
+  # frame shows fallback metrics. See the matching note in shot.sh.
+  $settle = if ($env:FISH_SHOT_SETTLE_MS) { $env:FISH_SHOT_SETTLE_MS } else { "5000" }
 
   if ($DebugMode) {
-    Write-Host "[DEBUG] screenshot: $browser $chromeFlags --force-device-scale-factor=$Scale --window-size=$windowDimensions --screenshot=`"$absOut`" `"$pass2Url`""
+    Write-Host "[DEBUG] screenshot: $browser $chromeFlags --virtual-time-budget=$settle --force-device-scale-factor=$Scale --window-size=$windowDimensions --screenshot=`"$absOut`" `"$pass2Url`""
   }
 
   $p2Args = $chromeFlags + @(
+    "--virtual-time-budget=$settle",
     "--force-device-scale-factor=$Scale",
     "--window-size=$windowDimensions",
     "--screenshot=$absOut",

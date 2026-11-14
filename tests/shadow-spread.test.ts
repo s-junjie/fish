@@ -178,6 +178,26 @@ describe("spread drawn from the element's outline", () => {
     expect(shadowSilhouette(rect({ fills: [] }), 20, true, region, origin)).toBeNull();
     expect(shadowSilhouette(rect({ fills: [{ type: "solid", color: "#ffffff" }] }), 20, false, region, origin)).toBeTruthy();
   });
+
+  it("builds a rounded silhouette for a clipped instance from its resolved InstanceBox", () => {
+    const region = { x: -20, y: -20, width: 240, height: 100 };
+    const origin = { x: 40, y: 30 };
+    const inst = { id: "i1", name: "Card", type: "instance", componentId: "c1", x: 40, y: 30, width: 200, height: 60 } as DesignElement;
+    const box = {
+      width: 200,
+      height: 60,
+      fills: [{ type: "solid", color: "#ffffff" }],
+      fillsActive: true,
+      strokes: [],
+      borderRadius: 24,
+      overflow: "hidden",
+      effects: []
+    } as any;
+    expect(shadowSilhouette(inst, 12, true, region, origin, null)).toBeNull();
+    const sil = shadowSilhouette(inst, 12, true, region, origin, box);
+    expect(sil).toBeTruthy();
+    expect(decodeURIComponent(sil!.uri)).toContain("A 24 24");
+  });
 });
 /**
  * Chromium clamps one `feMorphology`'s radius at 256 DEVICE pixels, so a spread

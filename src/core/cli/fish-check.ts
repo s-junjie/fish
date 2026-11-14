@@ -11,6 +11,7 @@ import { findPage, getActivePage, withActivePage } from "../dsl/document-ops";
 import { laidOutAllPages, laidOutDocument, type LayoutFinding } from "../layout-report";
 import type { GeometryFinding } from "../geometry-report";
 import { fontDiagnostics } from "../font-diagnostics";
+import { danglingAssetRefs } from "../dsl/asset-usage";
 import { countElements } from "../geometry/tree-ops";
 import type { DesignDocument } from "../dsl/types";
 import type { CompileDiagnostic } from "../compile";
@@ -43,16 +44,38 @@ function assetDiagnostics(
   strict: boolean
 ): { level: "info" | "error"; message: string; elementId?: string }[] {
   const assets = doc.assets ?? [];
+  const out: { level: "info" | "error"; message: string; elementId?: string }[] = [];
+
+  // A dangling id is an error in every environment, so it is not gated by
+  // `--strict-assets`: the layer has no bitmap, paints nothing, and the rest of
+  // the document is valid enough that `check`, `shot` and the renderer all agree
+  // it is fine. This is the only place that can say otherwise before it ships.
+  for (const ref of danglingAssetRefs(doc)) {
+    const what =
+      ref.property === "posterAssetId"
+        ? "a video poster"
+        : ref.elementId
+          ? "a paint on this element"
+          : "a paint outside the element tree";
+    out.push({
+      level: "error",
+      message:
+        `${what} references asset "${ref.assetId}", which doc.assets[] does not declare — ` +
+        `nothing is painted there. Import the bytes (fish assets import <file> <doc>) or clear the reference`,
+      ...(ref.elementId ? { elementId: ref.elementId } : {})
+    });
+  }
+
   const remote = assets.filter((a) => a.uri && !a.uri.startsWith("data:"));
-  if (remote.length === 0) return [];
-  return [
-    {
+  if (remote.length > 0) {
+    out.push({
       level: strict ? "error" : "info",
       message:
         `${remote.length} of ${assets.length} asset(s) are remote URLs (${remote.map((a) => a.id).join(", ")}) — ` +
         "the file will not render them offline. Embed them with `fish assets embed <doc> --all`"
-    }
-  ];
+    });
+  }
+  return out;
 }
 
 /**

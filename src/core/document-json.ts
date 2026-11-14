@@ -1,6 +1,7 @@
 import type { DesignDocument } from "./dsl/types";
 import { adoptTopLevelElements } from "./dsl/document-ops";
 import { normalizeDesignDocument } from "./dsl/normalize";
+import type { NormalizationRepair } from "./dsl/normalize/shared";
 import { applyCssSpelling } from "./dsl/css-spelling";
 import { syncDocumentBindings } from "./interactions/style-ops";
 
@@ -28,6 +29,16 @@ export interface DocumentTextOptions {
   pretty: boolean;
   /** `external` lifts `assets[].uri` into `assetUris` (the `.fish.html` block). */
   assets?: "inline" | "external";
+  /**
+   * What the canonicalisation pass dropped on the way to text.
+   *
+   * This is the only moment the drop is visible: the text below is already the
+   * repaired document, so whatever reads it back has nothing left to complain
+   * about. A writer that can tell its caller (`compose`, `apply`) passes this and
+   * turns a non-`info` repair into a failed command; one that cannot (a save in
+   * the app) loses nothing it did not already lose.
+   */
+  onRepair?: (repair: NormalizationRepair) => void;
 }
 
 export interface DocumentText {
@@ -41,36 +52,50 @@ export interface DocumentText {
  * A live document as a plain object, in the canonical shape every reader agrees
  * on. This is layer ① — the only `doc` → object conversion.
  */
-export function documentToPlainObject(doc: DesignDocument): Record<string, unknown> {
-  return applyCssSpelling(canonicalDocument(doc) as unknown as Record<string, unknown>);
+export function documentToPlainObject(
+  doc: DesignDocument,
+  onRepair?: (repair: NormalizationRepair) => void
+): Record<string, unknown> {
+  return applyCssSpelling(canonicalDocument(doc, onRepair) as unknown as Record<string, unknown>);
 }
 
 /** Layer ② — the only object → text conversion. */
 export function toDocumentText(doc: DesignDocument, opts: DocumentTextOptions): DocumentText {
-  const plain = documentToPlainObject(doc);
+  const plain = documentToPlainObject(doc, opts.onRepair);
   const { body, assetUris } =
     opts.assets === "external" ? splitAssetUris(plain) : { body: plain, assetUris: {} };
   return { json: JSON.stringify(body, null, opts.pretty ? 2 : undefined), assetUris };
 }
 
 /** The full document, pretty-printed, for a `.fish.json` export or a CLI dump. */
-export function documentJson(doc: DesignDocument): string {
-  return toDocumentText(doc, { pretty: true, assets: "inline" }).json;
+export function documentJson(
+  doc: DesignDocument,
+  onRepair?: (repair: NormalizationRepair) => void
+): string {
+  return toDocumentText(doc, { pretty: true, assets: "inline", onRepair }).json;
 }
 
 /** The same document, minified. */
-export function compactDocumentJson(doc: DesignDocument): string {
-  return toDocumentText(doc, { pretty: false, assets: "inline" }).json;
+export function compactDocumentJson(
+  doc: DesignDocument,
+  onRepair?: (repair: NormalizationRepair) => void
+): string {
+  return toDocumentText(doc, { pretty: false, assets: "inline", onRepair }).json;
 }
 
 /**
  * Run a live document through the reader every stored document went through, so
  * what these produce is exactly what `Replace from JSON` will accept back.
  */
-export function canonicalDocument(doc: DesignDocument): DesignDocument {
+export function canonicalDocument(
+  doc: DesignDocument,
+  onRepair?: (repair: NormalizationRepair) => void
+): DesignDocument {
   // Written out materialised: what the author handed back is a reference, and
   // every reader of this text paints the value beside it, not the id.
-  return syncDocumentBindings(normalizeDesignDocument(adoptTopLevelElements(doc), { preserveUnknown: true }).document);
+  const { document, repairs } = normalizeDesignDocument(adoptTopLevelElements(doc), { preserveUnknown: true });
+  for (const repair of repairs) onRepair?.(repair);
+  return syncDocumentBindings(document);
 }
 
 /**

@@ -242,12 +242,19 @@ function exportOne(
       );
     }
 
-    // Step 2: capture screenshot
+    // Step 2: capture screenshot.
+    //
+    // `--screenshot` fires on the load event, and the document is laid out in JS:
+    // a webfont still in flight means every hugging box is measured against the
+    // fallback face, so the PNG shows a layout the same file no longer has a
+    // second later. The report pass above has always spent virtual time; the
+    // pixels have to wait too.
     const finalOutResolved = path.resolve(out);
     runBrowser(
       browser,
       [
         ...chromeFlags,
+        "--virtual-time-budget=5000",
         `--force-device-scale-factor=${scale}`,
         `--window-size=${windowSize.replace("x", ",")}`,
         `--screenshot=${finalOutResolved}`,

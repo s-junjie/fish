@@ -147,6 +147,59 @@ const isKnownElementKey = (key: string): boolean =>
   CANONICAL_KEYS.has(key) || (!key.includes("_") && CANONICAL_KEY_SET.has(canonicalKey(key)));
 
 /**
+ * One insertion, deletion, substitution or adjacent swap apart. Used only to
+ * guess what a misspelt key was reaching for.
+ */
+function oneEditApart(a: string, b: string): boolean {
+  if (a === b || Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  if (a.length === b.length) {
+    if (a.slice(i + 1) === b.slice(i + 1)) return true;
+    return a[i] === b[i + 1] && a[i + 1] === b[i] && a.slice(i + 2) === b.slice(i + 2);
+  }
+  return a.length > b.length ? a.slice(i + 1) === b.slice(i) : a.slice(i) === b.slice(i + 1);
+}
+
+/**
+ * The vocabulary entry a misspelt key was reaching for, if one is one edit away.
+ *
+ * `flatKeyHint` answers "this key belongs at Y", which needs the key to exist in
+ * a relocation table. A TYPO exists nowhere, and it is the commonest way an
+ * unknown property arrives — `widht` is one swap from a key the dialect has, and
+ * naming it turns a refusal into a one-step fix. Bounded to a single edit and to
+ * keys of four characters or more, so a genuinely foreign key (`foo`,
+ * `data-role`) is not told it resembles something.
+ */
+function nearestKey(key: string): string | undefined {
+  const c = canonicalKey(key);
+  if (c.length < 4 || c.includes("_")) return undefined;
+  for (const candidate of CANONICAL_KEYS) {
+    if (candidate.length < 4 || candidate.includes("_")) continue;
+    if (oneEditApart(c, candidate)) return candidate;
+  }
+  return undefined;
+}
+
+/**
+ * Why the element vocabulary cannot read `key`, or null when it can.
+ *
+ * Exported so the patch surface refuses with the SAME sentence the normalizer
+ * reports: `apply` writes what it is handed, so a typo it accepted (`patched
+ * widht`, exit 0) only became visible on the next `check` — after the key was in
+ * the file. One predicate, two callers, no second opinion to drift.
+ *
+ * Input-only aliases do not appear here: `left` / `top` are folded before this
+ * runs (see `POSITION_ALIASES`), and the patch surface asks `isPositionAlias`
+ * itself because it has to answer before any folding can happen.
+ */
+export function unknownElementKey(key: string, type: ElementType): string | null {
+  if (isKnownElementKey(key)) return null;
+  const target = flatKeyHint(key, type) ?? nearestKey(key);
+  return `unknown property "${key}" is unsupported${target ? ` (did you mean ${target}?)` : ""}`;
+}
+
+/**
  * Copies each authored key onto the other spelling the vocabulary lists for it.
  *
  * The gate accepts any camel/kebab variant of a listed key, but readers read one
@@ -270,6 +323,60 @@ function resolveElementId(
   return candidate;
 }
 
+/**
+ * CSS's positioning pair, as the input spelling of the axis it names.
+ *
+ * `left` / `top` are READ, so they are not unknown — but they are not fields
+ * either: the value belongs on `x` / `y` and the key must not survive into the
+ * document. Folding them at the door, the way `withAliasSpellings` folds
+ * kebab/camel, is what keeps the unknown-key gate honest — "if this key is still
+ * here, nobody read it" — instead of teaching that gate a list of exceptions
+ * that a second list then has to agree with.
+ *
+ * `right` / `bottom` / `inset` are deliberately absent. Resolving them needs the
+ * parent box, and normalize has no parent box (same reason `x: "50%"` is refused
+ * a few lines down). Accepting them here would be a key nobody can resolve,
+ * which is the silent no-op this whole gate exists to remove: they stay unknown,
+ * and `check` says so.
+ */
+const POSITION_ALIASES: Readonly<Record<string, "x" | "y">> = { left: "x", top: "y" };
+
+/**
+ * The axis an input-only positioning alias names, if it is one.
+ *
+ * The patch surface reads this BEFORE the fold can run, so a patch that writes
+ * `left` can replace the stored `x` instead of merging beside it — both sides
+ * read the one table above rather than keeping a spelling list each.
+ */
+export const positionAxisOf = (key: string): "x" | "y" | undefined => POSITION_ALIASES[key];
+
+export const isPositionAlias = (key: string): boolean => positionAxisOf(key) !== undefined;
+
+function absorbPositionAliases(
+  raw: Record<string, unknown>,
+  path: string,
+  repairs: NormalizationRepair[]
+): Record<string, unknown> {
+  let out: Record<string, unknown> | undefined;
+  for (const [alias, axis] of Object.entries(POSITION_ALIASES)) {
+    if (raw[alias] === undefined) continue;
+    out ??= { ...raw };
+    delete out[alias];
+    const held = out[axis];
+    if (held === undefined) out[axis] = raw[alias];
+    else if (!deepEqual(held, raw[alias])) {
+      // Two spellings of one axis that disagree: the stored field wins, exactly
+      // as `withAliasSpellings` resolves the same collision for kebab/camel.
+      repairs.push({
+        kind: "dropped-property",
+        path: `${path}/${alias}`,
+        message: `"${alias}" ignored: ${axis} is already ${JSON.stringify(held)}`
+      });
+    }
+  }
+  return out ?? raw;
+}
+
 export function normalizeElement(
   raw: unknown,
   path: string,
@@ -288,7 +395,11 @@ export function normalizeElement(
     return null;
   }
 
-  let el: Record<string, unknown> = withAliasSpellings(raw, path, repairs);
+  let el: Record<string, unknown> = absorbPositionAliases(
+    withAliasSpellings(raw, path, repairs),
+    path,
+    repairs
+  );
 
   // --- type ---------------------------------------------------------------
   const declaredType = typeof el.type === "string" ? el.type.trim() : undefined;
@@ -338,8 +449,8 @@ export function normalizeElement(
     }
     return n;
   };
-  const x = axisLength("x", el.x ?? el.left) ?? 0;
-  const y = axisLength("y", el.y ?? el.top) ?? 0;
+  const x = axisLength("x", el.x) ?? 0;
+  const y = axisLength("y", el.y) ?? 0;
   // An instance has no box of its own until someone gives it one. Treating an
   // omitted axis as 0 made a hand-authored instance vanish (only its children
   // painted); the master's box is the only meaningful default. Only OMITTED
@@ -1012,20 +1123,14 @@ export function normalizeElement(
     }
   } else {
     for (const key of Object.keys(el)) {
-      if (!isKnownElementKey(key)) {
-        // The hint is derived from the vocabulary tables (`LAYOUT_FIELDS`,
-        // `FLAT_TEXT_KEYS`), so a spelling they teach is one the hint knows; the
-        // old hard-coded lists named five layout keys that are now folded before
-        // this pass ever sees them, and offered `style.*` on frames that have no
-        // style at all.
-        const target = flatKeyHint(key, type);
-        const hint = target ? ` (did you mean ${target}?)` : "";
-        repairs.push({
-          kind: "dropped-property",
-          path: `${path}/${key}`,
-          message: `unknown property "${key}" is unsupported${hint}`
-        });
-      }
+      const problem = unknownElementKey(key, type);
+      if (!problem) continue;
+      // The hint is derived from the vocabulary tables (`LAYOUT_FIELDS`,
+      // `FLAT_TEXT_KEYS`), so a spelling they teach is one the hint knows; the
+      // old hard-coded lists named five layout keys that are now folded before
+      // this pass ever sees them, and offered `style.*` on frames that have no
+      // style at all.
+      repairs.push({ kind: "dropped-property", path: `${path}/${key}`, message: problem });
     }
   }
 
