@@ -17,6 +17,8 @@ import { Eye, EyeOff, Minus, SlidersHorizontal } from "lucide-react";
 import { Button } from "../Button";
 import { DECORATION_LINES, hasDecoration, toggledDecoration } from "../../core/dsl/text-decoration";
 
+const noop = () => {};
+
 export function DraftPaintRows({
   paints,
   doc,
@@ -28,7 +30,9 @@ export function DraftPaintRows({
   onAlpha,
   onHex,
   onBindToken,
-  onDetachToken
+  onDetachToken,
+  onDragStart,
+  onDragEnd
 }: {
   paints: Paint[];
   doc?: DesignDocument;
@@ -37,10 +41,12 @@ export function DraftPaintRows({
   onPick: (next: { index: number; anchor: HTMLElement } | null) => void;
   onRemove: (index: number) => void;
   onToggle: (index: number, enabled: boolean) => void;
-  onAlpha: (index: number, pct: number) => void;
-  onHex: (index: number, hex: string, alphaPct: number) => void;
+  onAlpha: (index: number, pct: number, discrete?: boolean) => void;
+  onHex: (index: number, hex: string, alphaPct: number, discrete?: boolean) => void;
   onBindToken?: (index: number, token: ColorToken) => void;
   onDetachToken?: (index: number) => void;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
 }) {
   const imageUri = paintImageUri(doc ?? docRef?.current);
   return (
@@ -67,12 +73,14 @@ export function DraftPaintRows({
             label={paintRowLabel(p)}
             showAlpha={true}
             effectiveAlpha={effectiveAlpha}
-            onChange={(nextColor, nextAlpha) => {
+            onGestureStart={onDragStart}
+            onGestureEnd={onDragEnd}
+            onChange={(nextColor, nextAlpha, discrete) => {
               if (isSolid) {
                 const parsedColor = parseColorAlpha(nextColor);
-                onHex(idx, parsedColor.hex6, nextAlpha ?? parsedColor.alphaPct);
+                onHex(idx, parsedColor.hex6, nextAlpha ?? parsedColor.alphaPct, discrete);
               } else {
-                onAlpha(idx, nextAlpha ?? 100);
+                onAlpha(idx, nextAlpha ?? 100, discrete);
               }
             }}
             onOpenColorPanel={(anchor) => onPick({ index: idx, anchor })}
@@ -118,15 +126,19 @@ export function DraftTextRows({
   doc,
   docRef,
   onChange,
-  onCommitTokenEdit
+  onCommitTokenEdit,
+  onDragStart,
+  onDragEnd
 }: {
   textStyle: TextStyleDeclaration;
   doc?: DesignDocument;
   docRef?: { current: DesignDocument };
-  onChange: (patch: Partial<TextStyleDeclaration>) => void;
+  onChange: (patch: Partial<TextStyleDeclaration>, discrete?: boolean) => void;
   /** The edit drafts here are the style form's undo unit; a token edit inside
       the picker is a document-level save instead (docRef-only path). */
   onCommitTokenEdit: (newDoc: DesignDocument) => void;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
 }) {
   const [tokenPicker, setTokenPicker] = useState<{
     prop: TypographyNumberProp;
@@ -147,10 +159,11 @@ export function DraftTextRows({
 
   /** Typing into a bound field detaches it: the draft now holds a value, and a
       binding it did not author would overwrite that value on the next sync. */
-  const apply = (patch: Partial<TextStyleDeclaration>) => {
+  const apply = (patch: Partial<TextStyleDeclaration>, discrete = true) => {
     const touched = (["fontSize", "lineHeight", "letterSpacing"] as const).find((key) => key in patch);
     onChange(
-      touched && bindings?.[touched] ? { ...patch, tokenBindings: withoutBinding(touched) } : patch
+      touched && bindings?.[touched] ? { ...patch, tokenBindings: withoutBinding(touched) } : patch,
+      discrete
     );
   };
 
@@ -169,6 +182,8 @@ export function DraftTextRows({
           letterSpacing: { name: tokenName("letterSpacing"), onDetach: bindings?.letterSpacing ? () => apply({ tokenBindings: withoutBinding("letterSpacing") }) : undefined }
         }}
         onOpenTokenPicker={(prop, anchor) => setTokenPicker({ prop, anchor })}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
         onChange={apply}
         showCase
         decoration={{
@@ -225,7 +240,9 @@ export function DraftStrokeRows({
   onPick,
   onRemove,
   onToggle,
-  onUpdateStroke
+  onUpdateStroke,
+  onDragStart,
+  onDragEnd
 }: {
   strokes: Stroke[];
   doc?: DesignDocument;
@@ -235,6 +252,8 @@ export function DraftStrokeRows({
   onRemove: (index: number) => void;
   onToggle: (index: number, enabled: boolean) => void;
   onUpdateStroke: (index: number, patch: Partial<Stroke>, discrete?: boolean) => void;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
 }) {
   /* Cap, join, miter, dashes, alignment and per-side weights are the LINE's
      settings, not the paint's, so they live in the same panel the layer inspector
@@ -292,7 +311,9 @@ export function DraftStrokeRows({
                     label="W"
                     value={stroke.width || 1}
                     min={0}
-                    onChange={(w) => onUpdateStroke(idx, { width: w })}
+                    onDragStart={onDragStart}
+                    onDragEnd={onDragEnd}
+                    onChange={(w, discrete) => onUpdateStroke(idx, { width: w }, discrete)}
                   />
                 </div>
                 <Button
@@ -315,11 +336,17 @@ export function DraftStrokeRows({
                 </Button>
               </>
             }
-            onChange={(nextColor) => {
-              onUpdateStroke(idx, {
-                color: nextColor,
-                paint: { type: "solid", color: nextColor }
-              });
+            onGestureStart={onDragStart}
+            onGestureEnd={onDragEnd}
+            onChange={(nextColor, _nextAlpha, discrete) => {
+              onUpdateStroke(
+                idx,
+                {
+                  color: nextColor,
+                  paint: { type: "solid", color: nextColor }
+                },
+                discrete
+              );
             }}
             onOpenColorPanel={(anchor) => {
               onPick(isOpen ? null : { index: idx, anchor });
@@ -352,8 +379,8 @@ export function DraftStrokeRows({
           onChange={(patch, discrete) =>
             onUpdateStroke(settings.index, { ...strokes[settings.index], ...patch }, discrete)
           }
-          onGestureStart={() => {}}
-          onGestureEnd={() => {}}
+          onGestureStart={onDragStart ?? noop}
+          onGestureEnd={onDragEnd ?? noop}
         />
       )}
     </div>

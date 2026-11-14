@@ -112,7 +112,9 @@ describe("a text that enters a layout parent", () => {
   it("reaches the same box through the layer panel's drop", () => {
     const elements = load([card(), text("t")]);
     const before = get(elements, "t");
-    expect(before.sizing).toBeUndefined();
+    // Canvas level: the height is measured, the width is the character estimate
+    // the run arrived with — entering the card is what turns that into a hug.
+    expect(before.sizing).toEqual({ height: "fit-content" });
     expect(before.width).toBeGreaterThan(CARD_CONTENT_WIDTH);
 
     const result = applyLayerDrop(elements, ["t"], "card", "inside");
@@ -228,9 +230,11 @@ describe("the situations that must not be touched", () => {
 });
 
 describe("normalize still stores the same defaults when the file is read", () => {
-  it("hugs a text authored inside a layout parent, and leaves canvas-level text alone", () => {
+  it("hugs a text authored inside a layout parent, and only measures a canvas-level one", () => {
     const laid = load([card([text("inside")]), text("outside")]);
     expect(get(laid, "inside").sizing).toEqual({ width: "fit-content", height: "fit-content" });
-    expect(get(laid, "outside").sizing).toBeUndefined();
+    // A free canvas gives the height something to measure against; it does not
+    // hug the width, because there is no width to wrap to.
+    expect(get(laid, "outside").sizing).toEqual({ height: "fit-content" });
   });
 });

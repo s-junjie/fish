@@ -2716,6 +2716,13 @@
           ],
           "description": "What happens to children that do not fit, both axes. `hidden` clips (CSS `clip` reads as this); `auto` clips and scrolls whichever axis is measured to overflow; `visible` is the initial value and is never written. No `scroll`: we paint no scrollbar, so writing it would promise a bar a browser draws and this engine never does."
         },
+        "overlap": {
+          "type": "string",
+          "enum": [
+            "allowed"
+          ],
+          "description": "On a free-placement frame or component: its children are composed to overlap on purpose (a wordmark over a display glyph, a caption over a photograph), so `check` does not report text pairs inside it as accidental collisions. One statement on the composition root, covering everything it holds; layout and paint never read it."
+        },
         "visibility": {
           "type": "string",
           "enum": [

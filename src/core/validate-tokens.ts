@@ -288,8 +288,21 @@ export function validateTokenRefs(doc: DesignDocument): CompileDiagnostic[] {
     );
   }
 
-  const pages = doc.pages && doc.pages.length > 0 ? doc.pages : [{ children: getActivePage(doc).children }];
+  if (doc.canvas?.background) {
+    resolve(
+      paintRefs(doc.canvas.background, "canvas.background").map((ref) => ({ ...ref, kind: "token" as const })),
+      "document"
+    );
+  }
+
+  const pages = doc.pages && doc.pages.length > 0 ? doc.pages : [{ name: undefined as string | undefined, id: undefined as string | undefined, canvas: undefined as DesignDocument["canvas"] | undefined, children: getActivePage(doc).children }];
   for (const page of pages) {
+    if (page.canvas?.background) {
+      resolve(
+        paintRefs(page.canvas.background, "canvas.background").map((ref) => ({ ...ref, kind: "token" as const })),
+        page.name || page.id || "page"
+      );
+    }
     for (const el of flattenElements(page.children ?? [])) {
       resolve(elementRefs(el), el.name || el.id, el.id);
       if (el.themeMode && !colorModeIds.has(el.themeMode)) {

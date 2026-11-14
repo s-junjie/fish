@@ -1,10 +1,10 @@
-import { useState } from "preact/hooks";
 import { X } from "lucide-react";
 
 import type { DocumentMode, NumberToken, NumberTokenCategory, NumberTokenValue, TokenAliasRef } from "../../core/dsl/types";
 import { isTokenAliasRef, rawTokenSlot, type TokenLookup } from "../../core/dsl/token-value";
 import { DEFAULT_NUMBER_MODES, getNumberTokenModeValue } from "../../core/interactions/mode-ops";
 import { t } from "../../i18n";
+import { useDraftHistory } from "../hooks/useDraftHistory";
 import { ScrubInput } from "../ScrubInput";
 import { Select } from "../Select";
 import { SUB_LABEL_CLASS } from "../label-tier";
@@ -49,51 +49,65 @@ export function NumberTokenEditorPanel({
   const baseMode = effectiveModes[0];
   const otherModes = effectiveModes.slice(1);
 
-  const [name, setName] = useState(token?.name ?? initialName ?? "");
-  const [description, setDescription] = useState(token?.description ?? "");
-  const [value, setValueState] = useState(
-    token ? getNumberTokenModeValue(token, baseMode.id, tokens) : initialValue
-  );
-
-  const initialModeValues: Record<string, number | undefined> = {};
-  const initialAliases: Record<string, TokenAliasRef> = {};
-  if (token) {
-    const rawBase = rawTokenSlot(token, baseMode.id, baseMode.id);
-    if (isTokenAliasRef(rawBase)) initialAliases[baseMode.id] = rawBase;
-  }
-  for (const m of otherModes) {
-    if (token?.modes?.[m.id] !== undefined) {
-      initialModeValues[m.id] = getNumberTokenModeValue(token, m.id, tokens);
-      if (isTokenAliasRef(token.modes[m.id])) initialAliases[m.id] = token.modes[m.id] as TokenAliasRef;
+  const {
+    value: draft,
+    set: setDraft,
+    startGesture,
+    endGesture
+  } = useDraftHistory(() => {
+    const initialModeValues: Record<string, number | undefined> = {};
+    const initialAliases: Record<string, TokenAliasRef> = {};
+    if (token) {
+      const rawBase = rawTokenSlot(token, baseMode.id, baseMode.id);
+      if (isTokenAliasRef(rawBase)) initialAliases[baseMode.id] = rawBase;
     }
-  }
+    for (const m of otherModes) {
+      if (token?.modes?.[m.id] !== undefined) {
+        initialModeValues[m.id] = getNumberTokenModeValue(token, m.id, tokens);
+        if (isTokenAliasRef(token.modes[m.id])) initialAliases[m.id] = token.modes[m.id] as TokenAliasRef;
+      }
+    }
+    return {
+      name: token?.name ?? initialName ?? "",
+      description: token?.description ?? "",
+      value: token ? getNumberTokenModeValue(token, baseMode.id, tokens) : initialValue,
+      modeValues: initialModeValues,
+      preservedAliases: initialAliases,
+      category: token?.category ?? initialCategory
+    };
+  });
 
-  const [modeValues, setModeValues] = useState<Record<string, number | undefined>>(initialModeValues);
-  const [preservedAliases, setPreservedAliases] = useState<Record<string, TokenAliasRef>>(initialAliases);
-  const [category, setCategory] = useState<NumberTokenCategory>(
-    token?.category ?? initialCategory
-  );
+  const { name, description, value, modeValues, preservedAliases, category } = draft;
 
-  const dropPreservedAlias = (modeId: string) =>
-    setPreservedAliases((prev) => {
-      if (!(modeId in prev)) return prev;
-      const next = { ...prev };
-      delete next[modeId];
-      return next;
-    });
-  const setValue = (next: number) => {
-    dropPreservedAlias(baseMode.id);
-    setValueState(next);
+  const withoutAlias = (aliases: Record<string, TokenAliasRef>, modeId: string) => {
+    if (!(modeId in aliases)) return aliases;
+    const next = { ...aliases };
+    delete next[modeId];
+    return next;
   };
-  const setModeValue = (modeId: string, next: number | undefined) => {
-    dropPreservedAlias(modeId);
-    setModeValues((prev) => {
-      const copy = { ...prev };
+  const setName = (next: string) => setDraft((d) => ({ ...d, name: next }), true);
+  const setDescription = (next: string) => setDraft((d) => ({ ...d, description: next }), true);
+  const setCategory = (next: NumberTokenCategory) => setDraft((d) => ({ ...d, category: next }), true);
+  const setValue = (next: number, discrete = true) =>
+    setDraft(
+      (d) => ({
+        ...d,
+        value: next,
+        preservedAliases: withoutAlias(d.preservedAliases, baseMode.id)
+      }),
+      discrete
+    );
+  const setModeValue = (modeId: string, next: number | undefined, discrete = true) =>
+    setDraft((d) => {
+      const copy = { ...d.modeValues };
       if (next === undefined) delete copy[modeId];
       else copy[modeId] = next;
-      return copy;
-    });
-  };
+      return {
+        ...d,
+        modeValues: copy,
+        preservedAliases: withoutAlias(d.preservedAliases, modeId)
+      };
+    }, discrete);
 
   const rows: TokenEditorRow[] = [
     {
@@ -101,7 +115,14 @@ export function NumberTokenEditorPanel({
       label: baseMode.name,
       control: (
         <div className="flex-1 min-w-0">
-          <ScrubInput label="" value={value} onChange={setValue} className="w-full" />
+          <ScrubInput
+            label=""
+            value={value}
+            onDragStart={startGesture}
+            onDragEnd={endGesture}
+            onChange={setValue}
+            className="w-full"
+          />
         </div>
       )
     },
@@ -116,14 +137,16 @@ export function NumberTokenEditorPanel({
               label=""
               value={mVal}
               placeholder={String(value)}
-              onChange={(v) => setModeValue(m.id, v)}
+              onDragStart={startGesture}
+              onDragEnd={endGesture}
+              onChange={(v, discrete) => setModeValue(m.id, v, discrete)}
               trailing={
                 mVal !== undefined ? (
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setModeValue(m.id, undefined);
+                      setModeValue(m.id, undefined, true);
                     }}
                     title={t("tokens.resetToInherited")}
                     className="flex-none p-1 rounded-swatch text-ink-dim hover:text-ink hover:bg-raised transition-all mr-1 cursor-pointer"

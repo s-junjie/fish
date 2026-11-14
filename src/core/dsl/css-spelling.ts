@@ -161,6 +161,9 @@ export const NO_CSS_EQUIVALENT: Readonly<Record<string, string>> = {
       "alwaysLive", "cachedTitle", "cachedFavicon", "sizeOverride", "instanceScale", "spans", "arrow",
       "arrowhead", "autoplay", "loop", "muted", "controls", "srcdoc",
       "slide", "themeMode", "numberMode", "assetId", "posterAssetId",
+      // A statement about the composition, not a painting rule: CSS has no
+      // property for "these siblings are allowed to sit on top of each other".
+      "overlap",
       // A ruler over the box, not a style: CSS's nearest neighbours (`background`
       // tiling, `padding`) are a different contract, so there is nothing to
       // rename it into.

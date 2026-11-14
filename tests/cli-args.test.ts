@@ -302,11 +302,29 @@ describe("the built kit answers the same way", () => {
       expect(allJson.pages.map((p: any) => p.id)).toEqual(["p1", "p2"]);
       expect(allJson.geometry.length).toBeGreaterThan(0);
 
+      // `--skip-page` is the component-library door: the page is named in the
+      // report and left out of every measurement, so a master board cannot fail
+      // a gate over boxes no instance paints. A name that matches nothing is a
+      // refusal, not a silent no-op.
+      const skipped = runCli(["check", docPath, "--all-pages", "--geometry", "--skip-page", "Second", "--json"]);
+      expect(skipped.code).toBe(0);
+      const skippedJson = JSON.parse(skipped.out);
+      expect(skippedJson.pages.map((p: any) => p.id)).toEqual(["p1"]);
+      expect(skippedJson.geometry).toEqual([]);
+      expect(skippedJson.skippedPages).toEqual([{ id: "p2", name: "Second" }]);
+
       const missing = runCli(["check", docPath, "--page", "missing_page"]);
       expect(missing.code).toBe(2);
 
+      const unknownSkip = runCli(["check", docPath, "--skip-page", "missing_page"]);
+      expect(unknownSkip.code).toBe(2);
+      expect(unknownSkip.out).toContain("to skip");
+
       const conflict = runCli(["check", docPath, "--page", "p1", "--all-pages"]);
       expect(conflict.code).toBe(2);
+
+      const skipConflict = runCli(["check", docPath, "--page", "p2", "--skip-page", "p2"]);
+      expect(skipConflict.code).toBe(2);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }

@@ -505,6 +505,20 @@ export interface LayoutGuideFields {
   layoutGuideStyleId?: string;
 }
 
+/**
+ * "Children of this box may overlap on purpose."
+ *
+ * A free-placement frame is a composition, not a flow: a wordmark set over a
+ * display glyph, a caption over a photograph, a numeral inside a seal. The
+ * overlap check cannot tell that from two paragraphs stacked by accident, so the
+ * author says which one it is, once, on the composition root — it covers that
+ * container and its descent. A per-element flag would need both sides of every
+ * pair to agree about which one is allowed to be under the other.
+ */
+export interface OverlapFields {
+  overlap?: "allowed";
+}
+
 export type StyleBindingField = (typeof STYLE_BINDING_FIELDS)[number];
 
 /**
@@ -778,7 +792,7 @@ export interface BaseElement {
 }
 
 
-export interface FrameElement extends BaseElement, SlideHost, AutoLayoutFields, LayoutGuideFields {
+export interface FrameElement extends BaseElement, SlideHost, AutoLayoutFields, LayoutGuideFields, OverlapFields {
   type: "frame";
   children: DesignElement[];
   /** Ordered background paint stack (first layer bottom-most). */
@@ -910,7 +924,7 @@ export interface ComponentOverride {
   value: unknown;
 }
 
-export interface ComponentElement extends BaseElement, SlideHost, AutoLayoutFields, LayoutGuideFields {
+export interface ComponentElement extends BaseElement, SlideHost, AutoLayoutFields, LayoutGuideFields, OverlapFields {
   type: "component";
   children: DesignElement[];
   fills?: PaintStack;

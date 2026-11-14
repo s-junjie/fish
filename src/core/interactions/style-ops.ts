@@ -9,6 +9,7 @@ import { createId } from "../id";
 import {
   cascadeTokensIntoStyles,
   resolvePaintStylePaints,
+  syncCanvasBackground,
   syncDualStorage
 } from "./style-sync";
 import { getActiveNumberMode, getActiveTheme, getDocumentModes, getDocumentNumberModes } from "./mode-ops";
@@ -165,7 +166,9 @@ function syncDocument(
   const activeTheme = getActiveTheme(doc);
   const activeNumberMode = getActiveNumberMode(doc);
 
+  const nextCanvas = syncCanvasBackground(doc.canvas, tokens, activeTheme);
   const updatePages = (doc.pages || []).map((page) => {
+    const nextPageCanvas = syncCanvasBackground(page.canvas, tokens, activeTheme);
     const children = page.children || [];
     let pageChanged = false;
     const updatedElements = children.map((el) => {
@@ -173,13 +176,18 @@ function syncDocument(
       if (next !== el) pageChanged = true;
       return next;
     });
-    if (!pageChanged) return page;
-    const finalElements = needsRelayout ? relayoutDocumentTree(updatedElements) : updatedElements;
-    return { ...page, children: finalElements };
+    if (!pageChanged && nextPageCanvas === page.canvas) return page;
+    const finalElements = pageChanged && needsRelayout ? relayoutDocumentTree(updatedElements) : updatedElements;
+    return {
+      ...page,
+      ...(nextPageCanvas !== undefined ? { canvas: nextPageCanvas } : {}),
+      children: pageChanged ? finalElements : children
+    };
   });
 
   return {
     ...doc,
+    canvas: nextCanvas,
     // Materialising never invents a table. A document that carries no tokens
     // and no styles must not come back with an empty `tokens` array beside the
     // ones it never had, or a round trip through the canonical form stops
@@ -516,13 +524,27 @@ export function removeTokenFromDoc(doc: DesignDocument, tokenId: string): Design
     return s;
   });
 
+  const unbindCanvasBg = (canvas: DesignDocument["canvas"] | undefined) => {
+    if (!canvas?.background) return canvas;
+    const nextBg = paintWithoutTokenId(canvas.background);
+    return nextBg !== canvas.background ? { ...canvas, background: nextBg } : canvas;
+  };
+
+  const nextCanvas = unbindCanvasBg(doc.canvas) ?? doc.canvas;
   const updatePages = (doc.pages || []).map((page) => {
+    const nextPageCanvas = unbindCanvasBg(page.canvas);
     const updatedElements = mapElements(page.children || [], unbindMatching);
-    return updatedElements !== page.children ? { ...page, children: updatedElements } : page;
+    if (updatedElements === page.children && nextPageCanvas === page.canvas) return page;
+    return {
+      ...page,
+      ...(nextPageCanvas !== undefined ? { canvas: nextPageCanvas } : {}),
+      children: updatedElements
+    };
   });
 
   return {
     ...doc,
+    canvas: nextCanvas,
     tokens,
     styles,
     pages: updatePages

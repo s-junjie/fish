@@ -12,6 +12,8 @@ export interface GeometryFinding {
   kind: "overflow" | "clipped" | "zero-size" | "unused-space" | "guide-degenerate";
   message: string;
   elementId?: string;
+  /** The DSL edit that resolves it — see `CompileDiagnostic.hint`. */
+  hint?: string;
 }
 
 type Any = Record<string, unknown>;
@@ -190,7 +192,8 @@ export function geometryReport(doc: DesignDocument): GeometryFinding[] {
               level: "info",
               kind: "overflow",
               elementId: String(c.id ?? ""),
-              message: `${Math.round(cw)}×${Math.round(ch)} overflows "${String(any.name ?? any.id)}" content box ${Math.round(right - left)}×${Math.round(bottom - top)} by ${Math.round(worst)}px on the ${axis}; the layout engine gave it no room, so check sizing (a text told "max-content" is the usual cause). Deliberate? Give it position "absolute" or move it out of the stack.`
+              message: `${Math.round(cw)}×${Math.round(ch)} overflows "${String(any.name ?? any.id)}" content box ${Math.round(right - left)}×${Math.round(bottom - top)} by ${Math.round(worst)}px on the ${axis}; the layout engine gave it no room, so check sizing (a text told "max-content" is the usual cause). Deliberate? Give it position "absolute" or move it out of the stack.`,
+              hint: `sizing.${axis === "left" || axis === "right" ? "width" : "height"}: "fill" on the child, or position: "absolute" if it should overlay`
             });
           }
         }
@@ -235,7 +238,10 @@ export function geometryReport(doc: DesignDocument): GeometryFinding[] {
           level: "warning",
           kind: "zero-size",
           elementId: String(any.id ?? ""),
-          message: `has ${children.length} child(ren) and paint, but its box is ${Math.round(w)}×${Math.round(h)} — the fill, radius and effects have nothing to paint on. Fix it: ${how}.`
+          message: `has ${children.length} child(ren) and paint, but its box is ${Math.round(w)}×${Math.round(h)} — the fill, radius and effects have nothing to paint on. Fix it: ${how}.`,
+          hint: isLayoutContainer(el)
+            ? `give the children explicit sizes, or sizing.minHeight on "${String(any.name ?? any.id)}"`
+            : `"width" and "height" in px, or display: "flex" | "grid" so "fit-content" has a pass to be computed by`
         });
       }
 
@@ -271,7 +277,8 @@ export function geometryReport(doc: DesignDocument): GeometryFinding[] {
             level: "warning",
             kind: "guide-degenerate",
             elementId: String(any.id ?? ""),
-            message: `layout guide ${index + 1} (${guide.kind}) draws nothing: ${why} leaves no room. Give the guide a smaller margin / gutter, or a smaller cell.`
+            message: `layout guide ${index + 1} (${guide.kind}) draws nothing: ${why} leaves no room. Give the guide a smaller margin / gutter, or a smaller cell.`,
+            hint: guide.kind === "grid" ? `layoutGuides[${index}].size: a smaller step` : `layoutGuides[${index}].count / margin / gutter: fewer bands or less inset`
           });
         });
       }

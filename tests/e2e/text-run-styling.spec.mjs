@@ -58,7 +58,15 @@ const ELEMENTS = () => [
 ];
 
 const inspector = '[data-ui-panel="right"]';
-const ITALIC = `${inspector} [data-typography-toggle="italic"]`;
+const MORE_POPOVER = '[data-typography-more-popover="true"]';
+const ITALIC = `${MORE_POPOVER} [data-typography-toggle="italic"]`;
+const clickItalic = async () => {
+  if (!(await page.$(MORE_POPOVER))) {
+    await page.click(`${inspector} [data-typography-more="true"]`);
+    await page.waitForSelector(MORE_POPOVER);
+  }
+  await page.click(ITALIC);
+};
 const SIZE_LABEL = `${inspector} [data-scrub-label="Size"]`;
 const SIZE_FIELD = `${inspector} [data-scrub-field="Size"]`;
 const LS_FIELD = `${inspector} [data-scrub-field="LS"]`;
@@ -199,7 +207,7 @@ await openFreeEditor();
 const selected = await selectHello();
 check("setup — the editor is open with “Hello” selected", (await editorOpen()) && selected === "Hello", String(selected));
 
-await page.click(ITALIC);
+await clickItalic();
 await page.waitForTimeout(300);
 const afterItalic = await textOf("free");
 check(
@@ -288,7 +296,7 @@ check(
 );
 await page.evaluate(() => window.__FISH_BRIDGE__.selectElement("free"));
 await page.waitForTimeout(250);
-await page.click(ITALIC);
+await clickItalic();
 await page.waitForTimeout(280);
 const afterEscapeWrite = await textOf("free");
 check(
@@ -302,11 +310,11 @@ await seed();
 await page.waitForTimeout(350);
 await openFreeEditor();
 await selectHello();
-await page.click(ITALIC);
+await clickItalic();
 await page.waitForTimeout(280);
 await page.evaluate(() => document.querySelector('[data-layer-row="other"]').click());
 await page.waitForTimeout(300);
-await page.click(ITALIC);
+await clickItalic();
 await page.waitForTimeout(300);
 const other = await textOf("other");
 check(

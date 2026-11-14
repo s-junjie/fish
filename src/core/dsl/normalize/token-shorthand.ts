@@ -703,6 +703,25 @@ export function applyTokenShorthandsToElement(
   return applyToElement(el, { table, theme: docTheme, numberMode: docNumberMode, vars }, path, repairs);
 }
 
+function applyToCanvas(
+  rawCanvas: unknown,
+  ctx: TokenSlotContext,
+  path: string,
+  repairs: NormalizationRepair[]
+): unknown {
+  if (!isPlainObject(rawCanvas)) return rawCanvas;
+  let out: Record<string, unknown> | null = null;
+  const edit = () => (out ??= { ...rawCanvas });
+  for (const key of ["background", "backgroundColor"] as const) {
+    if (rawCanvas[key] === undefined) continue;
+    const next = applyToPaint(rawCanvas[key], ctx, `${path}/${key}`, repairs);
+    if (next !== rawCanvas[key]) {
+      edit()[key] = next;
+    }
+  }
+  return out ?? rawCanvas;
+}
+
 /**
  * Rewrite every `$token` and `var(--name)` token reference in a raw document.
  *
@@ -727,6 +746,11 @@ export function applyTokenShorthandsToDocument(
 
   let out = source;
   const edit = () => (out === source ? (out = { ...source }) : out);
+
+  if (isPlainObject(source.canvas)) {
+    const nextCanvas = applyToCanvas(source.canvas, base, "/canvas", repairs);
+    if (nextCanvas !== source.canvas) edit().canvas = nextCanvas;
+  }
 
   if (Array.isArray(source.styles)) {
     let changed = false;
@@ -753,17 +777,30 @@ export function applyTokenShorthandsToDocument(
   if (Array.isArray(source.pages)) {
     let changed = false;
     const pages = source.pages.map((page, pIndex) => {
-      if (!isPlainObject(page) || !Array.isArray(page.children)) return page;
+      if (!isPlainObject(page)) return page;
       let pageChanged = false;
-      const children = page.children.map((el, index) => {
-        if (!isPlainObject(el)) return el;
-        const next = applyToElement(el, base, `/pages/${pIndex}/children/${index}`, repairs);
-        if (next !== el) pageChanged = true;
-        return next;
-      });
+      let nextCanvas = page.canvas;
+      if (isPlainObject(page.canvas)) {
+        nextCanvas = applyToCanvas(page.canvas, base, `/pages/${pIndex}/canvas`, repairs);
+        if (nextCanvas !== page.canvas) pageChanged = true;
+      }
+      let nextChildren = page.children;
+      if (Array.isArray(page.children)) {
+        let childrenChanged = false;
+        const mapped = page.children.map((el, index) => {
+          if (!isPlainObject(el)) return el;
+          const next = applyToElement(el, base, `/pages/${pIndex}/children/${index}`, repairs);
+          if (next !== el) childrenChanged = true;
+          return next;
+        });
+        if (childrenChanged) {
+          nextChildren = mapped;
+          pageChanged = true;
+        }
+      }
       if (!pageChanged) return page;
       changed = true;
-      return { ...page, children };
+      return { ...page, ...(nextCanvas !== page.canvas ? { canvas: nextCanvas } : {}), children: nextChildren };
     });
     if (changed) edit().pages = pages;
   }

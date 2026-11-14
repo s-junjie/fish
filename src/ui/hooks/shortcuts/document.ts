@@ -1,5 +1,6 @@
 import { isContainer } from "../../../core/geometry/tree-ops";
 import { runEditorCommand } from "../../commands/editor-commands";
+import { hasDraftUndo, runDraftUndo } from "../draft-undo";
 import { refuseDerivedEdit } from "../selection-guards";
 import { altCode, isInputTarget, isMod, letterOf, swallow } from "./guards";
 import type { KeyRule } from "./types";
@@ -65,6 +66,15 @@ export const DETACH_INSTANCE: KeyRule = {
   run: (e) => {
     swallow(e);
     runEditorCommand("detachInstance");
+    return true;
+  }
+};
+
+export const DRAFT_UNDO_REDO: KeyRule = {
+  when: (e) => isMod(e) && !e.altKey && (letterOf(e) === "z" || letterOf(e) === "y") && hasDraftUndo(),
+  run: (e) => {
+    swallow(e);
+    runDraftUndo(letterOf(e) === "y" || e.shiftKey);
     return true;
   }
 };

@@ -41,6 +41,7 @@ import {
   sidePanelCompute
 } from "../hooks/useAnchoredPosition";
 import { useDismiss } from "../hooks/useDismiss";
+import { useDraftHistory } from "../hooks/useDraftHistory";
 import { setPickerOpen } from "../hooks/picker-focus";
 import { POPOVER_SURFACE_CLASS } from "../menu-style";
 
@@ -208,9 +209,29 @@ export function StylePickerPopover({
   );
   const [filterText, setFilterText] = useState("");
   const [editingStyleId, setEditingStyleId] = useState<string | null>(editTarget?.id ?? null);
-  const [createName, setCreateName] = useState(editTarget?.name ?? "");
-  const [createDescription, setCreateDescription] = useState(editTarget?.description ?? "");
-  const [drafts, setDraftsRaw] = useState<StyleDraft>(() => seedDrafts(styleType, editTarget, currentSelection));
+  const {
+    value: editorDraft,
+    set: setEditorDraft,
+    startGesture: startDraftGesture,
+    endGesture: endDraftGesture,
+    reset: resetEditorDraft
+  } = useDraftHistory(
+    () => ({
+      name: editTarget?.name ?? "",
+      description: editTarget?.description ?? "",
+      drafts: seedDrafts(styleType, editTarget, currentSelection)
+    }),
+    { active: viewMode === "create" }
+  );
+  const { name: createName, description: createDescription, drafts } = editorDraft;
+  const setCreateName = (next: string) => {
+    touchedRef.current = true;
+    setEditorDraft((cur) => ({ ...cur, name: next }), true);
+  };
+  const setCreateDescription = (next: string) => {
+    touchedRef.current = true;
+    setEditorDraft((cur) => ({ ...cur, description: next }), true);
+  };
   /**
    * The id this editing session writes under. Fixed at open so the live preview
    * and the save name the same row; a new style is minted once rather than per
@@ -295,9 +316,9 @@ export function StylePickerPopover({
    * setter is what makes the preview complete: a colour scrub, an alpha edit, a
    * font field and an added effect all arrive here.
    */
-  const setDrafts = (updater: (cur: StyleDraft) => StyleDraft) => {
+  const setDrafts = (updater: (cur: StyleDraft) => StyleDraft, discrete = true) => {
     touchedRef.current = true;
-    setDraftsRaw(updater);
+    setEditorDraft((cur) => ({ ...cur, drafts: updater(cur.drafts) }), discrete);
   };
 
   const previewElementIds = useMemo(
@@ -345,9 +366,11 @@ export function StylePickerPopover({
     preview.discard();
     draftIdRef.current = createId(STYLE_ID_PREFIX[styleType]);
     setEditingStyleId(null);
-    setCreateName("");
-    setCreateDescription("");
-    setDraftsRaw(seedDrafts(styleType, null, currentSelection));
+    resetEditorDraft({
+      name: "",
+      description: "",
+      drafts: seedDrafts(styleType, null, currentSelection)
+    });
     touchedRef.current = false;
     setViewMode("create");
   };
@@ -356,9 +379,11 @@ export function StylePickerPopover({
     preview.discard();
     draftIdRef.current = style.id;
     setEditingStyleId(style.id);
-    setCreateName(style.name);
-    setCreateDescription(style.description || "");
-    setDraftsRaw(seedDrafts(styleType, style, currentSelection));
+    resetEditorDraft({
+      name: style.name,
+      description: style.description || "",
+      drafts: seedDrafts(styleType, style, currentSelection)
+    });
     touchedRef.current = false;
     setViewMode("create");
   };
@@ -485,20 +510,16 @@ export function StylePickerPopover({
           description={createDescription}
           drafts={drafts}
           setDrafts={setDrafts}
+          onDragStart={startDraftGesture}
+          onDragEnd={endDraftGesture}
           editing={!!editingStyleId}
           nameInputRef={nameInputRef}
           activePaintPicker={activePaintPicker}
           setActivePaintPicker={setActivePaintPicker}
           effectMenuAnchor={effectMenuAnchor}
           setEffectMenuAnchor={setEffectMenuAnchor}
-          onNameChange={(next) => {
-            touchedRef.current = true;
-            setCreateName(next);
-          }}
-          onDescriptionChange={(next) => {
-            touchedRef.current = true;
-            setCreateDescription(next);
-          }}
+          onNameChange={setCreateName}
+          onDescriptionChange={setCreateDescription}
           onSubmit={handleCreateSubmit}
           showPreview={showPreview}
           onCommitSnapshot={commitDraftTokenEdit}
@@ -524,12 +545,14 @@ export function StylePickerPopover({
              button all had nothing to resolve against. */
           assets={doc?.assets ?? docRef?.current?.assets}
           onUploadImage={uploadImageIntoDraft}
-          onChange={(next) =>
+          onGestureStart={startDraftGesture}
+          onGestureEnd={endDraftGesture}
+          onChange={(next, discrete) =>
             setDrafts((cur) => {
               const updated = [...cur.paints];
               updated[activePaintPicker.index] = next;
               return { ...cur, paints: updated };
-            })
+            }, discrete)
           }
           onClose={() => setActivePaintPicker(null)}
         />

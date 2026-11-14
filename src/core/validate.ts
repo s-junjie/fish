@@ -59,7 +59,8 @@ function checkGridBox(el: DesignElement, out: CompileDiagnostic[]) {
     out.push({
       level: "warning",
       message: `Grid "${el.name || el.id}" has no width and does not hug width, so every cell is 1px; set an explicit width or sizing.width "fit-content"`,
-      elementId: el.id
+      elementId: el.id,
+      hint: `sizing.width: "fit-content"`
     });
   }
 
@@ -78,7 +79,8 @@ function checkGridBox(el: DesignElement, out: CompileDiagnostic[]) {
     out.push({
       level: "warning",
       message: `Grid "${el.name || el.id}" is too narrow for ${columns} columns with gap ${colGap} (padding ${pl}/${pr}); cells have no room and children will overlap`,
-      elementId: el.id
+      elementId: el.id,
+      hint: `widen the grid to at least ${Math.ceil(columns * 1 + (columns - 1) * colGap + pl + pr)}px, or lower the column count`
     });
   }
 
@@ -120,7 +122,8 @@ function checkAxisDowngrades(el: DesignElement, parent: ContainerElement | null,
     out.push({
       level: "warning",
       message: `Element "${el.name || el.id}" declares sizing.${axis} "fill", which ${AXIS_DOWNGRADE_MESSAGES[downgrade]}; give it an explicit size or a parent that can distribute space`,
-      elementId: el.id
+      elementId: el.id,
+      hint: `sizing.${axis}: "fixed" with a pixel size, or put it in a parent with display: "flex" | "grid"`
     });
   }
 }
@@ -150,7 +153,13 @@ function checkLineHeightUnit(el: DesignElement, out: CompileDiagnostic[]) {
   });
 }
 
-function checkElement(el: DesignElement, parent: ContainerElement | null, out: CompileDiagnostic[], inMaster: boolean) {
+function checkElement(
+  el: DesignElement,
+  parent: ContainerElement | null,
+  out: CompileDiagnostic[],
+  inMaster: boolean,
+  visual: boolean
+) {
   checkPaints(el.fills, el.id, out);
   checkPaints(strokePaintsOf(el), el.id, out);
 
@@ -192,7 +201,13 @@ function checkElement(el: DesignElement, parent: ContainerElement | null, out: C
   // size through the constraint/layout pass) and whose text it may override, so
   // the estimate grades a box nothing paints at those numbers — an instance that
   // does inherit the clipping shows it on canvas instead.
+  // `visual` is false on a page the caller excluded (`check --skip-page`): the
+  // box a master is authored in is not the box any instance paints, so grading
+  // it as deliverable content is a verdict on a page nobody ships. What stays is
+  // everything structural — paints, paths, grid cells, axis downgrades — because
+  // a broken master breaks every instance that points at it.
   if (
+    visual &&
     el.type === "text" &&
     !inMaster &&
     (el as TextElement).style?.maxLines === undefined &&
@@ -207,8 +222,9 @@ function checkElement(el: DesignElement, parent: ContainerElement | null, out: C
     if (lines * lineH > el.height + 1) {
       out.push({
         level: "warning",
-        message: `Estimated text height ${Math.round(lines * lineH)}px exceeds element height ${el.height}px (wraps or clips); give the text an explicit height, widen the box, or split the text`,
-        elementId: el.id
+        message: `Estimated text height ${Math.round(lines * lineH)}px exceeds element height ${el.height}px: the box is shorter than the block it holds, so the glyphs wrap or clip`,
+        elementId: el.id,
+        hint: `set sizing.height: "fit-content" to measure the content, or raise "height" to ${Math.round(lines * lineH)}px`
       });
     }
   }
@@ -499,72 +515,104 @@ function checkInvisibleText(el: DesignElement, backdrop: string[] | null, out: C
   });
 }
 
-function estimateTextSpan(el: TextElement): { width: number; height: number } {
+/** The line grid a text's content wraps to, from the same 0.6em estimator everywhere. */
+function estimateTextBlock(el: TextElement): { lines: number; maxLineLen: number; lineH: number; fontSize: number } {
   const fontSize = el.style?.fontSize || DEFAULT_FONT_SIZE;
   const lineH = resolveDynamicLineHeight(fontSize, el.style?.lineHeight);
-  const raw = (el.content ?? "").split("\n");
   const boxW = typeof el.width === "number" && el.width > 0 ? el.width : 0;
   let lines = 0;
   let maxLineLen = 0;
-  for (const line of raw) {
+  for (const line of (el.content ?? "").split("\n")) {
     if (line.length > maxLineLen) maxLineLen = line.length;
-    if (boxW > 0) {
-      const estWidth = line.length * fontSize * 0.6;
-      lines += Math.max(1, Math.ceil(estWidth / boxW));
-    } else {
-      lines += 1;
-    }
+    lines += boxW > 0 ? Math.max(1, Math.ceil((line.length * fontSize * 0.6) / boxW)) : 1;
   }
-  const width = boxW > 0 ? boxW : Math.max(1, maxLineLen * fontSize * 0.6);
-  const height = typeof el.height === "number" && el.height > 0 ? el.height : lines * lineH;
-  return { width, height };
+  return { lines, maxLineLen, lineH, fontSize };
 }
 
-function checkOverlappingTextChildren(parent: ContainerElement, out: CompileDiagnostic[]) {
+/**
+ * The area a text paints, not the box it was given.
+ *
+ * A 140px box holding two 67px lines is 73px of empty paper, and grading that
+ * slack as a collision reported paragraphs whose glyphs never met. The vertical
+ * extent is the line BLOCK, placed by `vertical-align`; the horizontal extent is
+ * the box when the text wraps (its lines fill it) and the estimated advance when
+ * it does not, shifted by the text's own alignment. A `fit-content` height IS the
+ * measured line block, so the stored box is used as-is.
+ */
+function inkRectOf(el: TextElement): { x: number; y: number; width: number; height: number } {
+  const x = typeof el.x === "number" ? el.x : 0;
+  const y = typeof el.y === "number" ? el.y : 0;
+  const boxW = typeof el.width === "number" && el.width > 0 ? el.width : 0;
+  const boxH = typeof el.height === "number" && el.height > 0 ? el.height : 0;
+  const { lines, maxLineLen, lineH, fontSize } = estimateTextBlock(el);
+
+  const measured = el.sizing?.height === "fit-content";
+  // The block the BOX can show: a fixed box shorter than its line block already
+  // reports that as a text-height finding, and letting the spill enlarge this
+  // rect would report one defect twice — as a collision it cannot prove.
+  const inkH = measured ? boxH : boxH > 0 ? Math.min(boxH, Math.max(1, lines * lineH)) : Math.max(1, lines * lineH);
+  const slack = Math.max(0, boxH - inkH);
+  const alignY = el.style?.verticalAlign;
+  const top = y + (alignY === "middle" ? slack / 2 : alignY === "bottom" ? slack : 0);
+
+  const advance = Math.max(1, maxLineLen * fontSize * 0.6);
+  const wraps = lines > 1 || (boxW > 0 && advance > boxW);
+  const inkW = wraps && boxW > 0 ? boxW : boxW > 0 ? Math.min(boxW, advance) : advance;
+  const alignX = el.style?.align;
+  const left = boxW > 0
+    ? x + (alignX === "center" ? (boxW - inkW) / 2 : alignX === "right" ? boxW - inkW : 0)
+    : x;
+
+  return { x: left, y: top, width: inkW, height: inkH };
+}
+
+function checkOverlappingTextChildren(
+  parent: ContainerElement,
+  out: CompileDiagnostic[],
+  inMaster: boolean,
+  overlapAllowed: boolean
+) {
   const isAutoLayout = layoutOf(parent)?.mode === "flex" || layoutOf(parent)?.mode === "grid";
   if (isAutoLayout) return;
+  // The author's one-word answer to the question geometry cannot answer — said
+  // once on the composition root, inherited by everything it holds. See
+  // `OverlapFields`.
+  if (overlapAllowed) return;
   const children = parent.children ?? [];
   const textChildren = children.filter((c): c is TextElement => c.type === "text" && c.visible !== false);
   if (textChildren.length < 2) return;
 
-  const boxes = textChildren.map((t) => {
-    const span = estimateTextSpan(t);
-    const x = typeof t.x === "number" ? t.x : 0;
-    const y = typeof t.y === "number" ? t.y : 0;
-    // A height the layout pass derives is the MEASURER's opinion of the text, not
-    // an edge anyone painted: on a real cover it read 137px where the browser
-    // painted 92, and the pair below was reported as 58% overlapping. Grading a
-    // derived axis grades the estimator, so a pair that involves one is not a
-    // collision claim this check can make.
-    // `height` has no `max-content` spelling (it is a width mode), so a derived
-    // height is exactly `fit-content`.
-    const derived = t.sizing?.height === "fit-content";
-    return { el: t, x, y, width: span.width, height: span.height, derived };
-  });
+  const boxes = textChildren.map((t) => ({ el: t, ...inkRectOf(t) }));
 
   for (let i = 0; i < boxes.length; i++) {
     for (let j = i + 1; j < boxes.length; j++) {
       const a = boxes[i];
       const b = boxes[j];
-      if (a.derived || b.derived) continue;
+      // A `fit-content` height is the MEASURER's opinion of the text, not an
+      // edge anyone painted: on a real cover it read 137px where the browser
+      // painted 92, and the pair was reported as 58% overlapping. Grading a
+      // derived axis grades the estimator, so a pair that involves one is not a
+      // collision claim this check can make.
+      if (a.el.sizing?.height === "fit-content" || b.el.sizing?.height === "fit-content") continue;
       const interX = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x));
       const interY = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
       const interArea = interX * interY;
       const minArea = Math.min(a.width * a.height, b.width * b.height);
       if (minArea <= 0 || interArea <= 0) continue;
-      // One box inside the other is LAYERING, not a collision: a wordmark set
+      // One block inside the other is LAYERING, not a collision: a wordmark set
       // over a display glyph is how that composition is built, and the
       // 0.6em-per-character estimate of a 400px glyph swallows every label
       // anywhere near it.
       if (interArea / minArea >= 0.98) continue;
-      // A quarter of the smaller box, not 8% of it. The box is estimated from a
-      // character count (`estimateTextSpan`), so a threshold below that
-      // estimator's own error was reporting the estimator, not the layout.
+      // A quarter of the smaller block, not 8% of it. The block is estimated from
+      // a character count (`estimateTextBlock`), so a threshold below that
+      // estimator's own error would report the estimator, not the layout.
       if (interArea / minArea <= 0.25) continue;
       out.push({
-        level: "warning",
-        message: `Text elements "${a.el.name || a.el.id}" and "${b.el.name || b.el.id}" visually overlap in plain frame "${parent.name || parent.id}" (~${Math.round((interArea / minArea) * 100)}% of the smaller box); wrap in an Auto-Layout stack (flex column) or use a single text node with newlines — or ignore this if the layering is deliberate`,
-        elementId: b.el.id
+        level: inMaster ? "info" : "warning",
+        message: `Text elements "${a.el.name || a.el.id}" and "${b.el.name || b.el.id}" visually overlap in plain frame "${parent.name || parent.id}" (~${Math.round((interArea / minArea) * 100)}% of the smaller text block); their glyphs land on top of each other unless the composition wants that`,
+        elementId: b.el.id,
+        hint: `if the layering is deliberate, set overlap: "allowed" on "${parent.name || parent.id}"; otherwise wrap them in a stack (display: "flex", "flex-direction": "column") or move one`
       });
     }
   }
@@ -582,10 +630,12 @@ function walkSiblings(
   out: CompileDiagnostic[],
   backdrop: string[] | null,
   boxes: Map<string, PlacedBox>,
-  inMaster = false
+  inMaster = false,
+  visual = true,
+  overlapAllowed = false
 ) {
   for (let i = 0; i < siblings.length; i++) {
-    walk(siblings[i], parent, out, backdropOver(siblings, i, siblings[i], backdrop, boxes), boxes, inMaster);
+    walk(siblings[i], parent, out, backdropOver(siblings, i, siblings[i], backdrop, boxes), boxes, inMaster, visual, overlapAllowed);
   }
 }
 
@@ -595,7 +645,9 @@ function walk(
   out: CompileDiagnostic[],
   backdrop: string[] | null = null,
   boxes: Map<string, PlacedBox> = new Map(),
-  inMaster = false
+  inMaster = false,
+  visual = true,
+  overlapAllowed = false
 ) {
   if (parent && parent.width > 0 && parent.height > 0 && el.width > 0 && el.height > 0) {
     const isAutoLayout = layoutOf(parent)?.mode === "flex" || layoutOf(parent)?.mode === "grid";
@@ -614,10 +666,11 @@ function walk(
       }
     }
   }
-  checkElement(el, parent, out, inMaster);
-  checkInvisibleText(el, backdrop, out);
+  const overlapAllowedHere = overlapAllowed || (el as unknown as { overlap?: string }).overlap === "allowed";
+  checkElement(el, parent, out, inMaster, visual);
+  if (visual) checkInvisibleText(el, backdrop, out);
   if (isContainer(el)) {
-    checkOverlappingTextChildren(el, out);
+    if (visual) checkOverlappingTextChildren(el, out, inMaster || el.type === "component" || el.type === "componentSet", overlapAllowedHere);
     const hasFills = (el.fills ?? []).some((f) => f && f.enabled !== false);
     const own = paintableColors(el.fills);
     const hasBackdropBlur = (el.effects ?? []).some(
@@ -629,7 +682,7 @@ function walk(
     // Each child asks what is under IT: an earlier sibling that covers it is a
     // better answer than the container's own fill, and a wrapper with no fill of
     // its own passes the answer down to the text inside it.
-    walkSiblings(el.children ?? [], el, out, nextBackdrop, boxes, inMaster || el.type === "component" || el.type === "componentSet");
+    walkSiblings(el.children ?? [], el, out, nextBackdrop, boxes, inMaster || el.type === "component" || el.type === "componentSet", visual, overlapAllowedHere);
   }
 }
 
@@ -687,8 +740,17 @@ function reachesItself(startId: string, components: Map<string, ComponentElement
  * Pre-compile document validation: catches authoring mistakes that render
  * silently (path data outside its local box, text wrapping past its box,
  * unknown paints, unsupported canvas backgrounds). Pure logic, no DOM.
+ *
+ * `skipVisualPages` names pages that are not deliverable content — a component
+ * library laid out on its own page. Their elements are still walked (a broken
+ * master is an error every instance inherits) but nothing that grades the page
+ * as a picture: contrast, text overlap, and the text-height estimate.
  */
-export function validateDocument(input: DesignDocument): CompileDiagnostic[] {
+export function validateDocument(
+  input: DesignDocument,
+  options: { skipVisualPages?: ReadonlySet<string> } = {}
+): CompileDiagnostic[] {
+  const skipVisual = options.skipVisualPages ?? new Set<string>();
   // `fish check` and the editor both hand this whatever they hold, and a
   // single-page document may carry its tree at the top level.
   const doc = adoptTopLevelElements(input);
@@ -825,7 +887,15 @@ export function validateDocument(input: DesignDocument): CompileDiagnostic[] {
         });
       }
       const children = page.children ?? [];
-      walkSiblings(children, null, out, canvasBackdropColor(page.canvas?.background) ?? null, layoutBoxes(children));
+      walkSiblings(
+        children,
+        null,
+        out,
+        canvasBackdropColor(page.canvas?.background) ?? null,
+        layoutBoxes(children),
+        false,
+        !skipVisual.has(page.id)
+      );
     }
   } else {
     const bg = doc.canvas?.background;

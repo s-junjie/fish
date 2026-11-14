@@ -32,7 +32,9 @@ interface StyleEditorViewProps {
   name: string;
   description: string;
   drafts: StyleDrafts;
-  setDrafts: (updater: (cur: StyleDrafts) => StyleDrafts) => void;
+  setDrafts: (updater: (cur: StyleDrafts) => StyleDrafts, discrete?: boolean) => void;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
   editing: boolean;
   nameInputRef: RefObject<HTMLInputElement>;
   activePaintPicker: { index: number; anchor: HTMLElement } | null;
@@ -61,6 +63,8 @@ export function StyleEditorView({
   description,
   drafts,
   setDrafts,
+  onDragStart,
+  onDragEnd,
   editing,
   nameInputRef,
   activePaintPicker,
@@ -149,7 +153,9 @@ export function StyleEditorView({
         <GuideRows
           guides={drafts.guides}
           doc={doc}
-          onChange={(guides) => setDrafts((cur) => ({ ...cur, guides }))}
+          onChange={(guides, discrete) => setDrafts((cur) => ({ ...cur, guides }), discrete)}
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
         />
       )}
 
@@ -173,7 +179,7 @@ export function StyleEditorView({
               return { ...cur, paints: next };
             })
           }
-          onAlpha={(idx, pct) =>
+          onAlpha={(idx, pct, discrete) =>
             setDrafts((cur) => {
               const p = cur.paints[idx];
               const next = [...cur.paints];
@@ -188,9 +194,9 @@ export function StyleEditorView({
                 next[idx] = { ...p, opacity: pct / 100 };
               }
               return { ...cur, paints: next };
-            })
+            }, discrete)
           }
-          onHex={(idx, hex, alphaPct) =>
+          onHex={(idx, hex, alphaPct, discrete) =>
             setDrafts((cur) => {
               const next = [...cur.paints];
               const p = next[idx];
@@ -202,8 +208,10 @@ export function StyleEditorView({
                 next[idx] = p;
               }
               return { ...cur, paints: next };
-            })
+            }, discrete)
           }
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
           onBindToken={(idx, token) => {
             if (docRef && !docRef.current.tokens?.some((t) => t.id === token.id)) {
               docRef.current = addTokenToDoc(docRef.current, token);
@@ -238,8 +246,10 @@ export function StyleEditorView({
           textStyle={drafts.textStyle}
           doc={doc}
           docRef={docRef}
-          onChange={(patch) =>
-            setDrafts((cur) => ({ ...cur, textStyle: { ...cur.textStyle, ...patch } }))
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+          onChange={(patch, discrete) =>
+            setDrafts((cur) => ({ ...cur, textStyle: { ...cur.textStyle, ...patch } }), discrete)
           }
           onCommitTokenEdit={(nextDoc) => {
             if (docRef) {
@@ -257,6 +267,8 @@ export function StyleEditorView({
           docRef={docRef}
           activePicker={activePaintPicker}
           onPick={setActivePaintPicker}
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
           onRemove={(idx) =>
             setDrafts((cur) => ({
               ...cur,
@@ -270,12 +282,12 @@ export function StyleEditorView({
               return { ...cur, strokes: next };
             })
           }
-          onUpdateStroke={(idx, patch) =>
+          onUpdateStroke={(idx, patch, discrete) =>
             setDrafts((cur) => {
               const next = [...cur.strokes];
               next[idx] = { ...next[idx], ...patch };
               return { ...cur, strokes: next };
-            })
+            }, discrete)
           }
         />
       )}
@@ -285,7 +297,9 @@ export function StyleEditorView({
           effects={drafts.effects}
           doc={doc}
           docRef={docRef}
-          onChange={(next) => setDrafts((cur) => ({ ...cur, effects: next }))}
+          onGestureStart={onDragStart}
+          onGestureEnd={onDragEnd}
+          onChange={(next, commit) => setDrafts((cur) => ({ ...cur, effects: next }), commit)}
           keepAtLeastOne
         />
       )}

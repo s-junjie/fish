@@ -554,3 +554,141 @@ describe("two text boxes that overlap", () => {
     expect(overlapWarnings([textEl("t1", 0, 0, 200, 40, "Heading Line 1", 32), textEl("t2", 0, 32, 200, 40, "Heading Line 2", 32)])).toHaveLength(0);
   });
 });
+
+describe("a page excluded from visual grading", () => {
+  const canvas = { width: 1000, height: 1000, unit: "px" as const, background: { type: "solid" as const, color: "#FFFFFF" } };
+  const whiteLabel: TextElement = {
+    ...textEl("white_label", 0, 100, 200, 40, "Label", 16),
+    style: { fontFamily: "Arial", fontSize: 16, color: "#FFFFFF" }
+  };
+  const library = {
+    id: "p2",
+    name: "Components",
+    canvas,
+    children: [
+      frame("lib", 0, 0, 400, 300, [
+        textEl("a", 0, 0, 200, 40, "Heading line one", 32),
+        textEl("b", 0, 10, 200, 40, "Heading line two", 32),
+        whiteLabel,
+        textEl("tall", 0, 200, 40, 30, "A line that has to wrap several times over", 24),
+        pathEl("bad_lib_path", 0, 0, 50, 50, "M 400 400 L 500 500")
+      ])
+    ]
+  };
+  const twoPages: DesignDocument = {
+    version: "0.1",
+    id: "two",
+    name: "two",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    canvas,
+    pages: [
+      { id: "p1", name: "Cover", canvas, children: [pathEl("bad_path", 0, 0, 50, 50, "M 400 400 L 500 500")] },
+      library
+    ],
+    activePageId: "p1"
+  };
+
+  it("keeps contrast, overlap and text-height out of the report", () => {
+    const graded = validateDocument(twoPages);
+    expect(graded.some((d) => /visually overlap/.test(d.message))).toBe(true);
+    expect(graded.some((d) => /contrast ratio/.test(d.message))).toBe(true);
+    expect(graded.some((d) => /exceeds element height/.test(d.message))).toBe(true);
+
+    const skipped = validateDocument(twoPages, { skipVisualPages: new Set(["p2"]) });
+    expect(skipped.some((d) => /visually overlap|contrast ratio|exceeds element height/.test(d.message))).toBe(false);
+  });
+
+  it("still reports a broken shape on that page — a master every instance inherits", () => {
+    const skipped = validateDocument(twoPages, { skipVisualPages: new Set(["p2"]) });
+    expect(skipped.filter((d) => /outside local box/i.test(d.message)).map((d) => d.elementId).sort()).toEqual([
+      "bad_lib_path",
+      "bad_path"
+    ]);
+  });
+});
+
+describe("text auto height", () => {
+  it("asks to be measured instead of becoming one line tall", () => {
+    const { document } = normalizeDesignDocument({
+      version: "0.1",
+      canvas: { width: 800, height: 600 },
+      elements: [
+        {
+          id: "wrapped",
+          type: "text",
+          x: 0,
+          y: 0,
+          width: 300,
+          content: "A sentence that has to wrap onto more than one line in its box",
+          style: { fontSize: 24 }
+        }
+      ]
+    });
+    const text = document.pages![0].children![0] as TextElement;
+    expect(text.sizing?.height).toBe("fit-content");
+    expect(validateDocument(document).some((d) => /exceeds element height/.test(d.message))).toBe(false);
+  });
+
+  it("leaves an authored height alone", () => {
+    const { document } = normalizeDesignDocument({
+      version: "0.1",
+      canvas: { width: 800, height: 600 },
+      elements: [{ id: "fixed", type: "text", x: 0, y: 0, width: 300, height: 40, content: "One line", style: { fontSize: 24 } }]
+    });
+    const text = document.pages![0].children![0] as TextElement;
+    expect(text.sizing?.height).toBeUndefined();
+    expect(text.height).toBe(40);
+  });
+});
+
+describe("overlap is graded on the text block", () => {
+  it("says nothing when a tall box holds a short block and the next text starts below it", () => {
+    // 140px box, two 24px lines (67px of ink); the caption begins at 200, so the
+    // glyphs never meet even though the authored boxes overlap by 40px.
+    const tall = textEl("tall", 0, 0, 400, 140, "Two lines of a standfirst that stop well short.", 24);
+    const caption = textEl("caption", 0, 200, 400, 60, "A caption below the block.", 16);
+    expect(validateDocument(doc([frame("art", 0, 0, 500, 400, [tall, caption])])).filter((d) => /visually overlap/.test(d.message))).toHaveLength(0);
+  });
+
+  it("is silenced by overlap: \"allowed\" on the container, and inherited by what it holds", () => {
+    const pair = [textEl("a", 0, 0, 200, 40, "Heading Line 1", 32), textEl("b", 0, 10, 200, 40, "Heading Line 2", 32)];
+    const plain = frame("art", 0, 0, 400, 300, pair);
+    expect(validateDocument(doc([plain])).some((d) => /visually overlap/.test(d.message))).toBe(true);
+
+    const allowed = { ...frame("art", 0, 0, 400, 300, pair), overlap: "allowed" as const };
+    expect(validateDocument(doc([allowed])).some((d) => /visually overlap/.test(d.message))).toBe(false);
+
+    // One statement on the composition root covers a nested frame too: the
+    // declaration is about the picture, not about one list of children.
+    const nested = {
+      ...frame("art", 0, 0, 400, 300, [frame("inner", 0, 0, 300, 200, pair)]),
+      overlap: "allowed" as const
+    };
+    expect(validateDocument(doc([nested])).some((d) => /visually overlap/.test(d.message))).toBe(false);
+  });
+
+  it("downgrades to info inside a master, where the painted backdrop is unknown", () => {
+    const master = {
+      id: "m",
+      type: "component" as const,
+      name: "m",
+      x: 0,
+      y: 0,
+      width: 400,
+      height: 300,
+      children: [
+        textEl("a", 0, 0, 200, 40, "Heading Line 1", 32),
+        textEl("b", 0, 10, 200, 40, "Heading Line 2", 32)
+      ]
+    };
+    const hit = validateDocument(doc([master])).find((d) => /visually overlap/.test(d.message));
+    expect(hit?.level).toBe("info");
+  });
+
+  it("carries an executable hint naming the key", () => {
+    const pair = [textEl("a", 0, 0, 200, 40, "Heading Line 1", 32), textEl("b", 0, 10, 200, 40, "Heading Line 2", 32)];
+    const hit = validateDocument(doc([frame("art", 0, 0, 400, 300, pair)])).find((d) => /visually overlap/.test(d.message));
+    expect(hit?.hint).toContain('overlap: "allowed"');
+  });
+});

@@ -13,6 +13,7 @@ import type { GeometryFinding } from "../geometry-report";
 import { fontDiagnostics } from "../font-diagnostics";
 import { countElements } from "../geometry/tree-ops";
 import type { DesignDocument } from "../dsl/types";
+import type { CompileDiagnostic } from "../compile";
 import { auditRuleDrift, inkGateLevel } from "../audit/text-ink";
 import type { InkFinding } from "../audit/text-ink";
 import { readDocument } from "./doc-source";
@@ -189,6 +190,8 @@ export function check(
     audit: boolean;
     auditTolerance?: number;
     page?: string;
+    /** Comma-separated page ids or names to exclude from visual grading. */
+    skipPage?: string;
     allPages?: boolean;
   }
 ): number {
@@ -228,13 +231,44 @@ export function check(
     targetPage = { id: found.id, name: found.name, canvas: found.canvas };
   }
 
+  // A page named here is not a deliverable: the component library a document
+  // keeps beside its artwork is laid out, but grading it as content measures
+  // master boxes against a backdrop no instance paints. Structural findings
+  // stay — a broken master breaks every instance — and so does the page itself
+  // in the file. A mistyped name is refused rather than silently skipping
+  // nothing, because "0 findings" and "the page you meant was never skipped"
+  // are indistinguishable in the summary an agent reads.
+  const skippedPages: Array<{ id: string; name: string }> = [];
+  for (const query of (opts.skipPage ?? "").split(",").map((s) => s.trim()).filter(Boolean)) {
+    const found = findPage(synced, query);
+    if (!found) {
+      const msg = `no page matching "${query}" to skip in ${src.file}`;
+      if (opts.json) console.log(JSON.stringify({ ok: false, file: src.file, error: msg }, null, 2));
+      else console.error(msg);
+      return 2;
+    }
+    if (targetPage && found.id === targetPage.id) {
+      const msg = `page "${found.name}" (${found.id}) is both the --page target and skipped by --skip-page; choose one`;
+      if (opts.json) console.log(JSON.stringify({ ok: false, file: src.file, error: msg }, null, 2));
+      else console.error(msg);
+      return 2;
+    }
+    if (!skippedPages.some((p) => p.id === found.id)) skippedPages.push({ id: found.id, name: found.name });
+  }
+  const skipIds = new Set(skippedPages.map((p) => p.id));
+
   const preparedAll = opts.allPages ? laidOutAllPages(synced, value) : null;
   const preparedSingle = preparedAll
     ? null
     : laidOutDocument(targetPage ? withActivePage(synced, targetPage.id) : synced, value);
   const document = (preparedAll ?? preparedSingle)!.document;
-  const layoutFindings = (preparedAll ?? preparedSingle)!.findings;
-  const diagnostics = validateDocument(document);
+  const laidOutPageId = targetPage?.id ?? getActivePage(document).id;
+  let layoutFindings = preparedAll
+    ? []
+    : skipIds.has(laidOutPageId)
+      ? []
+      : preparedSingle!.findings;
+  const diagnostics = validateDocument(document, { skipVisualPages: skipIds });
   const assetFindings = assetDiagnostics(document, opts.strictAssets);
   const fontFindings = fontDiagnostics(document, opts.strictAssets);
 
@@ -243,23 +277,27 @@ export function check(
   let ink: InkAudit | string | null;
   if (preparedAll) {
     const docPages = document.pages && document.pages.length > 0 ? document.pages : [getActivePage(document)];
-    pageRecords = docPages.map((page) => {
-      const pageDoc = withActivePage(document, page.id);
-      return {
-        id: page.id,
-        name: page.name,
-        canvas: page.canvas ?? document.canvas,
-        elements: countElements(pageDoc),
-        layout: preparedAll.findingsByPage.get(page.id) ?? [],
-        geometry: opts.geometry ? geometryReport(pageDoc) : [],
-        ink: opts.audit ? auditInk(src, opts.auditTolerance, page.id) : null
-      };
-    });
+    pageRecords = docPages
+      .filter((page) => !skipIds.has(page.id))
+      .map((page) => {
+        const pageDoc = withActivePage(document, page.id);
+        return {
+          id: page.id,
+          name: page.name,
+          canvas: page.canvas ?? document.canvas,
+          elements: countElements(pageDoc),
+          layout: preparedAll.findingsByPage.get(page.id) ?? [],
+          geometry: opts.geometry ? geometryReport(pageDoc) : [],
+          ink: opts.audit ? auditInk(src, opts.auditTolerance, page.id) : null
+        };
+      });
+    layoutFindings = pageRecords.flatMap((record) => record.layout);
     geometry = pageRecords.flatMap((record) => record.geometry);
     ink = opts.audit ? mergeInkAudits(pageRecords) : null;
   } else {
-    geometry = opts.geometry ? geometryReport(document) : [];
-    ink = opts.audit ? auditInk(src, opts.auditTolerance, targetPage?.id) : null;
+    const graded = !skipIds.has(laidOutPageId);
+    geometry = opts.geometry && graded ? geometryReport(document) : [];
+    ink = opts.audit && graded ? auditInk(src, opts.auditTolerance, targetPage?.id) : null;
   }
 
   // Graded here, not by the runtime that measured: which findings may fail a build
@@ -269,7 +307,7 @@ export function check(
     message: finding.message,
     elementId: finding.elementId
   }));
-  const all = [...diagnostics, ...layoutFindings, ...geometry, ...assetFindings, ...fontFindings, ...inkFindings];
+  const all: CompileDiagnostic[] = [...diagnostics, ...layoutFindings, ...geometry, ...assetFindings, ...fontFindings, ...inkFindings];
   const errors = all.filter((d) => d.level === "error");
   const warnings = all.filter((d) => d.level === "warning");
   const { ok, lossy, failReason } = checkVerdict(repairs, errors.length, warnings.length, opts.strict);
@@ -289,6 +327,7 @@ export function check(
           ...(targetPage ? { page: { id: targetPage.id, name: targetPage.name } } : {}),
           canvas,
           elements: elementCount,
+          ...(skippedPages.length > 0 ? { skippedPages } : {}),
           repairs,
           lossyRepairs: lossy,
           diagnostics,
@@ -318,15 +357,24 @@ export function check(
     return ok ? 0 : 1;
   }
 
+  const skippedNote =
+    skippedPages.length > 0 ? ` · skipping ${skippedPages.map((p) => `${p.id} "${p.name}"`).join(", ")}` : "";
   const headerScope = pageRecords
-    ? `${pageRecords.length} page(s) (${pageRecords.map((r) => r.id).join(", ")})`
-    : `${targetPage ? `page "${targetPage.name}" (${targetPage.id}) · ` : ""}canvas ${canvas?.width}×${canvas?.height}`;
+    ? `${pageRecords.length} page(s)${pageRecords.length > 0 ? ` (${pageRecords.map((r) => r.id).join(", ")})` : ""}${skippedNote}`
+    : `${targetPage ? `page "${targetPage.name}" (${targetPage.id}) · ` : ""}canvas ${canvas?.width}×${canvas?.height}${skippedNote}`;
   console.log(`${src.file}\n  v${document.version} · ${headerScope} · ${elementCount} elements`);
+  if (skippedPages.length > 0) {
+    console.log(
+      `  skipped: ${skippedPages.map((p) => `${p.id} "${p.name}"`).join(", ")} — structural checks only (--skip-page)`
+    );
+  }
   console.log(`  repairs: ${repairs.length}${lossy !== repairs.length ? ` (${lossy} lossy)` : ""}`);
   for (const r of repairs) console.log(`    [${r.kind}]${r.severity === "info" ? " (info)" : ""} ${r.path} — ${r.message}`);
   console.log(`  findings: ${errors.length} error(s), ${warnings.length} warning(s)`);
   for (const d of all) {
-    console.log(`    [${d.level}]${d.elementId ? ` ${d.elementId}:` : ""} ${d.message}`);
+    console.log(
+      `    [${d.level}]${d.elementId ? ` ${d.elementId}:` : ""} ${d.message}${d.hint ? ` — fix: ${d.hint}` : ""}`
+    );
   }
   if (opts.geometry) {
     const scope = pageRecords ? ` across ${pageRecords.length} page(s)` : "";

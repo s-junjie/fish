@@ -1,4 +1,5 @@
 import {
+  CanvasSpec,
   ColorToken,
   ComponentOverride,
   CornerRadius,
@@ -19,6 +20,7 @@ import {
 import { colorTokenValue, numberTokenValue, StyleTables, styleMap, tokenMap } from "./style-tables";
 import {
   collectDependentTokenIds,
+  toTokenMap,
   TokenLookup,
   tryColorTokenValue,
   tryNumberTokenValue
@@ -673,4 +675,29 @@ export function syncDualStorage(
   }
 
   return changed ? next : element;
+}
+
+/** Materialises a canvas background paint's `tokenId` against `tokens` in `activeTheme`. */
+export function syncCanvasBackground(
+  canvas: CanvasSpec,
+  tokens: TokenLookup,
+  activeTheme?: string
+): CanvasSpec;
+export function syncCanvasBackground(
+  canvas: CanvasSpec | undefined,
+  tokens: TokenLookup,
+  activeTheme?: string
+): CanvasSpec | undefined;
+export function syncCanvasBackground(
+  canvas: CanvasSpec | undefined,
+  tokens: TokenLookup,
+  activeTheme?: string
+): CanvasSpec | undefined {
+  if (!canvas?.background) return canvas;
+  const byId = toTokenMap(tokens);
+  const nextBg = materializePaintTokens(canvas.background, (id) => {
+    const tok = byId.get(id);
+    return tok?.type === "color" ? tryColorTokenValue(tok, activeTheme, byId) : undefined;
+  });
+  return nextBg !== canvas.background ? { ...canvas, background: nextBg } : canvas;
 }

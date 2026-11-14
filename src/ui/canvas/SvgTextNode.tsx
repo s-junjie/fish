@@ -147,25 +147,43 @@ export function SvgTextNode({
   }
   const maxLines = el.style?.maxLines;
   const clampEllipsis = el.style?.textOverflow === "ellipsis";
+  const st = el.style;
+  const lineHeightPx = resolveDynamicLineHeight(maxFontSize, st?.lineHeight);
   let textClamp: any = undefined;
   if (maxLines && maxLines > 0) {
-    const textOverflow = clampEllipsis ? "ellipsis" : "clip";
-    textClamp =
-      maxLines === 1
-        ? { whiteSpace: "nowrap", overflow: "hidden", textOverflow }
-        : { display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: maxLines, overflow: "hidden", textOverflow };
+    if (maxLines === 1) {
+      textClamp = {
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: clampEllipsis ? "ellipsis" : "clip"
+      };
+    } else if (clampEllipsis) {
+      textClamp = {
+        display: "-webkit-box",
+        WebkitBoxOrient: "vertical",
+        WebkitLineClamp: maxLines,
+        overflow: "hidden",
+        textOverflow: "ellipsis"
+      };
+    } else {
+      // `-webkit-line-clamp` always paints an ellipsis in Chromium/WebKit and
+      // ignores `text-overflow: clip`, so multi-line clip caps height instead.
+      textClamp = {
+        maxHeight: `${maxLines * lineHeightPx}px`,
+        overflow: "hidden"
+      };
+    }
   }
 
   const decoration =
     el.spans && el.spans.length > 0 ? undefined : textDecorationCss(el.style?.textDecoration);
 
-  const st = el.style;
   const letterSpacing = resolveLetterSpacing(fontSize, st?.letterSpacing);
   const typography: any = {
     fontFamily: resolveStack(st?.fontFamily),
     fontSize: `${fontSize}px`,
     fontWeight: st?.fontWeight || 400,
-    lineHeight: `${resolveDynamicLineHeight(maxFontSize, st?.lineHeight)}px`,
+    lineHeight: `${lineHeightPx}px`,
     letterSpacing: st?.letterSpacing !== undefined ? `${letterSpacing}px` : "normal",
     textAlign: st?.align || "left",
     whiteSpace: "pre-line",

@@ -1,6 +1,7 @@
 import {
   CREATE_COMPONENT,
   DETACH_INSTANCE,
+  DRAFT_UNDO_REDO,
   FLATTEN,
   GROUP,
   OUTLINE_TEXT,
@@ -65,6 +66,7 @@ export const GLOBAL_RULES: readonly KeyRule[] = [
   CROP_EXIT,
   ESCAPE,
   ENTER,
+  DRAFT_UNDO_REDO,
   RENAME,
   GROUP,
   TOGGLE_LOCK,

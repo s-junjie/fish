@@ -35,11 +35,15 @@ function guideLabel(guide: LayoutGuide): string {
 export function GuideRows({
   guides,
   doc,
-  onChange
+  onChange,
+  onDragStart = noop,
+  onDragEnd = noop
 }: {
   guides: LayoutGuide[];
   doc?: DesignDocument;
-  onChange: (guides: LayoutGuide[]) => void;
+  onChange: (guides: LayoutGuide[], discrete?: boolean) => void;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
 }) {
   const [open, setOpen] = useState<{ index: number; anchor: HTMLElement } | null>(null);
   const openIndex = open && open.index < guides.length ? open.index : null;
@@ -92,9 +96,11 @@ export function GuideRows({
           guide={guides[openIndex]}
           box={GUIDE_BOX}
           doc={doc}
-          onChange={(next) => onChange(guides.map((g, i) => (i === openIndex ? next : g)))}
-          onDragStart={noop}
-          onDragEnd={noop}
+          onChange={(next, discrete) =>
+            onChange(guides.map((g, i) => (i === openIndex ? next : g)), discrete)
+          }
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
           onClose={() => setOpen(null)}
         />
       )}

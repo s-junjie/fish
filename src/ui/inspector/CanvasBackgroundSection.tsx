@@ -1,6 +1,8 @@
 import { DesignDocument, CanvasSpec } from "../../core/dsl/types";
 import { getActivePage, updateActivePage } from "../../core/dsl/document-ops";
 import { DEFAULT_CANVAS_BACKGROUND } from "../../core/dsl/defaults";
+import { addTokenToDoc } from "../../core/interactions/style-ops";
+import { colorTokenColor } from "../../core/interactions/token-ops";
 import { ColorField } from "../ColorField";
 import { t } from "../../i18n";
 import { Section } from "./SectionHeader";
@@ -35,6 +37,29 @@ export function CanvasBackgroundSection({
       <ColorField
         panelTitle={t("properties.background")}
         value={activeBg?.type === "solid" ? activeBg.color : DEFAULT_CANVAS_BACKGROUND}
+        tokenId={activeBg?.type === "solid" ? activeBg.tokenId : undefined}
+        doc={doc}
+        onBindToken={(token) => {
+          if (!docRef.current.tokens?.some((entry) => entry.id === token.id)) {
+            docRef.current = addTokenToDoc(docRef.current, token);
+          }
+          const color = colorTokenColor(token, docRef.current.activeTheme, docRef.current.tokens);
+          const newBg: CanvasSpec["background"] = { type: "solid", color, tokenId: token.id };
+          const next = updateActivePage(docRef.current, (p) => ({
+            canvas: { ...p.canvas, background: newBg }
+          }));
+          setDoc(() => next);
+        }}
+        onDetachToken={() => {
+          const curPage = getActivePage(docRef.current);
+          const curBg = curPage.canvas?.background || docRef.current.canvas.background;
+          if (!curBg || curBg.type !== "solid" || !curBg.tokenId) return;
+          const { tokenId: _tokenId, ...rest } = curBg;
+          const next = updateActivePage(docRef.current, (p) => ({
+            canvas: { ...p.canvas, background: rest }
+          }));
+          setDoc(() => next);
+        }}
         onGestureStart={onDragStart}
         onGestureEnd={onDragEnd}
         onChange={(col) => {

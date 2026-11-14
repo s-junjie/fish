@@ -34,12 +34,7 @@ export const normalizeText: ElementBranch = ({ el, base, path, repairs, sizing }
   // pill still read as bound, which made the element look unbound-but-white.
   const fills = normalizeFillStack(el, path, repairs);
   const topFill = topPaint(fills);
-  // `fills` is a DECISION even when it is empty: `[]`, `fill: false` and
-  // `fillEnabled: false` all say "paint nothing" and have to survive the
-  // round trip. Only the missing key has no opinion — and reading the
-  // resulting stack with `!topFill` treated those two answers as one, so a
-  // text the author had deliberately emptied came back as black glyphs
-  // (LESSONS_LEARNED §206).
+
   if (fills !== undefined) base.fills = fills;
   // The two colour stores must never disagree: a solid top fill is what the
   // eye sees, so it is the value `style.color` reports. With no stack
@@ -53,9 +48,6 @@ export const normalizeText: ElementBranch = ({ el, base, path, repairs, sizing }
   } else if (fills === undefined && style.color) {
     base.fills = [{ type: "solid", color: style.color }];
   }
-  // `text-shadow` is an input alias for a drop shadow (see `takeTextShadow`).
-  // The effects pass has already run by the time this branch is reached, so the
-  // converted shadows are appended to the stack it built.
   const shadow = takeTextShadow(style);
   style = shadow.style;
   if (shadow.effects.length > 0) {
@@ -91,7 +83,21 @@ export const normalizeText: ElementBranch = ({ el, base, path, repairs, sizing }
     }
   }
   if ((base.height as number) <= 0) {
+    // A text with no authored height is MEASURED, not one line tall. The seed
+    // keeps a pre-layout read and an SVG export non-zero; the mode lets the
+    // layout pass replace it with the block the content actually occupies.
+    // Without it the box was the first line while the glyphs painted past it —
+    // the render looked right and every box-derived answer (selection, backdrop,
+    // overlap, a later move into a stack) was wrong. A run on a path is sized by
+    // the path, and an empty text has nothing to measure.
     base.height = estLineHeight;
+    const onAPath =
+      isPlainObject(el.onPath) &&
+      typeof (el.onPath as { pathId?: unknown }).pathId === "string" &&
+      (el.onPath as { pathId: string }).pathId.trim() !== "";
+    if (!sizing.height && !onAPath && rawContent.length > 0) {
+      sizing.height = "fit-content";
+    }
   }
 
   // The glyph outline, kept as authored geometry: a mask can only carry a

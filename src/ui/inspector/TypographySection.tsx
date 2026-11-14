@@ -2,10 +2,10 @@ import { useState } from "preact/hooks";
 import { TextElement, DesignElement, DesignDocument, TextStyleDefinition, TextStyle, TextDecorationLine } from "../../core/dsl/types";
 import { ScrubInput } from "../ScrubInput";
 import { SegmentedControl } from "../SegmentedControl";
-import { NumeralsMark } from "./NumeralsMark";
-import { TypographyFields, DecorationRow, CaseRow } from "./typography-fields";
+import { TypographyFields } from "./typography-fields";
+import { TypographyMorePopover } from "./TypographyMorePopover";
 import { t } from "../../i18n";
-import { AlignLeft, AlignCenter, AlignRight, AlignVerticalJustifyStart, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, Minus, ArrowDownFromLine, Unlink } from "lucide-react";
+import { AlignLeft, AlignCenter, AlignRight, AlignVerticalJustifyStart, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, MoreHorizontal, Unlink } from "lucide-react";
 import { Button } from "../Button";
 import { StylePill } from "./StylePill";
 import { DEFAULT_FONT_FAMILY } from "../../core/font-stack";
@@ -25,7 +25,7 @@ import { Section } from "./SectionHeader";
 import { TEXT_FIELD_CLASS } from "../ScrubInput";
 import { SUB_LABEL_CLASS } from "../label-tier";
 import { MIXED_LABEL, resolveAcross } from "./mixed";
-import { ROW_SPREAD_CLASS, ROW_SPREAD_GAP_CLASS } from "../row-style";
+import { ROW_SPREAD_CLASS } from "../row-style";
 
 interface TypographySectionProps {
   textElement: TextElement;
@@ -55,6 +55,7 @@ export function TypographySection({
     prop: "fontSize" | "lineHeight" | "letterSpacing";
     anchor: HTMLElement;
   } | null>(null);
+  const [moreAnchor, setMoreAnchor] = useState<HTMLElement | null>(null);
 
   const boundStyle = (docRef.current.styles || []).find(
     (s) => s.id === textElement?.textStyleId && s.styleType === "text"
@@ -374,123 +375,54 @@ export function TypographySection({
         />
       </div>
 
-      {/* Decoration (italic / underline / strikethrough) & Numerals (tabular) */}
-      <div className="space-y-2">
-        {/* One row, three INDEPENDENT toggles.
-            They used to be two rows and two different kinds of control: `Aa`/`AI`
-            for italic (a toggle, and it had to be, since italic composes with
-            everything) and `none`/`U`/`S` for decoration (a picker, and it had to
-            be, since `textDecoration` was a single-value enum). Two rows said
-            "these are two different things" about two things that are not, and the
-            picker said "you may have one" about two lines CSS lets you have
-            together. Both halves of that are now the same arity, and the merge is
-            what forced the DSL to catch up: see `TextDecorationLine`. */}
-        {!styleOwnsType && (
-          <DecorationRow
-            values={armedStyleValues}
-            onToggle={(value, next) =>
-              value === "italic"
-                ? toggleFontStyle(next)
-                : toggleDecoration(value as TextDecorationLine, next)
-            }
-          />
-        )}
+      {/* Secondary type controls (decoration, case, numerals, truncation) */}
+      <Button
+        variant="bar"
+        data-typography-more="true"
+        title={t("typography.more")}
+        aria-label={t("typography.more")}
+        aria-expanded={Boolean(moreAnchor)}
+        onClick={(e) => setMoreAnchor((prev) => (prev ? null : e.currentTarget))}
+      >
+        <MoreHorizontal size={12} />
+      </Button>
 
-        {/* Case (Text Transform) — the style owns it (the style editor has the row),
-            and it sits with the other text decorations rather than after the
-            layer-only rows below. */}
-        {!styleOwnsType && (
-          <CaseRow
-            value={textElement.style?.textTransform}
-            onChange={(next) => setStyle({ textTransform: next })}
-          />
-        )}
-
-        {/* Figures are the layer's: a text style has no control for them. */}
-        <div className={ROW_SPREAD_GAP_CLASS}>
-          <span className={`${SUB_LABEL_CLASS} shrink-0`}>{t("typography.figures")}</span>
-          <SegmentedControl<string>
-            className="flex-1"
-            value={mixedFigures ? "" : textStyle.fontVariantNumeric === "tabular-nums" ? "tabular-nums" : "normal"}
-            onChange={(v) => {
-              onMutate((el) => {
-                const style = { ...((el as TextElement).style || {}) };
-                if (v === "tabular-nums") style.fontVariantNumeric = "tabular-nums";
-                else delete style.fontVariantNumeric;
-                return { ...el, style };
-              }, true);
-            }}
-            items={[
-              {
-                value: "normal",
-                icon: <NumeralsMark tabular={false} />,
-                title: t("typography.figuresProportional"),
-                grow: true,
-                attrs: { "data-typography-figures": "normal" }
-              },
-              {
-                value: "tabular-nums",
-                icon: <NumeralsMark tabular />,
-                title: t("typography.figuresTabular"),
-                grow: true,
-                attrs: { "data-typography-figures": "tabular-nums" }
-              }
-            ]}
-          />
-        </div>
-
-        {/* A line count and what the cut line shows are one control: the overflow
-            rule is read only when there is something to cut, so offering it alone
-            would be offering a setting that changes nothing. Also the layer's. */}
-        <div className={ROW_SPREAD_GAP_CLASS}>
-          <span className={`${SUB_LABEL_CLASS} shrink-0`}>{t("typography.truncate")}</span>
-          <SegmentedControl<string>
-            className="flex-1"
-            value={truncateMode}
-            onChange={(v) =>
-              setStyle(
-                v === "off"
-                  ? { maxLines: undefined, textOverflow: undefined }
-                  : { maxLines: textStyle.maxLines ?? 2, textOverflow: v as any }
-              )
-            }
-            items={[
-              {
-                value: "off",
-                icon: <Minus size={11} />,
-                title: t("typography.truncateOff"),
-                grow: true,
-                attrs: { "data-typography-truncate": "off" }
-              },
-              {
-                value: "clip",
-                icon: <ArrowDownFromLine size={11} />,
-                title: t("typography.truncateClip"),
-                grow: true,
-                attrs: { "data-typography-truncate": "clip" }
-              },
-              {
-                value: "ellipsis",
-                label: "…",
-                title: t("typography.truncateEllipsis"),
-                grow: true,
-                attrs: { "data-typography-truncate": "ellipsis" }
-              }
-            ]}
-          />
-        </div>
-
-        {textStyle.maxLines !== undefined && (
-          <ScrubInput
-            label={t("typography.truncateLines")}
-            value={textStyle.maxLines ?? 1}
-            min={1}
-            onDragStart={onDragStart}
-            onDragEnd={onDragEnd}
-            onChange={(l) => setStyle({ maxLines: Math.max(1, Math.round(l)) }, false)}
-          />
-        )}
-      </div>
+      {moreAnchor && (
+        <TypographyMorePopover
+          anchor={moreAnchor}
+          onClose={() => setMoreAnchor(null)}
+          styleOwnsType={styleOwnsType}
+          armedStyleValues={armedStyleValues}
+          onToggleDecoration={(value, next) =>
+            value === "italic"
+              ? toggleFontStyle(next)
+              : toggleDecoration(value as TextDecorationLine, next)
+          }
+          textTransform={textElement.style?.textTransform}
+          onChangeTextTransform={(next) => setStyle({ textTransform: next })}
+          figuresValue={mixedFigures ? "" : textStyle.fontVariantNumeric === "tabular-nums" ? "tabular-nums" : "normal"}
+          onChangeFigures={(v) => {
+            onMutate((el) => {
+              const style = { ...((el as TextElement).style || {}) };
+              if (v === "tabular-nums") style.fontVariantNumeric = "tabular-nums";
+              else delete style.fontVariantNumeric;
+              return { ...el, style };
+            }, true);
+          }}
+          truncateMode={truncateMode}
+          maxLines={textStyle.maxLines}
+          onChangeTruncate={(v) =>
+            setStyle(
+              v === "off"
+                ? { maxLines: undefined, textOverflow: undefined }
+                : { maxLines: textStyle.maxLines ?? 2, textOverflow: v as any }
+            )
+          }
+          onChangeMaxLines={(l) => setStyle({ maxLines: l }, false)}
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+        />
+      )}
 
       {/* Text on Path */}
       {textElement.onPath && (

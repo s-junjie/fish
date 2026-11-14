@@ -18,6 +18,7 @@ import {
   cascadeTokensIntoStyles,
   resolveColorTokenHex,
   resolveNumberTokenVal,
+  syncCanvasBackground,
   syncDualStorage
 } from "./style-sync";
 import { styleTables, StyleTables } from "./style-tables";
@@ -261,8 +262,16 @@ function cascadeDocumentForMode(doc: DesignDocument): DesignDocument {
 
   return {
     ...doc,
+    canvas: syncCanvasBackground(doc.canvas, tokens, activeTheme),
     styles,
-    pages: (doc.pages || []).map((page) => ({ ...page, children: relayoutDocumentTree(syncTree(page.children || [])) }))
+    pages: (doc.pages || []).map((page) => {
+      const nextCanvas = syncCanvasBackground(page.canvas, tokens, activeTheme);
+      return {
+        ...page,
+        ...(nextCanvas !== undefined ? { canvas: nextCanvas } : {}),
+        children: relayoutDocumentTree(syncTree(page.children || []))
+      };
+    })
   };
 }
 
@@ -428,6 +437,7 @@ function switchAxisMode(doc: DesignDocument, axis: ModeAxis, target: string): De
   const tables = styleTables({ tokens: nextTokens, styles: nextStyles });
 
   const nextPages = (doc.pages || []).map((page) => {
+    const nextCanvas = syncCanvasBackground(page.canvas, nextTokens, activeTheme);
     const children = page.children || [];
     let elementsChanged = false;
     const updatedChildren = children.map((el) => {
@@ -437,11 +447,17 @@ function switchAxisMode(doc: DesignDocument, axis: ModeAxis, target: string): De
     });
     return {
       ...page,
+      ...(nextCanvas !== undefined ? { canvas: nextCanvas } : {}),
       children: elementsChanged ? relayoutDocumentTree(updatedChildren) : updatedChildren
     };
   });
 
-  const next: DesignDocument = { ...doc, styles: nextStyles, pages: nextPages };
+  const next: DesignDocument = {
+    ...doc,
+    canvas: syncCanvasBackground(doc.canvas, nextTokens, activeTheme),
+    styles: nextStyles,
+    pages: nextPages
+  };
   if (axis === "color") next.activeTheme = target;
   else next.activeNumberMode = target;
   return next;

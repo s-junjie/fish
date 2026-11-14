@@ -1,19 +1,19 @@
 # FISH Workflow
 
-The DSL itself is in `dsl.md`. This file is how to move: pick a mode, get a document open, edit it, source what it needs, and verify the result.
+The DSL itself is in `dsl.md`. This file is how to move: adopt the right posture, get a document open, edit it, source what it needs, and verify the result.
 
 **If `./tools/fish` exits without running, read the reason before anything else.** A refusal that names two versions, or a document dialect this kit does not speak, means the kit and the file are from different releases: re-install (`SKILL.md` § "Get the kit"). Never retry past it, and never translate the document by hand.
 
 ---
 
-## 0. Pick a working mode
+## 0. Working posture: draft first, polish on demand
 
-| Mode | Trigger | Posture |
-| :-- | :-- | :-- |
-| **Fast** (default) | `/fast`, quick wireframes, conversational tweaks | Zero upfront questions. Draft the skeleton first, verify structure only, state assumptions, refine on feedback. |
-| **Craft** | `/craft`, flagship deliverables, presentation-grade work | Confirm a blueprint before writing final JSON, then run the full pass pipeline and full verification. |
+Every task uses the same document and CLI, scaling depth to what the moment needs:
 
-Both working modes use the same document and the same CLI. Fast stops at the structure check so a draft reaches the user sooner; Craft adds the blueprint gate and the browser-backed verification pass.
+- **Default (draft-first)**: Skip upfront questions. Draft the skeleton with a minimal token table, labelled image placeholders, and reusable components; run only the structure check (`./tools/fish check <doc>`); state assumptions and refine on feedback.
+- **High-stakes / production-ready**: When the user asks for flagship work, a final picture, or to polish a draft, gate on a short blueprint first (if starting fresh) and finish with the full polish pass and browser-backed verification (`--strict --geometry --audit` + `shot.sh`).
+
+Do not make the user learn internal mode names; map their intent directly onto these steps (§6).
 
 ---
 
@@ -39,7 +39,7 @@ The one answer no document can give you is what the user already has: a moodboar
 Project categories guide the DSL choices:
 
 - `ui`: app screens, dashboards, landing pages → frames, auto-layout, 8px rhythm, components.
-- `graphic`: social cards, posters, covers → free placement, declare `fonts[].src` for export.
+- `graphic`: social cards, posters, covers → free placement IS the layout (auto-layout only where content repeats), declare `fonts[].src` for export, and say `overlap: "allowed"` on a frame whose type is composed to cross something.
 - `brand`: logos and marks → pure vector paths.
 - `dataviz`: charts, gauges, rings → sibling `ellipse` arcs.
 - `icon`: 24×24 paths.
@@ -118,6 +118,20 @@ Choose by scope: surgical tweaks → `patch`; section redesign → `replace`; gr
 - The master holds structure and defaults; an instance places it with its own position and transforms (`rotate`, `scale`), carrying sparse `overrides[]` only for what differs inside the master (content, image, fill).
 - Use `make-component` to promote and `instantiate` to place. Do not copy the master's JSON into a second frame.
 
+### Where masters live
+
+A master is a canvas element: it paints where it sits, on whichever page holds it. So give every master **one dedicated page** — put it last and name it `Components` — and place instances from there. A master hidden behind the artwork it is used in is a master nobody can find, and a master spread across pages has no single place to update.
+
+That page is a page like any other, and it is honest about that: it appears in the page list, in the deck's page menu, and in any per-page export. What it should not do is fail a gate over boxes no instance paints. Exclude it from **grading** by name or id:
+
+```bash
+./tools/fish check design.fish.html --all-pages --geometry --skip-page Components
+```
+
+- The flag drops that page from every measurement — contrast, overlap, text-height, geometry, ink, ignored coordinates — and keeps the structural findings: a broken master breaks every instance that points at it.
+- It takes a comma-separated list (`--skip-page page_kit,page_scratch`) and refuses a name that matches nothing, because "0 findings" and "the page you meant was never skipped" read the same in a summary.
+- It excludes the page from `check` only. Packaging is separate: a deliverable that exports every page still exports this one, so export content pages by id (`fish export <doc> --page <id>`) when the kit page must not ship.
+
 ### Theme modes are token configuration
 
 - If the design needs light/dark or another theme, declare `modes[]` and `activeTheme`, then put per-mode values on colour tokens: `"modes": { "dark": "#0A0A0A" }`.
@@ -128,7 +142,8 @@ Choose by scope: surgical tweaks → `patch`; section redesign → `replace`; gr
 
 ### Sizing invariants
 
-- Text height is measured. Inside a layout parent, an omitted width is `fit-content` and wraps to the content box; outside one it falls back to character estimation.
+- Text height is measured. An omitted `height` means `sizing.height: "fit-content"`, inside a layout parent and on a free canvas alike; only an authored pixel `height` pins the box, and a pinned box shorter than its block is a finding.
+- Inside a layout parent an omitted `width` is `fit-content` and wraps to the content box; on a free canvas an omitted width falls back to a character estimate, so give a wrapping run a width.
 - Single-line labels, buttons, chips and nav items: `"sizing": "max-content"` (or `"max-content hug"`).
 - Body copy: `"sizing": "fill hug"`.
 - `line-height` numbers are unitless multipliers. `27` on 23px text means `23 × 27`; write `"27px"` for absolute pixels.
@@ -147,7 +162,7 @@ Never approximate a photo, portrait or logo with hand-coded paths. But the first
 - **Yes** → `./tools/fish assets import` each file and place it. Their material sets the direction; do not search for a lookalike beside it.
 - **No, or “you pick”** → search the sources below, then say what you picked and why.
 
-Never substitute stock imagery for material the user might already have without saying so, and do not spend a search round before that answer. Fast mode (§6) does not block on it: draft with a labelled placeholder and ask in the handover block instead.
+Never substitute stock imagery for material the user might already have without saying so, and do not spend a search round before that answer. In draft-first runs (§6.2), do not block on it: draft with a labelled placeholder and ask in the handover block instead.
 
 The full source table, credentials, licences and link-vs-embed rules are in `assets.md`. The short version:
 
@@ -174,12 +189,12 @@ The full source table, credentials, licences and link-vs-embed rules are in `ass
 | Visual | `./tools/shot.sh <doc> out.png [--page <id>] [--element <id>]` | Headless render plus `out.report.json` diagnostics. |
 | Glyphs | `./tools/fish check <doc> --audit` | Alignment, ink centring, empty boxes in a real browser. |
 
-Use `--strict` to fail on warnings, `--strict-assets` before delivery, and `--all-pages` or `--page <id>` on multi-page documents so non-active pages are laid out, measured, and audited too. When the document is open, `__fish.check()` gives the same verdict without re-reading the file.
+Use `--strict` to fail on warnings, `--strict-assets` before delivery, and `--all-pages` or `--page <id>` on multi-page documents so non-active pages are laid out, measured, and audited too. A components page is graded structurally only when `--skip-page <id|name>` names it (§3 "Where masters live"); the flag excludes it from every measurement while still reporting schema, reference and shape errors. A warning whose remedy is mechanical ends with `— fix: <the DSL key and value>` — apply it, or answer it with the key it names. When the document is open, `__fish.check()` gives the same verdict without re-reading the file.
 
 **Two renderers, one protocol.** `shot.sh` and `fish export` both drive `chrome --headless`, and neither computes the window size or the crop origin — the page reports them, both callers only pass them through. Choose by what the machine has and what you need back:
 
 - **`shot.sh`** needs bash, coreutils and a browser, and nothing else — it is the path that still works where Node is not installed. It writes `out.report.json` beside the PNG: the normalize repairs, the validate diagnostics, the coordinates auto-layout ignored (when the file states any), and the box the element actually occupies. On Windows the same tool is `powershell -File ./tools/shot.ps1`; when neither `-Element` nor `-Page` is passed it skips the report pass and writes a canvas-size stub instead, so pass `-Element` or `-Page` when you need `out.report.json`.
-- **`fish export`** is already in the CLI, exports the document (or `--page <id>`) as PNG alone (`[--scale N] [--element ID]`), and answers with an exit code instead of a report. Use `shot.sh` / `shot.ps1` when you need `out.report.json` beside the PNG (or where Node is not installed).
+- **`fish export`** is already in the CLI, exports the document (or `--page <id>`) as PNG alone (`[--scale N] [--element ID]`), and answers with an exit code instead of a report. `--pages page_cover,page_feature --out-dir shots/` writes one file per page, named `<doc>--<pageId>[@Nx].png` — ids not names, because a page name changes and can collide; `--exclude page_kit` leaves the components page out. Use `shot.sh` / `shot.ps1` when you need `out.report.json` beside the PNG (or where Node is not installed).
 
 Prefer `shot.sh` when you want the diagnostics; prefer `export` when you only want the picture.
 
@@ -193,70 +208,48 @@ Nothing installs it and nothing needs to: it is a per-run override, not a settin
 
 ---
 
-## 6. Fast mode
+## 6. Draft, blueprint, and polish
 
-Fast is draft-first: reach a viewable document quickly, then refine against feedback. It deliberately spends no time on browser-backed verification until the draft is accepted or the picture is the deliverable.
+### 6.1 Optional blueprint gate (flagship or explicit alignment)
 
-1. **Zero upfront questions.** Skip the blueprint gate.
-2. **Draft the skeleton first.** Canvas plus the key sections and placeholders, enough that the user can open it and react. Do not polish the whole document before the direction is confirmed. Image slots stay labelled placeholders (`hero image — yours or sourced?`) rather than a stock picture chosen on the user's behalf.
-3. **Create the value layer in the same pass.** Reuse the document's tokens, styles and components if it has them. If it has no token table, declare a minimal one as you author the skeleton — 5–7 colour roles (background, surface, ink, muted ink, accent, border, scrim), a spacing scale, radii, and the type sizes you actually use — and reference it from the elements (`fills[].tokenId`, `tokenBindings`). This is what turns a later “change the palette / tighten the spacing” into one edit instead of a per-element rebind. Defer `styles[]`, `modes[]` and `numberModes[]` to the system pass; do not build them speculatively. A value that repeats or is global becomes a token; a one-off decorative value stays a literal.
-4. Still make repeated cards/buttons components rather than copies.
-5. State every default as an assumption. An 8px rhythm is a safe fallback; palette values are derived from the canvas background or declared as assumptions, never presented as the project's colours.
-6. **One cheap gate, structure only:** `./tools/fish check <doc>` (Node, no browser, well under 100ms) so the file is guaranteed to open. Leave `--geometry`, `--audit`, `shot.sh` and `--strict` to the full pass or an explicit request: the skeleton still holds placeholders, so their verdicts describe boxes you are about to replace. `--geometry` is Node-only and costs nothing — it waits because its numbers are only worth reading once the layout is real, while `--audit` and `shot.sh` need a browser and cost seconds.
-7. **Hand over as a draft, with a way forward.** In one short block, say it is a first pass, not a final, list the assumptions, ask whether they have a moodboard or assets to drop in (logo, product shots, fonts), and give three ways to continue: point at a layer or leave a comment to change just that; name a dimension (spacing, type scale, palette, imagery, density) to steer it; say “polish it” / “make it production-ready” to trigger the full pass in §7. Do not make the user learn “Fast” / “Craft”; map their intent onto the mode.
-8. Iterate through the comment/`apply` loop as the user replies. Answer a comment with the smallest `patch`/`replace` that resolves it, and keep binding new work to the token table instead of duplicating a literal it already names.
-9. When the user asks for the full pass, or the picture is the deliverable, promote the draft with the §5 tiers: `--geometry`, then `--audit` and `shot.sh` when pixels matter, `--strict-assets` for offline.
-
----
-
-## 7. Craft mode
-
-Craft adds one gate and one deeper pass; it does not replace the workflow above.
-
-### 7.1 Blueprint gate
-
-Before writing final JSON, present a blueprint and get explicit approval:
+When starting flagship / presentation-grade work from scratch — or when the user asks to align on a plan first — present a short blueprint and get explicit approval before writing final JSON:
 
 1. **Aesthetic direction** — a concrete posture (e.g. “precision dark instrumentation on #101010 with an amber signal”) and 5–7 colour roles.
 2. **Spatial and type hierarchy** — canvas, macro layout, type scale with ≥2.5× display-to-body contrast.
 3. **Asset manifest** — what the user supplies (`[by: user]`) and what comes from a source (`[by: ai]`). Ask the user for their material before proposing this list; whatever they do not have becomes `[by: ai]` and is searched after approval. Never draw fake photos or logos.
 4. **Component architecture** — the reusable masters and sets.
 
+### 6.2 Draft-first pass (default)
 
-### 7.2 Pass 1 — system, assets, components
+Reach a viewable document quickly without spending time on browser-backed verification while placeholders are still in place:
 
-- Author colour and number scales in `doc.tokens[]`; declaration sets in `doc.styles[]`.
-- Run `./tools/fish brief <doc>` again and fold literals into styles where the report shows gaps.
-- Embed authentic media (see `assets.md`) and build reusable masters as `type: "component"`. Every element that repeats in the final layout must be an instance of a master.
+1. **Zero upfront questions.** Skip §6.1.
+2. **Draft the skeleton first.** Canvas plus the key sections and labelled image placeholders (`hero image — yours or sourced?`), enough that the user can open it and react.
+3. **Create the value layer in the same pass.** Reuse existing tokens, styles, and components if present. Otherwise declare a minimal token table — 5–7 colour roles (background, surface, ink, muted ink, accent, border, scrim), a spacing scale, radii, and the type sizes actually used — and bind elements via `fills[].tokenId` / `tokenBindings`. Defer `styles[]`, `modes[]`, and `numberModes[]` until the polish pass; keep repeated cards/buttons as `component` + `instance`.
+4. **State every default as an assumption.** An 8px rhythm or derived palette is a fallback, never presented as the project's final choice.
+5. **One cheap gate, structure only:** run `./tools/fish check <doc>` (Node, no browser, <100ms) so the file is guaranteed to open. Leave `--geometry`, `--audit`, `shot.sh`, and `--strict` until the layout and assets are real.
+6. **Hand over as a draft, with a way forward.** Note that it is a first pass, list assumptions, ask for any moodboard or assets (logo, product shots, fonts), and offer three ways to continue: point at a layer or leave a comment to change just that; name a dimension (spacing, type scale, palette, imagery, density) to steer it; or ask to polish / make it production-ready (§6.3).
+7. **Iterate** through the comment/`apply` loop (§7), resolving comments with the smallest `patch`/`replace` while keeping bindings on the token table.
 
-### 7.3 Pass 2 — macro layout and rhythm
+### 6.3 Polish and full verification
 
-- Wrap cards, lists and navbars in auto-layout.
-- Apply the 8px grid to gaps and padding.
-- Set `max-content` on single-line labels and `fill hug` on body copy.
+Run this pass when executing an approved blueprint, when the user asks to polish a draft, or whenever the rendered picture is the deliverable:
 
-### 7.4 Pass 3 — material and polish
-
-Execute the approved blueprint rather than a recipe. Use the levers the direction calls for:
-
-- hairline strokes for separation;
-- `cornerSmoothing: 0.6` for soft squircles, `0` for precision;
-- backdrop blur or liquid glass over rich backgrounds;
-- gradient scrims where text sits on photography;
-- consistent edge treatment across the whole document.
-
-### 7.5 Pass 4 — verification and critique
+1. **System, assets, components** — Complete `doc.tokens[]` scales and `doc.styles[]` declaration sets (run `./tools/fish brief <doc>` to fold remaining literals into styles); embed real media (`assets.md`); ensure every repeated element is an `instance` of a `component`.
+2. **Macro layout and rhythm** — Ensure cards, lists, and navbars use auto-layout on the 8px grid, with `max-content` on single-line labels and `fill hug` on body copy.
+3. **Material and polish** — Execute the direction consistently: hairline strokes for separation, `cornerSmoothing: 0.6` for soft squircles (or `0` for precision), backdrop blur / liquid glass over rich backgrounds, and gradient scrims where text sits on photography.
+4. **Verification and critique** — Run the full browser-backed checks together:
 
 ```bash
 ./tools/fish check design.fish.html --strict --geometry --audit
 ./tools/shot.sh design.fish.html out.png --element hero-section --scale 2
 ```
 
-Prefer running `--audit` together with `--strict --geometry` before finishing: contrast checks catch unexpanded token bindings or invisible light-on-light/dark-on-dark fallbacks that schema checks alone cannot see. Read `out.report.json` and inspect the PNG for clipping, contrast failures, misalignment and accidental inconsistency. Fix before handing over.
+Add `--strict-assets` if the file must open offline. Read `out.report.json` and inspect the PNG for clipping, contrast failures, misalignment, and accidental inconsistency; fix before handing over.
 
 ---
 
-## 8. Comments: the review loop
+## 7. Comments: the review loop
 
 A `.fish.html` can carry element-bound comments in a second JSON block,
 `<script id="fish-comments">`. They are the one channel by which a person marks
@@ -295,17 +288,25 @@ Rules that matter more than the sequence:
 
 ---
 
-## 9. Pre-flight checklist
+## 8. Pre-flight checklist
 
-- [ ] Containers use auto-layout instead of hardcoded child coordinates.
-- [ ] Wrapping text outside a layout parent declares a width mode.
-- [ ] `sizing` uses a mode, not a raw number.
-- [ ] Any element used more than once is a component master + instances, not duplicate frames.
+**Every document**
+
+- [ ] Any element used more than once is a component master + instances, not duplicate frames — and the masters share one dedicated page that `check` was given via `--skip-page`.
 - [ ] Every `instance.componentId` points at a `component`, not a `frame`.
+- [ ] A wrapping text run declares a width; its height is measured (`sizing.height: "fit-content"` is what an omitted height becomes), so `height` is pinned only when the box is meant to clip.
 - [ ] Mode-dependent colours live on `tokens[].modes`; no style is duplicated per theme.
 - [ ] Fills, strokes, and effects are ordered bottom-first.
 - [ ] Every image fill points at a real `doc.assets[]` entry.
-- [ ] Real photos and icons come from the user's files or an asset source, never hand-drawn paths — and the user was asked for their own material before a source was searched.
 - [ ] Repeated values are tokens; repeated declaration sets are styles.
-- [ ] `fish check` reports 0 errors; before delivery (Craft), `--geometry` and, when relevant, `--audit` were read.
-- [ ] The file opens offline if that was promised (`--strict-assets`).
+- [ ] `fish check` reports 0 errors, and every warning's `— fix:` line was applied or answered with the key it names (plus `--geometry`, `--audit`, and `--strict-assets` per `SKILL.md` § Hard rules).
+
+**When the project is a UI** (`category: ui`)
+
+- [ ] Containers use auto-layout instead of hardcoded child coordinates.
+- [ ] `sizing` uses a mode, not a raw number.
+
+**When the project is graphic, editorial or a deck** (`graphic`, `deck`)
+
+- [ ] Free placement is the layout: a poster or a cover is composed, not flowed. Auto-layout only where content actually repeats.
+- [ ] Deliberate layering says so — `overlap: "allowed"` on the composition root whose type crosses a shape or another text, covering everything it holds — so an accidental collision still reads as one.

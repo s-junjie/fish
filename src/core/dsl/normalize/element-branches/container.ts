@@ -27,6 +27,27 @@ export const normalizeContainer: ElementBranch = ({ el, base, sizing, path, repa
   // default that hides overflowing children is the more destructive guess. A
   // box that MEANS to clip says so, which is what makes `grep overflow` honest.
   Object.assign(base, normalizeOverflow(el, path, repairs));
+
+  // "Children of this box may overlap on purpose." A square of the check that
+  // cannot be inferred from geometry: the author says it once, on the container.
+  // A set holds variants rather than a composition, so it has nothing to allow.
+  if (type === "componentSet") {
+    if (el.overlap !== undefined) {
+      repairs.push({
+        kind: "layout",
+        path: `${path}/overlap`,
+        message: 'type "componentSet" holds variants, not a composition — put "overlap": "allowed" on the variant that needs it'
+      });
+    }
+  } else if (el.overlap === "allowed") {
+    base.overlap = "allowed";
+  } else if (el.overlap !== undefined) {
+    repairs.push({
+      kind: "layout",
+      path: `${path}/overlap`,
+      message: `overlap ${JSON.stringify(el.overlap)} is not a supported value; only "allowed" is read`
+    });
+  }
   const sx = normalizeScrollOffset(el.scrollX ?? el.scrollLeft ?? el["scroll-x"] ?? el["scroll-left"]);
   if (sx !== undefined && sx > 0) base.scrollX = sx;
   const sy = normalizeScrollOffset(el.scrollY ?? el.scrollTop ?? el["scroll-y"] ?? el["scroll-top"]);

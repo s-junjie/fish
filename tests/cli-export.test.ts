@@ -177,3 +177,97 @@ describe("fish export", () => {
     fs.rmSync(outPng, { force: true });
   });
 });
+
+describe("fish export --pages", () => {
+  let tmp: string;
+  let argLog: string;
+  let deck: string;
+  let fake: string;
+
+  beforeAll(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "fish-cli-export-batch-"));
+    argLog = path.join(tmp, "argv.log");
+    // The fixture splices a two-page document into the built shell, so there is
+    // nothing to build one from until the kit exists.
+    if (!kitBuilt) return;
+
+    const canvas = { width: 400, height: 300, unit: "px", background: { type: "solid", color: "#FFFFFF" } };
+    const custom = {
+      version: "0.1",
+      name: "Deck",
+      canvas,
+      activePageId: "page_cover",
+      pages: [
+        { id: "page_cover", name: "Cover", canvas, children: [] },
+        { id: "page_feature", name: "Feature", canvas, children: [] },
+        { id: "page_kit", name: "Components", canvas, children: [] }
+      ]
+    };
+    const html = fs.readFileSync(doc, "utf8");
+    deck = path.join(tmp, "deck.fish.html");
+    fs.writeFileSync(
+      deck,
+      html.replace(
+        /<script\s+id=["']design-doc["'][^>]*>[\s\S]*?<\/script>/i,
+        `<script id="design-doc" type="application/json">${JSON.stringify(custom)}</script>`
+      )
+    );
+
+    fake = writeFakeBrowser(
+      tmp,
+      "batch-browser.sh",
+      [
+        'printf "%s\\n" "$*" >> "' + argLog + '"',
+        'for arg in "$@"; do',
+        '  case "$arg" in',
+        '    --screenshot=*) printf "PNG" > "${arg#--screenshot=}" ;;',
+        "  esac",
+        "done",
+        'echo \'<html><body><script id="fish-report" type="application/json">{"ok":true,"window":"400x300","expected":"400x300"}</script></body></html>\''
+      ].join("\n")
+    );
+  });
+
+  afterEach(() => {
+    fs.rmSync(argLog, { force: true });
+  });
+
+  (kitBuilt ? it : it.skip)("writes one id-named file per named page", () => {
+    const outDir = path.join(tmp, "shots-named");
+    const res = runCli(["export", deck, "--pages", "Cover,page_feature", "--out-dir", outDir], { FISH_BROWSER: fake });
+    expect(res.code).toBe(0);
+    expect(fs.existsSync(path.join(outDir, "deck--page_cover.png"))).toBe(true);
+    expect(fs.existsSync(path.join(outDir, "deck--page_feature.png"))).toBe(true);
+    expect(fs.existsSync(path.join(outDir, "deck--page_kit.png"))).toBe(false);
+
+    const calls = fs.readFileSync(argLog, "utf8").split("\n").filter(Boolean);
+    expect(calls).toHaveLength(4);
+    expect(calls[0]).toContain("page=page_cover");
+    expect(calls[2]).toContain("page=page_feature");
+  });
+
+  (kitBuilt ? it : it.skip)("exports every page but the excluded one", () => {
+    const outDir = path.join(tmp, "shots-all");
+    const res = runCli(["export", deck, "--all-pages", "--exclude", "Components", "--out-dir", outDir], {
+      FISH_BROWSER: fake
+    });
+    expect(res.code).toBe(0);
+    expect(fs.readdirSync(outDir).sort()).toEqual(["deck--page_cover.png", "deck--page_feature.png"]);
+  });
+
+  (kitBuilt ? it : it.skip)("refuses a page name it cannot resolve, before launching a browser", () => {
+    const res = runCli(["export", deck, "--pages", "page_cover,missing", "--out-dir", path.join(tmp, "shots-bad")], {
+      FISH_BROWSER: "/nonexistent/browser"
+    });
+    expect(res.code).toBe(2);
+    expect(res.out).toContain('no page matching "missing"');
+  });
+
+  (kitBuilt ? it : it.skip)("refuses --out for a batch instead of overwriting one file", () => {
+    const res = runCli(["export", deck, "--pages", "page_cover", "--out", path.join(tmp, "one.png")], {
+      FISH_BROWSER: "/nonexistent/browser"
+    });
+    expect(res.code).toBe(2);
+    expect(res.out).toContain("use --out-dir");
+  });
+});

@@ -212,6 +212,9 @@ await editor.evaluate(async (doc) => {
 
 check("no page errors in the editor either", editorErrors.length === 0, editorErrors[0] ?? "");
 
+await editor.click('[data-typography-more="true"]');
+await editor.waitForSelector('[data-typography-more-popover="true"]');
+
 const present = await editor.evaluate(() => ({
   style: !!document.querySelector('[data-typography-toggle="italic"]'),
   figures: !!document.querySelector('[data-typography-figures="tabular-nums"]'),

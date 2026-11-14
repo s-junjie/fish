@@ -66,6 +66,7 @@ export const COMMANDS: CommandSpec[] = [
           of("--audit-tolerance", "--audit-tolerance N"),
           on("--strict-assets"),
           of("--page", "--page <id>"),
+          of("--skip-page", "--skip-page <id|name>"),
           on("--all-pages")
         ]
       }
@@ -192,8 +193,12 @@ export const COMMANDS: CommandSpec[] = [
         head: "export <doc.fish.html>",
         flags: [
           OUT,
+          of("--out-dir", "--out-dir DIR"),
           of("--scale", "--scale N"),
           of("--page", "--page <id>"),
+          of("--pages", "--pages <id,...>"),
+          of("--exclude", "--exclude <id,...>"),
+          on("--all-pages"),
           of("--element", "--element ID"),
           of("--format", "--format png")
         ]

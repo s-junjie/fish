@@ -1013,6 +1013,8 @@ export const en = {
     truncateClip: "Clip — cut at the last line, with nothing to mark it (a reader cannot tell there is more)",
     truncateEllipsis: "Ellipsis — cut at the last line and marked with an ellipsis",
     truncateLines: "Lines",
+    more: "More",
+    settings: "Type settings",
     case: "Case",
     caseNone: "As typed",
     caseUpper: "UPPERCASE",

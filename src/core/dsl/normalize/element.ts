@@ -102,6 +102,9 @@ export const CANONICAL_KEYS: ReadonlySet<string> = new Set([
   "from", "to", "children",
   "arrow", "arrowhead",
   "overflow", "scrollX", "scrollY", "scrollLeft", "scrollTop", "scrollBehavior", "overflowX", "overflowY", "boxSizing", "flex", "layoutGrow", "flexGrow", "padding",
+  // A free-placement frame's own statement that its children may sit on top of
+  // each other; read by `check`, never by layout.
+  "overlap",
   // The flat CSS auto-layout keys: this IS the stored vocabulary, not an alias.
   "display", "flex-direction", "justify-content", "align-items", "align-content", "flex-wrap",
   "row-gap", "column-gap", "grid-template-columns", "grid-template-rows", "grid-auto-flow",
