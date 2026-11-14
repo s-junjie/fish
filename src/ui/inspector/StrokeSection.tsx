@@ -247,7 +247,7 @@ export function StrokeSection({
     if (!exists) {
       docRef.current = addTokenToDoc(docRef.current, token);
     }
-    const color = colorTokenColor(token, docRef.current.activeTheme);
+    const color = colorTokenColor(token, docRef.current.activeTheme, docRef.current.tokens);
     handleUpdateStroke(
       index,
       {

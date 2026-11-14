@@ -208,7 +208,8 @@ export function StyleEditorView({
             if (docRef && !docRef.current.tokens?.some((t) => t.id === token.id)) {
               docRef.current = addTokenToDoc(docRef.current, token);
             }
-            const color = colorTokenColor(token);
+            const activeDoc = docRef?.current ?? doc;
+            const color = colorTokenColor(token, activeDoc?.activeTheme, activeDoc?.tokens);
             setDrafts((cur) => {
               const next = [...cur.paints];
               const p = next[idx];

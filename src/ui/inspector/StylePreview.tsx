@@ -1,6 +1,9 @@
 import type { ComponentChildren } from "preact";
-import { BaseStyle, ColorToken, DesignStyle, EffectStyle, LayoutGuideStyle, Paint, PaintStack, PaintStyle, StrokeStyle, TextStyleDefinition } from "../../core/dsl/types";
+import { BaseStyle, ColorToken, DesignStyle, EffectStyle, LayoutGuideStyle, NumberTokenCategory, Paint, PaintStack, PaintStyle, StrokeStyle, TextStyleDefinition } from "../../core/dsl/types";
+import type { TokenLookup } from "../../core/dsl/token-value";
+import { colorTokenColor } from "../../core/interactions/token-ops";
 import { PaintStackSwatch } from "../PaintStackSwatch";
+import { CategoryIcon } from "../tokens/CategoryIcon";
 import { topPaint } from "../../core/dsl/paint-stack";
 import { gradientKindLongLabel, isGradientKind } from "../paint-kind";
 import { t } from "../../i18n";
@@ -95,8 +98,22 @@ export function getStyleSubtitle(style: DesignStyle): string {
 }
 
 /** A colour token's mark: the one colour it holds, drawn as a one-paint stack. */
-export function renderColorTokenPreview(token: ColorToken, theme?: string, sizeClass = "w-3.5 h-3.5") {
-  const color = theme && token.modes?.[theme] ? token.modes[theme] : token.value;
+export function renderColorTokenPreview(
+  token: ColorToken,
+  theme?: string,
+  sizeClass = "w-3.5 h-3.5",
+  tokens?: TokenLookup
+) {
+  const color = colorTokenColor(token, theme, tokens);
   const paints: PaintStack = [{ type: "solid", color }];
   return <PaintStackSwatch paints={paints} className={sizeClass} />;
+}
+
+/** A number token's mark: its category glyph framed in the inset badge tile. */
+export function renderNumberTokenPreview(category?: NumberTokenCategory) {
+  return (
+    <div className="w-6 h-6 rounded-swatch bg-inset border border-rule flex items-center justify-center text-ink-dim shrink-0">
+      <CategoryIcon category={category} />
+    </div>
+  );
 }

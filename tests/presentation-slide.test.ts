@@ -3,7 +3,8 @@ import { getActivePage } from "../src/core/dsl/document-ops";
 import { matchSlides } from "../src/core/presentation/morph";
 import { morphSlide, slidePaint, enterShift, leaveShift, CARRIED_FIELDS, NOT_CARRIED } from "../src/core/presentation/animate";
 import { createSlideClock, easeAt, resolveSlide, resolveStep, reverseDirection, DEFAULT_SLIDE_MS } from "../src/core/presentation/slide";
-import { normalizeDesignDocument } from "../src/core/dsl/normalize";
+import { normalizeDesignDocument, CANONICAL_KEYS } from "../src/core/dsl/normalize";
+import { writtenKeyOf } from "../src/core/dsl/written-keys";
 import schema from "../src/core/dsl/fish.schema.json";
 import { LATEST_DOCUMENT_VERSION } from "../src/core/dsl/version";
 import type { DesignElement } from "../src/core/dsl/types";
@@ -715,10 +716,11 @@ describe("a one-line pair holds its line", () => {
 });
 
 /**
- * A hand-transcribed list cannot report a gap in the set it was given. This
- * grades the morph's own table against the schema — the one surface that knows
- * every element key — so a field added to the DSL is red until someone decides
- * whether a transition carries it.
+ * A hand-transcribed list cannot report a gap in the set it was given. Morph
+ * interpolates RUNTIME fields, so the set it is graded against is
+ * `CANONICAL_KEYS`; the schema now publishes only the written spelling of each
+ * key, and `writtenKeyOf` is the bridge between the two. A field added to the
+ * DSL is red until someone decides whether a transition carries it.
  */
 describe("morph carries every scalar", () => {
   const properties = schema.definitions.DesignElement.properties as unknown as Record<
@@ -734,6 +736,8 @@ describe("morph carries every scalar", () => {
     gap: "oneOf — the ellipse's wedge gap and a layout gap shorthand share the key"
   };
 
+  const isRuntimeField = (key: string): boolean => CANONICAL_KEYS.has(key);
+
   it("classifies every element key, in both directions", () => {
     // The corners are the one structured value: they go through their own
     // interpolator, because a rounding is a number or a four-tuple and a generic
@@ -746,14 +750,17 @@ describe("morph carries every scalar", () => {
       ).toBe(true);
     }
     for (const key of CARRIED_FIELDS) {
-      const spec = properties[key];
-      expect(spec, `"${key}" is not an element field`).toBeDefined();
-      if (LOOSE[key] === undefined) {
+      expect(isRuntimeField(key), `"${key}" is not a field the engine reads`).toBe(true);
+      const published = writtenKeyOf(key);
+      // A renamed field is written as a CSS value shape (rotate, scale,
+      // transform), not as the runtime scalar morph interpolates.
+      const spec = published === key ? properties[key] : undefined;
+      if (spec?.type && LOOSE[key] === undefined) {
         expect(["number", "boolean"], `"${key}" is not a value a morph can carry`).toContain(spec.type);
       }
     }
     for (const key of Object.keys(NOT_CARRIED)) {
-      expect(properties[key], `"${key}" is not an element field`).toBeDefined();
+      expect(isRuntimeField(key), `"${key}" is not a field the engine reads`).toBe(true);
     }
     for (const key of Object.keys(LOOSE)) {
       expect(CARRIED_FIELDS, `"${key}" is explained but not carried`).toContain(key);

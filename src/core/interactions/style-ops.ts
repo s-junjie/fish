@@ -11,7 +11,8 @@ import {
   resolvePaintStylePaints,
   syncDualStorage
 } from "./style-sync";
-import { getActiveNumberMode, getActiveTheme } from "./mode-ops";
+import { getActiveNumberMode, getActiveTheme, getDocumentModes, getDocumentNumberModes } from "./mode-ops";
+import { isTokenAliasRef, toTokenMap, tryColorTokenValue, tryNumberTokenValue } from "../dsl/token-value";
 import { withLayoutGuides } from "../layout/layout-guides";
 
 export { syncDualStorage };
@@ -344,7 +345,70 @@ export function removeStyleFromDoc(doc: DesignDocument, styleId: string): Design
  * token keeps the colour or size it was showing.
  */
 export function removeTokenFromDoc(doc: DesignDocument, tokenId: string): DesignDocument {
-  const tokens = (doc.tokens || []).filter((t) => t.id !== tokenId);
+  const prevTokens = doc.tokens || [];
+  const prevTokenMap = toTokenMap(prevTokens);
+  const colorModes = getDocumentModes(doc);
+  const numberModes = getDocumentNumberModes(doc);
+  const baseColorMode = colorModes[0]?.id;
+  const baseNumberMode = numberModes[0]?.id;
+
+  // Materialise any upstream token slot that aliased the deleted token so
+  // semantic tokens keep their resolved per-mode values instead of turning dangling.
+  const tokens = prevTokens
+    .filter((t) => t.id !== tokenId)
+    .map((t): DesignToken => {
+      const baseRef = isTokenAliasRef(t.value) && t.value.ref === tokenId;
+      const modeRef = t.modes
+        ? Object.values(t.modes).some((v) => isTokenAliasRef(v) && v.ref === tokenId)
+        : false;
+      if (!baseRef && !modeRef) return t;
+
+      if (t.type === "color") {
+        const nextValue = baseRef
+          ? (tryColorTokenValue(t, baseColorMode, prevTokenMap) ?? "#000000")
+          : t.value;
+        let nextModes = t.modes ? { ...t.modes } : undefined;
+        if (modeRef && t.modes) {
+          for (const [m, v] of Object.entries(t.modes)) {
+            if (isTokenAliasRef(v) && v.ref === tokenId) {
+              nextModes = { ...(nextModes ?? {}), [m]: tryColorTokenValue(t, m, prevTokenMap) ?? "#000000" };
+            }
+          }
+        }
+        if (baseRef) {
+          for (const mode of colorModes) {
+            if (mode.id === baseColorMode || (t.modes && mode.id in t.modes)) continue;
+            const resolvedInMode = tryColorTokenValue(t, mode.id, prevTokenMap);
+            if (resolvedInMode !== undefined && resolvedInMode !== nextValue) {
+              nextModes = { ...(nextModes ?? {}), [mode.id]: resolvedInMode };
+            }
+          }
+        }
+        return { ...t, value: nextValue, ...(nextModes ? { modes: nextModes } : {}) };
+      }
+
+      const nextValue = baseRef
+        ? (tryNumberTokenValue(t, baseNumberMode, prevTokenMap) ?? 0)
+        : t.value;
+      let nextModes = t.modes ? { ...t.modes } : undefined;
+      if (modeRef && t.modes) {
+        for (const [m, v] of Object.entries(t.modes)) {
+          if (isTokenAliasRef(v) && v.ref === tokenId) {
+            nextModes = { ...(nextModes ?? {}), [m]: tryNumberTokenValue(t, m, prevTokenMap) ?? 0 };
+          }
+        }
+      }
+      if (baseRef) {
+        for (const mode of numberModes) {
+          if (mode.id === baseNumberMode || (t.modes && mode.id in t.modes)) continue;
+          const resolvedInMode = tryNumberTokenValue(t, mode.id, prevTokenMap);
+          if (resolvedInMode !== undefined && resolvedInMode !== nextValue) {
+            nextModes = { ...(nextModes ?? {}), [mode.id]: resolvedInMode };
+          }
+        }
+      }
+      return { ...t, value: nextValue, ...(nextModes ? { modes: nextModes } : {}) };
+    });
 
   const stripBindings = (
     bindings: Record<string, string> | undefined

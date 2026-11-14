@@ -1743,27 +1743,34 @@ export type DesignStyle = PaintStyle | TextStyleDefinition | EffectStyle | Strok
  * `modes` is the multi-mode dictionary, named after `doc.modes`; the axes a
  * token may be bound to are `category`'s business, not a second `scope` field.
  */
+export interface TokenAliasRef {
+  ref: string;
+}
+
+export type ColorTokenValue = string | TokenAliasRef;
+export type NumberTokenValue = number | TokenAliasRef;
+
 export interface BaseToken {
   id: string;
   name: string;
   description?: string;
-  /** mode id → the value in that mode. A missing entry falls back to `value`. */
-  modes?: Record<string, string | number>;
+  /** mode id → the value or alias in that mode. A missing entry falls back to `value`. */
+  modes?: Record<string, ColorTokenValue | NumberTokenValue>;
 }
 
 export interface ColorToken extends BaseToken {
   type: "color";
-  /** `#RRGGBB`, or `#RRGGBBAA` when the value is translucent. Never a paint. */
-  value: string;
-  modes?: Record<string, string>;
+  /** `#RRGGBB`, `#RRGGBBAA`, `transparent`, or `{ ref: tokenId }`. Never a paint. */
+  value: ColorTokenValue;
+  modes?: Record<string, ColorTokenValue>;
 }
 
 export interface NumberToken extends BaseToken {
   type: "number";
-  /** px, the same unit `tokenBindings` writes onto the element. */
-  value: number;
+  /** px (or `{ ref: tokenId }`), the same unit `tokenBindings` writes onto the element. */
+  value: NumberTokenValue;
   category?: NumberTokenCategory;
-  modes?: Record<string, number>;
+  modes?: Record<string, NumberTokenValue>;
 }
 
 export type DesignToken = ColorToken | NumberToken;

@@ -31,14 +31,14 @@ interface TokenPickerPopoverProps<T> {
   anchor: HTMLElement;
   ariaLabel: string;
   title: string;
-  createTitle: string;
+  createTitle?: string;
   searchPlaceholder: string;
   emptyLabel: string;
   /** Data attributes and scopes the rigs name differently per axis. */
   rootAttr: Record<string, string>;
   searchAttr: Record<string, string>;
-  createAttr: Record<string, string>;
-  detachAttr: Record<string, string>;
+  createAttr?: Record<string, string>;
+  detachAttr?: Record<string, string>;
   optionAttr: string;
   fieldScope: string;
   /** A nested panel this one must prepend to the default host chain. */
@@ -46,8 +46,8 @@ interface TokenPickerPopoverProps<T> {
 
   boundTokenId?: string;
   onDetach?: () => void;
-  /** The `+` in the header. */
-  onCreate: () => void;
+  /** The `+` in the header. Omit when creation is disabled (e.g. alias picker). */
+  onCreate?: () => void;
   /** The category filter, when the axis has one. */
   extraControls?: ComponentChildren;
   /** Re-measure when these change (the category selection). */
@@ -146,16 +146,18 @@ export function TokenPickerPopover<T>({
         onClose={onClose}
         actions={
           <div className="flex items-center gap-1">
-            <Button
-              size="icon"
-              type="button"
-              {...createAttr}
-              title={createTitle}
-              aria-label={createTitle}
-              onClick={onCreate}
-            >
-              <Plus size={12} />
-            </Button>
+            {onCreate && (
+              <Button
+                size="icon"
+                type="button"
+                {...createAttr}
+                title={createTitle}
+                aria-label={createTitle}
+                onClick={onCreate}
+              >
+                <Plus size={12} />
+              </Button>
+            )}
             {boundTokenId && onDetach && (
               <Button
                 size="icon"

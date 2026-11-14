@@ -7,6 +7,7 @@ import { AutosaveController, type AutosaveStatus } from "../src/core/persistence
 import { clearFileHandle, saveInPlace, setFileHandle } from "../src/core/data-bridge";
 import { writeBackFile } from "../src/core/persistence/writeback";
 import { FILE_CHANGED_REASON, fileStamp, setFileStamp } from "../src/core/persistence/file-stamp";
+import { inspectExternalUpdate } from "../src/core/persistence/external-update";
 import { stubDocument } from "./helpers/fake-document";
 
 function makeDoc(name = "Mine"): DesignDocument {
@@ -201,5 +202,64 @@ describe("the auto-save controller on a changed file", () => {
     await controller.flushNow();
 
     expect(state.writes).toBe(0);
+  });
+});
+
+describe("focus-time disk update inspection", () => {
+  it("reports updated when local edits are clean and disk moved", async () => {
+    const { handle } = fileHandle(2_000);
+    const res = await inspectExternalUpdate({
+      handle,
+      baselineStamp: 1_000,
+      dismissedMtime: null,
+      hasLocalEdits: false
+    });
+    expect(res).toEqual({ status: "updated", mtime: 2_000 });
+  });
+
+  it("escalates to conflict when local edits exist", async () => {
+    const { handle } = fileHandle(2_000);
+    const res = await inspectExternalUpdate({
+      handle,
+      baselineStamp: 1_000,
+      dismissedMtime: null,
+      hasLocalEdits: true
+    });
+    expect(res).toEqual({ status: "conflict", mtime: 2_000 });
+  });
+
+  it("remembers dismissal per mtime and re-prompts when disk moves again", async () => {
+    const { state, handle } = fileHandle(2_000);
+    expect(
+      await inspectExternalUpdate({
+        handle,
+        baselineStamp: 1_000,
+        dismissedMtime: 2_000,
+        hasLocalEdits: false
+      })
+    ).toEqual({ status: "dismissed", mtime: 2_000 });
+
+    state.mtime = 3_000;
+    expect(
+      await inspectExternalUpdate({
+        handle,
+        baselineStamp: 1_000,
+        dismissedMtime: 2_000,
+        hasLocalEdits: false
+      })
+    ).toEqual({ status: "updated", mtime: 3_000 });
+  });
+
+  it("skips silently without prompting when read permission is not granted", async () => {
+    const { handle } = fileHandle(2_000);
+    handle.queryPermission = async () => "prompt";
+    expect(
+      await inspectExternalUpdate({
+        handle,
+        baselineStamp: 1_000,
+        dismissedMtime: null,
+        hasLocalEdits: false
+      })
+    ).toEqual({ status: "unchanged" });
   });
 });

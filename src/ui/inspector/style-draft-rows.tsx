@@ -328,7 +328,7 @@ export function DraftStrokeRows({
               if (docRef && !docRef.current.tokens?.some((t) => t.id === token.id)) {
                 docRef.current = addTokenToDoc(docRef.current, token);
               }
-              const color = colorTokenColor(token, docRef?.current?.activeTheme);
+              const color = colorTokenColor(token, docRef?.current?.activeTheme, docRef?.current?.tokens);
               onUpdateStroke(idx, {
                 color,
                 tokenId: token.id,

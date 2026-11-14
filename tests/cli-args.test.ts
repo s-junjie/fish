@@ -82,6 +82,13 @@ describe("parsing a command's own flags", () => {
   it("refuses a declared flag that needs a value and did not get one", () => {
     expect(refusal("export", ["doc.fish.html", "--format"])).toBe("--format needs a value");
   });
+
+  it("parses the single-key contract lookup", () => {
+    expect(parse("schema", ["fit", "--json"])).toEqual({
+      values: new Map<string, string | true>([["--json", true]]),
+      positionals: ["fit"]
+    });
+  });
 });
 
 describe("sub-actions declare their own flags", () => {
@@ -136,6 +143,104 @@ describe("the built kit answers the same way", () => {
     const res = runCli(["--help"]);
     expect(res.code).toBe(0);
     expect(res.out).toContain(formLine(commandSpec("export")!.forms[0]));
+  });
+
+  (kitBuilt ? it : it.skip)("answers one key without dumping the whole contract", () => {
+    const res = runCli(["schema", "fit", "--json"]);
+    expect(res.code).toBe(0);
+    const report = JSON.parse(res.out);
+    const owners = report.matches.map((match: { definition: string }) => match.definition);
+    expect(owners).toContain("DesignElement");
+    expect(owners).toContain("Paint");
+    expect(res.out.length).toBeLessThan(4000);
+  });
+
+  (kitBuilt ? it : it.skip)("publishes one spelling and resolves aliases to it", () => {
+    const published = runCli(["schema", "border-radius", "--json"]);
+    expect(published.code).toBe(0);
+    const direct = JSON.parse(published.out);
+    expect(direct.alias).toBe(false);
+    expect(direct.published).toBe("border-radius");
+    expect(direct.matches.every((match: { key: string }) => match.key === "border-radius")).toBe(true);
+
+    const alias = runCli(["schema", "borderRadius", "--json"]);
+    expect(alias.code).toBe(0);
+    const resolved = JSON.parse(alias.out);
+    expect(resolved.alias).toBe(true);
+    expect(resolved.published).toBe("border-radius");
+    expect(resolved.matches.length).toBeGreaterThan(0);
+  });
+
+  (kitBuilt ? it : it.skip)("refuses an unknown key", () => {
+    expect(runCli(["schema", "no-such-key-xyz"]).code).toBe(1);
+    const conflict = runCli(["schema", "fit", "--find", "gradient"]);
+    expect(conflict.code).toBe(2);
+  });
+
+  (kitBuilt ? it : it.skip)("lists compact definitions and keys without prior knowledge", () => {
+    const bare = runCli(["schema"]);
+    expect(bare.code).toBe(0);
+    expect(bare.out.length).toBeLessThan(6500);
+    expect(bare.out).toContain("DesignDocument:");
+    expect(bare.out).toContain("Paint:");
+    expect(bare.out).toContain("DesignToken:");
+    expect(bare.out).toContain("BlendMode [enum]:");
+
+    const listed = runCli(["schema", "--list", "--json"]);
+    expect(listed.code).toBe(0);
+    const catalog = JSON.parse(listed.out);
+    const names = catalog.definitions.map((entry: { name: string }) => entry.name);
+    expect(names).toContain("DesignDocument");
+    expect(names).toContain("DesignElement");
+    expect(names).toContain("Tear");
+  });
+
+  (kitBuilt ? it : it.skip)("looks up non-element, oneOf, nested, definition, and colliding keys", () => {
+    for (const [key, expectedDef] of [
+      ["tokens", "DesignDocument"],
+      ["transition", "SlideSpec"],
+      ["category", "DesignToken"],
+      ["columnSpan", "DesignElement.grid-area"],
+      ["presentBackground", "DesignDocument.canvas"],
+      ["paint", "Stroke"]
+    ] as const) {
+      const res = runCli(["schema", key, "--json"]);
+      expect(res.code).toBe(0);
+      const report = JSON.parse(res.out);
+      expect(report.published).toBe(key);
+      expect(report.alias).toBe(false);
+      expect(report.matches.map((m: { definition: string }) => m.definition)).toContain(expectedDef);
+    }
+
+    const defRes = runCli(["schema", "Paint", "--json"]);
+    expect(defRes.code).toBe(0);
+    const defReport = JSON.parse(defRes.out);
+    expect(defReport.definition).toBe("Paint");
+    expect(defReport.matches.map((m: { key: string }) => m.key)).toContain("focalPoint");
+
+    const focal = runCli(["schema", "focalPoint", "--json"]);
+    expect(focal.code).toBe(0);
+    const focalReport = JSON.parse(focal.out);
+    expect(focalReport.absorbed).toBe(true);
+    expect(focalReport.matches.map((m: { definition: string }) => m.definition)).toContain("Paint");
+
+    const fontSize = runCli(["schema", "fontSize", "--json"]);
+    expect(fontSize.code).toBe(0);
+    const fontReport = JSON.parse(fontSize.out);
+    expect(fontReport.alias).toBe(true);
+    expect(fontReport.published).toBe("font-size");
+    const fontOwners = fontReport.matches.map((m: { definition: string; key: string }) => `${m.definition}.${m.key}`);
+    expect(fontOwners).toContain("TextStyle.fontSize");
+    expect(fontOwners).toContain("DesignElement.font-size");
+  });
+
+  (kitBuilt ? it : it.skip)("searches schema descriptions, keys, and enums with --find", () => {
+    const res = runCli(["schema", "--find", "gradient", "--json"]);
+    expect(res.code).toBe(0);
+    const report = JSON.parse(res.out);
+    expect(report.matches.length).toBeGreaterThan(0);
+    expect(report.matches.some((m: { definition: string }) => m.definition === "Paint")).toBe(true);
+    expect(runCli(["schema", "--find", "no-such-term-xyz"]).code).toBe(1);
   });
 
   (kitBuilt ? it : it.skip)("supports --page and --all-pages on check", () => {

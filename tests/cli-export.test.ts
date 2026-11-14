@@ -144,4 +144,36 @@ describe("fish export", () => {
     expect(calls[calls.length - 1]).toContain("--no-sandbox");
     fs.rmSync(`${argLog}.sent`, { force: true });
   });
+
+  (kitBuilt ? it : it.skip)("passes --page to both browser passes and fails when the page is missing", () => {
+    const outPng = path.join(tmp, "page-2.png");
+    const fake = writeFakeBrowser(
+      tmp,
+      "page-browser.sh",
+      [
+        'printf "%s\\n" "$*" >> "' + argLog + '"',
+        'for arg in "$@"; do',
+        '  case "$arg" in',
+        '    --screenshot=*) printf "PNG" > "${arg#--screenshot=}" ;;',
+        "  esac",
+        "done",
+        'case "$*" in',
+        '  *"page=missing"*) echo \'<html><body><script id="fish-report" type="application/json">{"ok":false,"error":"no page matching \\"missing\\" in this document"}</script></body></html>\' ;;',
+        '  *) echo \'<html><body><script id="fish-report" type="application/json">{"ok":true,"window":"400x300","expected":"400x300"}</script></body></html>\' ;;',
+        "esac"
+      ].join("\n")
+    );
+
+    const ok = runCli(["export", doc, "--page", "p2", "--out", outPng], { FISH_BROWSER: fake });
+    expect(ok.code).toBe(0);
+    const calls = fs.readFileSync(argLog, "utf8").split("\n").filter(Boolean);
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toContain("view=canvas&report=1&scale=1&page=p2");
+    expect(calls[1]).toContain("view=canvas&page=p2");
+
+    const bad = runCli(["export", doc, "--page", "missing", "--out", outPng], { FISH_BROWSER: fake });
+    expect(bad.code).toBe(1);
+    expect(bad.out).toContain('no page matching "missing"');
+    fs.rmSync(outPng, { force: true });
+  });
 });

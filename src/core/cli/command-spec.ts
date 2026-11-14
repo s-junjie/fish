@@ -88,8 +88,13 @@ export const COMMANDS: CommandSpec[] = [
     forms: [{ head: `compact ${DOC}`, flags: [OUT] }]
   },
   {
+    name: "schema",
+    desc: "list definitions/keys or look up one key or definition in tools/fish.schema.json (aliases resolve).",
+    forms: [{ head: "schema [key]", flags: [on("--list"), of("--find", "--find WORD"), on("--json")] }]
+  },
+  {
     name: "assets",
-    desc: "inspect doc.assets[] with the size each one costs; search, import or embed.",
+    desc: "inspect doc.assets[] with the size each one costs; search, import, convert SVG icons or embed.",
     forms: [
       { head: `assets ${DOC}`, flags: [on("--json")] },
       {
@@ -98,11 +103,23 @@ export const COMMANDS: CommandSpec[] = [
         flags: [
           of("--source", "--source openverse|lucide|ri"),
           of("--limit", "--limit N"),
+          of("--size", "--size N"),
+          of("--stroke-width", "--stroke-width N"),
           of("--add-to", "--add-to <doc>"),
           of("--pick", "--pick N"),
           on("--embed"),
           of("--to", "--to <elementId>"),
           on("--replace"),
+          on("--json")
+        ]
+      },
+      {
+        head: "assets icon <svg...>",
+        verbs: ["icon"],
+        flags: [
+          of("--size", "--size N"),
+          of("--stroke-width", "--stroke-width N"),
+          of("--name", "--name N"),
           on("--json")
         ]
       },
@@ -165,7 +182,7 @@ export const COMMANDS: CommandSpec[] = [
   {
     name: "compose",
     desc: "inject a design.json into the shell without regex pitfalls or string corruption.",
-    forms: [{ head: "compose <design.json | -> <template.fish.html>", flags: [OUT, on("--compact")] }]
+    forms: [{ head: "compose <design.json | -> [template.fish.html]", flags: [OUT, on("--compact")] }]
   },
   {
     name: "export",
@@ -173,7 +190,13 @@ export const COMMANDS: CommandSpec[] = [
     forms: [
       {
         head: "export <doc.fish.html>",
-        flags: [OUT, of("--scale", "--scale N"), of("--element", "--element ID"), of("--format", "--format png")]
+        flags: [
+          OUT,
+          of("--scale", "--scale N"),
+          of("--page", "--page <id>"),
+          of("--element", "--element ID"),
+          of("--format", "--format png")
+        ]
       }
     ]
   }

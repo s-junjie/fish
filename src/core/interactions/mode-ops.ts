@@ -1,11 +1,13 @@
 import {
   ColorToken,
+  ColorTokenValue,
   DesignDocument,
   DesignElement,
   DesignToken,
   DocumentMode,
   InstanceElement,
-  NumberToken
+  NumberToken,
+  NumberTokenValue
 } from "../dsl/types";
 import { getActivePage } from "../dsl/document-ops";
 import { composeColorAlpha, parseColorAlpha } from "../geometry/color-utils";
@@ -19,7 +21,7 @@ import {
   syncDualStorage
 } from "./style-sync";
 import { styleTables, StyleTables } from "./style-tables";
-import { DEFAULT_THEME, numberModeOf, themeOf } from "../dsl/token-value";
+import { DEFAULT_THEME, isTokenAliasRef, numberModeOf, themeOf, TokenLookup } from "../dsl/token-value";
 
 /**
  * The default theme if none is specified on the document. Defined in the DSL
@@ -265,13 +267,21 @@ function cascadeDocumentForMode(doc: DesignDocument): DesignDocument {
 }
 
 /** Extracts the solid color of a Color Token in the given theme, falling back to base/default. */
-export function getColorTokenModeColor(token: ColorToken, theme?: string): string {
-  return resolveColorTokenHex(token, theme);
+export function getColorTokenModeColor(
+  token: ColorToken,
+  theme?: string,
+  tokens?: TokenLookup
+): string {
+  return resolveColorTokenHex(token, theme, tokens);
 }
 
 /** Extracts the numerical value of a Number Token in the given mode, falling back to base/default. */
-export function getNumberTokenModeValue(token: NumberToken, mode?: string): number {
-  return resolveNumberTokenVal(token, mode);
+export function getNumberTokenModeValue(
+  token: NumberToken,
+  mode?: string,
+  tokens?: TokenLookup
+): number {
+  return resolveNumberTokenVal(token, mode, tokens);
 }
 
 export interface ColorModePatch {
@@ -290,8 +300,10 @@ export interface ColorModePatch {
 export function updateColorTokenWithModes(
   token: ColorToken,
   name: string,
-  baseColor: string,
-  modesOrOverrides?: string | Record<string, string | ColorModePatch | undefined>,
+  baseColor: ColorTokenValue,
+  modesOrOverrides?:
+    | ColorTokenValue
+    | Record<string, ColorTokenValue | ColorModePatch | undefined>,
   description?: string,
   baseOpacity?: number,
   baseModeId?: string
@@ -307,8 +319,11 @@ export function updateColorTokenWithModes(
       : parsed.hex6;
   };
 
-  let nextModes: Record<string, string> | undefined = token.modes ? { ...token.modes } : undefined;
-  const patches = typeof modesOrOverrides === "string" ? { dark: modesOrOverrides } : modesOrOverrides;
+  let nextModes: Record<string, ColorTokenValue> | undefined = token.modes ? { ...token.modes } : undefined;
+  const patches =
+    typeof modesOrOverrides === "string" || isTokenAliasRef(modesOrOverrides)
+      ? { dark: modesOrOverrides }
+      : modesOrOverrides;
 
   if (patches && typeof patches === "object") {
     nextModes = nextModes ? { ...nextModes } : {};
@@ -319,6 +334,8 @@ export function updateColorTokenWithModes(
       }
       if (value === undefined || value === null) {
         delete nextModes[modeId];
+      } else if (isTokenAliasRef(value)) {
+        nextModes[modeId] = { ref: value.ref };
       } else if (typeof value === "string") {
         // A string carries its own alpha: `baseOpacity` describes the BASE mode,
         // and folding it in here painted one mode with the other mode's alpha.
@@ -332,11 +349,15 @@ export function updateColorTokenWithModes(
     if (Object.keys(nextModes).length === 0) nextModes = undefined;
   }
 
+  const nextBaseValue: ColorTokenValue = isTokenAliasRef(baseColor)
+    ? { ref: baseColor.ref }
+    : encode(baseColor, baseOpacity);
+
   return {
     ...token,
     name: name.trim() || token.name,
     description: description !== undefined ? description.trim() : token.description,
-    value: encode(baseColor, baseOpacity),
+    value: nextBaseValue,
     ...(nextModes ? { modes: nextModes } : { modes: undefined })
   };
 }
@@ -349,13 +370,16 @@ export function updateNumberTokenWithModes(
   token: NumberToken,
   name: string,
   category: NumberToken["category"],
-  baseValue: number,
-  modesOrBase?: number | Record<string, number | undefined>,
+  baseValue: NumberTokenValue,
+  modesOrBase?: NumberTokenValue | Record<string, NumberTokenValue | undefined>,
   description?: string,
   baseModeId?: string
 ): NumberToken {
-  let nextModes: Record<string, number> | undefined = token.modes ? { ...token.modes } : undefined;
-  const patches = typeof modesOrBase === "number" ? { dark: modesOrBase } : modesOrBase;
+  let nextModes: Record<string, NumberTokenValue> | undefined = token.modes ? { ...token.modes } : undefined;
+  const patches =
+    typeof modesOrBase === "number" || isTokenAliasRef(modesOrBase)
+      ? { dark: modesOrBase }
+      : modesOrBase;
 
   if (patches && typeof patches === "object") {
     nextModes = nextModes ? { ...nextModes } : {};
@@ -364,7 +388,9 @@ export function updateNumberTokenWithModes(
         delete nextModes[modeId];
         continue;
       }
-      if (numVal !== undefined && !Number.isNaN(numVal)) {
+      if (isTokenAliasRef(numVal)) {
+        nextModes[modeId] = { ref: numVal.ref };
+      } else if (typeof numVal === "number" && !Number.isNaN(numVal)) {
         nextModes[modeId] = numVal;
       } else if (modeId in nextModes) {
         delete nextModes[modeId];
@@ -378,7 +404,7 @@ export function updateNumberTokenWithModes(
     ...token,
     name: name.trim() || token.name,
     category,
-    value: baseValue,
+    value: isTokenAliasRef(baseValue) ? { ref: baseValue.ref } : baseValue,
     description: description !== undefined ? description.trim() : token.description,
     ...(nextModes ? { modes: nextModes } : { modes: undefined })
   };

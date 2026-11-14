@@ -4,23 +4,20 @@ import { DesignDocument } from "../../core/dsl/types";
 import { EditorStore } from "../../core/store/editor-store";
 import {
   AutosaveController,
-  type AutosaveStatus,
-  type VersionSummary
+  type AutosaveStatus
 } from "../../core/persistence/autosave-controller";
 import { IdbBackend, MemoryBackend, hasIndexedDb } from "../../core/persistence/backend";
-import { createRecoveryStore, computeContentHash } from "../../core/persistence/recovery";
+import { createRecoveryStore } from "../../core/persistence/recovery";
 import { createAssetStore } from "../../core/persistence/assets";
 import { shouldWarnBeforeUnload } from "../../core/persistence/unload-guard";
 import { createTimelineStore } from "../../core/persistence/timeline";
-import { FILE_CHANGED_REASON, setFileStamp, rememberFileStamp } from "../../core/persistence/file-stamp";
+import { FILE_CHANGED_REASON, fileStamp, setFileStamp, rememberFileStamp } from "../../core/persistence/file-stamp";
+import { inspectExternalUpdate } from "../../core/persistence/external-update";
 import {
-  loadHandle,
   persistHandle,
   forgetHandle,
   pickWritebackFile,
   verifyPickedFile,
-  verifyRestoredHandle,
-  queryWritebackPermission,
   requestWritebackPermission,
   writeBackFile,
   writebackTargetName,
@@ -36,12 +33,10 @@ import {
   documentFromHtml,
   getFileId,
   FILE_ID_META_RE,
-  getLoadFailure,
   getOpenedFileHash,
   openedFileName,
   openedFilePath,
   openedFileDirectory,
-  readFileBackup,
   saveInPlace,
   getFileHandle,
   getFileName,
@@ -56,221 +51,92 @@ import { applyDocumentTitle } from "../../core/document-title";
 import { withActivePageViewport } from "../../core/interactions/page-ops";
 import type { PageViewport } from "../../core/geometry/viewport";
 import { t } from "../../i18n";
+import { useSaveStatus } from "./useSaveStatus";
+import { useDirtyBaseline } from "./useDirtyBaseline";
+import { useVersionHistory } from "./useVersionHistory";
+import { registerLaunchQueueConsumer, restoreWritebackOnBoot } from "./file-writeback-boot";
 
-/**
- * Owns everything about the file the tab is editing: auto-save, write-back
- * identity, crash recovery and the version timeline.
- *
- * It reads the document straight from the store rather than taking a ref — the
- * two are kept in step by every writer, and a second copy of "which document is
- * current" is one more thing that can disagree.
- *
- * The camera is the exception: it is not in the store at all, so it arrives as
- * a ref and is folded into the document at the moment of a write.
- */
-/**
- * Whether the snapshot's conversation differs from the one the file holds.
- *
- * Compared as text, which is what both sides are: the snapshot stores the block
- * the app serialized, and `loaded` is the block parsed out of the file. Deep
- * equality would have to know the comment model, and this layer deliberately
- * does not.
- */
-function commentsChanged(loaded: unknown, recovered: unknown): boolean {
-  const normalize = (raw: unknown) =>
-    JSON.stringify(raw && typeof raw === "object" ? raw : { version: "0.1", threads: [] });
-  return normalize(loaded) !== normalize(recovered);
+export type { SaveStatusKind, SaveStatusState } from "./useSaveStatus";
+
+function defaultDocumentFileName(doc: DesignDocument, openedName: string | null): string {
+  return openedName || `${(doc.name || "untitled").toLowerCase().replace(/\s+/g, "-")}.fish.html`;
 }
-
-/**
- * How a save result should read in the title bar: still running, landed, or
- * did not land. All three used to arrive as one amber string, so a failure
- * looked like a success and both competed with the zoom readout for the bar's
- * single hot cell.
- */
-export type SaveStatusKind = "busy" | "ok" | "error";
-
-export interface SaveStatusState {
-  text: string;
-  kind: SaveStatusKind;
-}
-
-/** Long enough to read once, short enough that it is gone before it nags. */
-const SAVE_STATUS_MS = 3000;
 
 export function useFileWriteback(
   store: EditorStore,
   viewportRef?: { current: PageViewport },
-  /**
-   * The comment block: `get` is what the writer stores (stable identity — the
-   * auto-save effect is built once), `loaded` is what the file held at boot, so
-   * a conversation that only exists in the snapshot can be offered back.
-   */
   comments?: { get: () => unknown; loaded: unknown }
 ) {
-  const [saveStatus, setSaveStatus] = useState<SaveStatusState | null>(null);
-  // The pending clear. Without cancelling it, a second flash is taken off the
-  // screen by the first one's timer — ⌘S twice and the second "Saving…" is
-  // gone while the write is still running.
-  const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { saveStatus, flashSaveStatus, clearSaveStatus } = useSaveStatus();
   const [showActivateAutosave, setShowActivateAutosave] = useState(false);
-  // Which file write-back actually lands in. Without it a save-as leaves the
-  // tab showing file A while every auto-save quietly rewrites file B.
   const [writebackTarget, setWritebackTarget] = useState<string | null>(null);
-  // Set when a save-as adopts a new file in this tab. The URL cannot follow, so
-  // this is what keeps the identity check, the title and the mismatch dialog
-  // talking about the file auto-save is actually writing to.
   const [docNameOverride, setDocNameOverride] = useState<string | null>(null);
-  // Set when the file chosen in the picker turns out not to be this tab's file.
   const [pickMismatch, setPickMismatch] = useState<{ reason: string; pickedName: string | null } | null>(null);
-  // The file's document block could not be read and nothing could be recovered.
   const [loadFailed, setLoadFailed] = useState(false);
   const [pendingRecovery, setPendingRecovery] = useState<DesignDocument | null>(null);
-  /* The comment block that came with the pending snapshot. Untyped here for the
-     same reason the record's field is: this hook stores bytes, and the comment
-     module owns what they mean. */
   const [recoveredComments, setRecoveredComments] = useState<unknown>(undefined);
-  const [versions, setVersions] = useState<VersionSummary[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
-  // The version whose document the canvas is showing, if any. Opening the panel
-  // already makes the document read-only; this is the second, separate fact —
-  // that the view has been redirected at a version.
-  const [previewingId, setPreviewingId] = useState<string | null>(null);
-  // Read by the controller's `applyDoc` closure, which outlives any render the
-  // state itself would be captured in.
-  const showHistoryRef = useRef(showHistory);
-  showHistoryRef.current = showHistory;
-  // Serialises preview loads: two rows clicked in quick succession must end on
-  // the second, not on whichever IndexedDB read happened to resolve last.
-  const previewTokenRef = useRef(0);
-  // What auto-save is doing right now. The controller always had this; until the
-  // title bar there was nowhere to put it, so its strings sat unused in i18n.
   const [autosaveStatus, setAutosaveStatus] = useState<AutosaveStatus | null>(null);
   const controllerRef = useRef<AutosaveController | null>(null);
   const tabRef = useRef<TabCoordinator | null>(null);
   const [otherTabActive, setOtherTabActive] = useState(false);
-  // Something other than this app changed the file on disk. Write-back is off
-  // until the user picks a side, so this outlives the notice that reports it.
   const [fileConflict, setFileConflict] = useState(false);
-  // What the file is known to hold, as the document OBJECT that was written.
-  //
-  // A reference, not a hash: the comparison this feeds runs inside
-  // `beforeunload`, and hashing a document that carries its bitmaps inline
-  // costs ~50 ms of blocked main thread on every close. A commit replaces the
-  // object, so identity answers "has anything been committed since the write
-  // that landed" exactly — see `shouldWarnBeforeUnload`, which owns the rule.
-  //
-  // Assigned once on mount, never `useRef(store.getDoc())`: a ref's initial
-  // expression is evaluated on every render and thrown away after the first.
-  const lastSavedDocRef = useRef<DesignDocument | null>(null);
-  if (lastSavedDocRef.current === null) lastSavedDocRef.current = store.getDoc();
-  // `rebaselineInitialLayout` replaces the untouched document when a webfont
-  // finishes loading. It is not an edit, so both `lastSavedDocRef` and any
-  // write that started before the font arrived must follow the chain to the
-  // rebaselined reference rather than leaving `beforeunload` permanently armed.
-  const rebaselinedRef = useRef<WeakMap<DesignDocument, DesignDocument>>(new WeakMap());
-  const latestBaseline = useCallback(
-    (doc: DesignDocument): DesignDocument => {
-      let cur = store.resolveBaseline(doc);
-      while (rebaselinedRef.current.has(cur)) {
-        cur = store.resolveBaseline(rebaselinedRef.current.get(cur)!);
-      }
-      return cur;
-    },
-    [store]
-  );
-  useEffect(() => {
-    return store.onRebaseline((prev, next) => {
-      rebaselinedRef.current.set(prev, next);
-      if (lastSavedDocRef.current === prev) {
-        lastSavedDocRef.current = next;
-      }
-    });
-  }, [store]);
-  // True while this tab wants write-back but is standing down for another tab.
-  // The controller's own flag is off in that state, so it cannot answer
-  // "resume when the other tab leaves" on its own.
+  const fileConflictRef = useRef(false);
+  fileConflictRef.current = fileConflict;
+  const [fileUpdated, setFileUpdated] = useState(false);
+  const seenDiskMtimeRef = useRef<number | null>(null);
+  const dismissedDiskMtimeRef = useRef<number | null>(null);
+  const checkingDiskRef = useRef(false);
+  // Preserves desired write-back state while standing down for another active tab.
   const writebackWantedRef = useRef(false);
 
-  /**
-   * The document as it goes into a file: carrying the page the user is on and
-   * the view they are on it with.
-   *
-   * Read at the moment of the write and never committed: a pan is not an edit,
-   * and a viewport that lived in the document would put every wheel tick on the
-   * undo stack and mark a file dirty that nothing but the camera has changed.
-   */
+  const { latestBaseline, markSaved, getLastSavedDoc, isDirty } = useDirtyBaseline(
+    store,
+    () => controllerRef.current?.hasPendingWork() === true
+  );
+
+  const {
+    versions,
+    setVersions,
+    showHistory,
+    setShowHistory,
+    showHistoryRef,
+    previewingId,
+    setPreviewingId,
+    openHistory,
+    closeHistory,
+    previewVersion,
+    exitPreview
+  } = useVersionHistory(store, controllerRef);
+
+  const armWriteback = useCallback((controller: AutosaveController | null): boolean => {
+    if (tabRef.current?.isSuperseded()) {
+      writebackWantedRef.current = true;
+      return false;
+    }
+    controller?.setWritebackEnabled(true, { flush: false });
+    return true;
+  }, []);
+
+  // Viewport is folded in only at write time so panning never enters undo history.
   const fileDoc = useCallback(
     () => (viewportRef ? withActivePageViewport(store.getDoc(), viewportRef.current) : store.getDoc()),
     [store]
   );
 
-  /** Put a result in the title bar and take it down again on its own timer. */
-  const flashSaveStatus = useCallback((text: string, kind: SaveStatusKind = "ok") => {
-    if (statusTimerRef.current !== null) clearTimeout(statusTimerRef.current);
-    setSaveStatus({ text, kind });
-    statusTimerRef.current = setTimeout(() => {
-      statusTimerRef.current = null;
-      setSaveStatus(null);
-    }, SAVE_STATUS_MS);
-  }, []);
-
-  /** A cancelled picker is not a result, so nothing is reported — not even a
-      lingering "Saving…" from the attempt it replaced. */
-  const clearSaveStatus = useCallback(() => {
-    if (statusTimerRef.current !== null) clearTimeout(statusTimerRef.current);
-    statusTimerRef.current = null;
-    setSaveStatus(null);
-  }, []);
-
   const urlName = openedFileName() ?? null;
   const openedName = docNameOverride ?? urlName;
-  // The tab now writes to a file the URL cannot name. `window.location` is the
-  // only path a `file://` page can read, and a handle does not reveal one, so
-  // after a save-as the address bar keeps pointing at the original: everything
-  // that would report a folder must fall silent rather than describe that file.
+  // After save-as from `file://`, `window.location` still points at the original path.
   const savedAsCopyOf = docNameOverride && urlName && docNameOverride !== urlName ? urlName : null;
-  // The name the write-back identity check holds a picked file against. Only a
-  // name that *is* a document counts: under the dev bundle route the pathname is
-  // a route (`/__fish_bundle__`), not a file, so checking against it would
-  // refuse every pick and leave auto-save permanently off in dev.
+  // Exclude dev bundle routes (e.g. `/__fish_bundle__`) from file-name identity checks.
   const openedDocName =
     openedName && /\.html?$/i.test(openedName) ? openedName : undefined;
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      const saved = lastSavedDocRef.current;
-      if (!saved) return;
-      const dirty = shouldWarnBeforeUnload({
-        saved: latestBaseline(saved),
-        current: latestBaseline(store.getDoc()),
-        owed: controllerRef.current?.hasPendingWork() === true
-      });
-      if (dirty) {
-        e.preventDefault();
-        e.returnValue = "";
-        return "";
-      }
-    };
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-    };
-  }, [store, latestBaseline]);
-
-  // What the tab says: the file this tab is editing. `writebackTarget` is a
-  // dependency because it is the only signal that the target can change — a save
-  // turns "no file" into a file, a relink turns one file into another, and
-  // neither touches `openedName`. The history channel catches the other half: a
-  // document arriving under a new name (an import, a restore).
   useEffect(() => {
     const syncTitle = () => applyDocumentTitle(getFileName(), store.getDoc().name);
     syncTitle();
     return store.onHistory(syncTitle);
   }, [store, openedName, writebackTarget]);
 
-  // Auto-save: crash recovery (always on) + optional file write-back.
   useEffect(() => {
     const backend = hasIndexedDb() ? new IdbBackend() : new MemoryBackend();
     const controller = new AutosaveController({
@@ -283,11 +149,6 @@ export function useFileWriteback(
       timeline: createTimelineStore(backend),
       historySubscribe: (cb) => store.onHistory(cb),
       applyDoc: (doc) => {
-        // The one write history mode allows: a restore replaces the live
-        // document ON PURPOSE, and refusing it would leave the user in a mode
-        // the only escape hatch from. The lift and the re-gate are one
-        // synchronous run — no frame in which the editor is editable — and the
-        // view goes back to the live document, which is now the restored one.
         store.setViewDoc(null);
         store.setReadOnly(null);
         setPreviewingId(null);
@@ -299,25 +160,18 @@ export function useFileWriteback(
       onStatus: (status) => {
         setAutosaveStatus(status);
         if (status.kind === "file-saved") {
-          // The document that reached the file, which is not necessarily the
-          // one on screen now: the user can type during a write.
-          lastSavedDocRef.current = latestBaseline(status.doc);
+          markSaved(status.doc);
+          setFileUpdated(false);
         } else if (status.kind === "file-conflict") {
-          // The controller has stopped writing. This stops the tab coordinator
-          // from re-arming it, which would otherwise retry the same write the
-          // moment another tab hands the file back.
           writebackWantedRef.current = false;
+          setFileUpdated(false);
           setFileConflict(true);
         }
       },
       onTimeline: setVersions
     });
     controllerRef.current = controller;
-    // Two tabs on the same file are last-writer-wins on disk. The lower tab id
-    // keeps writing; the other stops and says so, rather than quietly losing
-    // whichever flush lands second. On screen outranks arrival order: the
-    // background tab is the one whose heartbeat the browser throttles, so it is
-    // the one that has to hand the file over (see `TabCoordinator`).
+
     const tabChannel = createBroadcastTabChannel();
     let onVisibilityChange: (() => void) | null = null;
     if (tabChannel) {
@@ -327,8 +181,6 @@ export function useFileWriteback(
         visible: typeof document === "undefined" || document.visibilityState !== "hidden",
         onSuperseded: () => {
           setOtherTabActive(true);
-          // Persist the debounced edit before standing down: as a follower this
-          // tab will not flush again, and the recovery snapshot is the only copy.
           writebackWantedRef.current = controller.isWritebackEnabled();
           void controller.suspendWriteback();
         },
@@ -341,230 +193,115 @@ export function useFileWriteback(
       });
       coordinator.start();
       tabRef.current = coordinator;
-      // `visibilitychange` is not throttled, so this is the tab's chance to give
-      // write-back up while it still can: a heartbeat timeout cannot be relied
-      // on for the same job, because the tab that would have to answer it is the
-      // one the browser has stopped waking up.
+      // `visibilitychange` fires immediately even in tabs whose heartbeat timers are throttled.
       onVisibilityChange = () =>
         coordinator.setVisibility(document.visibilityState !== "hidden");
       document.addEventListener("visibilitychange", onVisibilityChange);
     }
-    void loadHandle(getFileId()).then(async () => {
-      // Settle the fork before anything reads history or recovery: it is a
-      // property of the file we just opened, not of the doc we are editing.
-      await controller.ready();
-      // Reclaim rows left by forks this file abandoned, before anything reads
-      // history — otherwise they accumulate silently, invisible to retention.
-      await controller.reclaimAbandonedForks();
-      controller.enable();
-      const pending = await controller.checkRecovery(store.getDoc());
-      const recovered = comments ? await controller.recoveryComments() : undefined;
-      /* A conversation is unsaved work too. `checkRecovery` answers about the
-         document, and a session that only wrote comments leaves the document
-         identical to the file — which used to mean those comments were dropped
-         silently, because "nothing changed" was measured on the wrong thing. */
-      const commentsOnly =
-        !pending &&
-        recovered !== undefined &&
-        commentsChanged(comments?.loaded, recovered);
-      if (pending || commentsOnly) {
-        setRecoveredComments(recovered);
-        setPendingRecovery(pending ?? store.getDoc());
-      } else if (getLoadFailure()) {
-        // The file's document block would not parse. Offer the copy we kept
-        // before our last write; if there is none, say so plainly instead of
-        // leaving the user staring at a blank canvas with their work gone.
-        const backup = await readFileBackup(getFileId());
-        const restored = backup ? documentFromHtml(backup) : undefined;
-        if (restored) setPendingRecovery(restored);
-        else setLoadFailed(true);
-      }
-      // Re-arm write-back on reload. The handle survives in IndexedDB but its
-      // permission does not, so ask: a still-granted handle resumes silently,
-      // anything else surfaces the activation prompt instead of leaving
-      // write-back silently off with no way back in.
-      const perm = await queryWritebackPermission();
-      if (perm === "granted") {
-        // Same proof the interactive path demands, on the path that used to skip
-        // it. A granted permission only says "this browser may write to that
-        // handle" — not that the handle is the file open in this tab, and a copy
-        // of a file looks up the original's handle.
-        const check = await verifyRestoredHandle(
-          getFileId(),
-          getOpenedFileHash(),
-          openedDocName
-        );
-        if (check.ok) {
-          // `loadHandle` runs after `coordinator.start()`, so another tab may
-          // already own this file. Arming here would undo the suspension.
-          // `verifyRestoredHandle` just proved the file on disk already holds
-          // this tab's baseline, so arming write-back must not rewrite it on
-          // boot or race with async font rebaselining.
-          if (tabRef.current?.isSuperseded()) writebackWantedRef.current = true;
-          else {
-            controller.setWritebackEnabled(true, { flush: false });
-            setAutosaveStatus({ kind: "file-saved", at: new Date().toISOString(), doc: latestBaseline(store.getDoc()) });
-          }
-        } else {
+
+      restoreWritebackOnBoot({
+        store,
+        controller,
+        openedDocName,
+        commentsLoaded: comments?.loaded,
+        hasComments: Boolean(comments),
+        latestBaseline,
+        armWriteback,
+        setRecoveredComments,
+        setPendingRecovery,
+        setLoadFailed,
+        setAutosaveStatus,
+        setShowActivateAutosave,
+        setWritebackTarget
+      });
+
+      registerLaunchQueueConsumer({
+        store,
+        controller,
+        markSaved,
+        armWriteback,
+        setWritebackTarget,
+        setShowActivateAutosave
+      });
+
+      return () => {
+        if (onVisibilityChange) document.removeEventListener("visibilitychange", onVisibilityChange);
+        controller.disable();
+        controllerRef.current = null;
+        tabRef.current?.stop();
+        tabRef.current = null;
+      };
+    }, [store, fileDoc, comments]);
+
+    const rejectTarget = useCallback(
+      async (reason: string, name: string | null, forget: boolean) => {
+        if (forget) {
           setFileHandle(null);
           await forgetHandle(getFileId()).catch(() => undefined);
-          setShowActivateAutosave(true);
         }
-      } else {
-        setShowActivateAutosave(true);
-      }
-      setWritebackTarget(writebackTargetName() ?? null);
-    }).catch((err) => {
-      // This chain gates every auto-save affordance. An unhandled rejection
-      // anywhere in it — a blocked IndexedDB upgrade, a storage error — would
-      // silently remove the prompts and leave the user with no way in, so the
-      // failure has to surface both in the console and on screen.
-      console.error("FISH: auto-save startup failed:", err);
-      setShowActivateAutosave(true);
-    });
+        setPickMismatch({ reason, pickedName: name });
+      },
+      []
+    );
 
-    if (typeof window !== "undefined" && "launchQueue" in window && typeof (window as any).launchQueue?.setConsumer === "function") {
-      (window as any).launchQueue.setConsumer(async (launchParams: { files?: any[] }) => {
-        const handle = launchParams?.files?.[0];
-        if (!handle) return;
-        try {
-          setFileHandle(handle);
-          const file = await handle.getFile?.();
-          const text = await file?.text?.();
-          if (text) {
-            const writtenId = (/<meta\s+name=["']fish:fileId["']\s+content=["']([^"']+)["']/i).exec(text)?.[1];
-            if (writtenId) adoptFileId(writtenId);
-            const doc = documentFromHtml(text);
-            if (doc && computeContentHash(doc) !== computeContentHash(store.getDoc())) {
-              store.commit(doc);
-            }
-            const hash = payloadHashFromHtml(text);
-            await controller.noteFileSaved(store.getDoc(), hash);
-            lastSavedDocRef.current = latestBaseline(store.getDoc());
+    const activateAutosave = useCallback(async () => {
+      try {
+        const restored = getFileHandle();
+        if (!restored) {
+          const picked = await pickWritebackFile();
+          if (!picked.ok) return;
+          const check = await verifyPickedFile(
+            picked.handle!,
+            getOpenedFileHash(),
+            openedDocName,
+            getFileId()
+          );
+          if (!check.ok) {
+            return rejectTarget(check.reason ?? "content-mismatch", picked.name ?? null, false);
           }
-          void persistHandle(getFileId()).catch(() => undefined);
-          // The launched file already holds this document; enabling write-back
-          // must not rewrite it just to arrive at the same bytes.
-          if (tabRef.current?.isSuperseded()) writebackWantedRef.current = true;
-          else controller.setWritebackEnabled(true, { flush: false });
-          setWritebackTarget(handle.name ?? writebackTargetName() ?? null);
-          applyDocumentTitle(handle.name, store.getDoc().name);
-          setShowActivateAutosave(false);
-        } catch (err) {
-          console.warn("FISH: failed to adopt file from launchQueue:", err);
+          setPickMismatch(null);
+          setFileHandle(picked.handle!);
         }
-      });
-    }
-
-    return () => {
-      if (onVisibilityChange) document.removeEventListener("visibilitychange", onVisibilityChange);
-      controller.disable();
-      controllerRef.current = null;
-      tabRef.current?.stop();
-      tabRef.current = null;
-    };
-  }, [store, fileDoc, comments]);
-
-  const rejectTarget = useCallback(
-    async (reason: string, name: string | null, forget: boolean) => {
-      if (forget) {
-        setFileHandle(null);
-        await forgetHandle(getFileId()).catch(() => undefined);
-      }
-      setPickMismatch({ reason, pickedName: name });
-    },
-    []
-  );
-
-  // Activate silent file write-back. The user must point at the file that is
-  // already open — never "save as": a tab opened from `file://` cannot navigate
-  // to a newly created file, so auto-save would quietly rewrite a file the user
-  // is not looking at while the URL still shows the original.
-  const activateAutosave = useCallback(async () => {
-    try {
-      const restored = getFileHandle();
-      if (!restored) {
-        const picked = await pickWritebackFile();
-        if (!picked.ok) {
-          // Cancellation is not an error: keep the prompt up and let them retry.
-          if (picked.reason === "aborted") return;
+        const perm = await requestWritebackPermission();
+        if (perm !== "granted") {
+          // Drop a denied restored handle so the next retry opens the picker instead of looping.
+          if (restored && perm === "denied") {
+            setFileHandle(null);
+            await forgetHandle(getFileId()).catch(() => undefined);
+            setWritebackTarget(writebackTargetName() ?? null);
+          }
+          setShowActivateAutosave(true);
           return;
         }
-        // Read the picked file and compare it with what this tab loaded. Without
-        // this the feature is a trap: one wrong click in the picker redirects
-        // every later auto-save at a file the user is not looking at. The name
-        // is checked too — content alone cannot tell one empty shell from the
-        // next.
-        const check = await verifyPickedFile(
-          picked.handle!,
-          getOpenedFileHash(),
-          openedDocName,
-          getFileId()
-        );
-        if (!check.ok) {
-          return rejectTarget(check.reason ?? "content-mismatch", picked.name ?? null, false);
+        if (restored) {
+          const check = await verifyPickedFile(restored, getOpenedFileHash(), openedDocName, getFileId());
+          if (!check.ok) {
+            return rejectTarget(check.reason ?? "content-mismatch", restored.name ?? null, true);
+          }
         }
         setPickMismatch(null);
-        setFileHandle(picked.handle!);
-      }
-      const perm = await requestWritebackPermission();
-      if (perm !== "granted") {
-        // A restored handle the user refused would otherwise be asked about on
-        // every retry: activation skips the picker while a handle exists, so the
-        // only way back to "choose a file" is to drop it.
-        if (restored && perm === "denied") {
-          setFileHandle(null);
-          await forgetHandle(getFileId()).catch(() => undefined);
+          if (tabRef.current?.isSuperseded() !== true) {
+            const written = store.getDoc();
+            const res = await writeBackFile(fileDoc());
+            if (!res.ok) {
+              setAutosaveStatus({ kind: "file-unavailable", reason: res.reason ?? "write-failed" });
+              return;
+            }
+            await controllerRef.current?.noteFileSaved(written, res.payloadHash);
+            markSaved(written);
+            setAutosaveStatus({ kind: "file-saved", at: new Date().toISOString(), doc: latestBaseline(written) });
+          }
+          void persistHandle(getFileId()).catch(() => undefined);
+          armWriteback(controllerRef.current);
           setWritebackTarget(writebackTargetName() ?? null);
+          setShowActivateAutosave(false);
+        } catch (err) {
+          console.error("FISH: enabling auto-save failed:", err);
+          setShowActivateAutosave(true);
         }
-        setShowActivateAutosave(true);
-        return;
-      }
-      if (restored) {
-        const check = await verifyPickedFile(restored, getOpenedFileHash(), openedDocName, getFileId());
-        if (!check.ok) {
-          return rejectTarget(check.reason ?? "content-mismatch", restored.name ?? null, true);
-        }
-      }
-      setPickMismatch(null);
-      // Another tab owning this file must not receive a write from this one.
-      // The handle and permission are still worth keeping: they are what lets
-      // write-back resume when that tab leaves.
-      const superseded = tabRef.current?.isSuperseded() === true;
-      if (!superseded) {
-        // Bring the target up to date immediately, so the file and the tab agree
-        // from the first flush onward rather than only after the next edit.
-        const written = store.getDoc();
-        const res = await writeBackFile(fileDoc());
-        if (!res.ok) {
-          setAutosaveStatus({ kind: "file-unavailable", reason: res.reason ?? "write-failed" });
-          return;
-        }
-        await controllerRef.current?.noteFileSaved(written, res.payloadHash);
-        lastSavedDocRef.current = latestBaseline(written);
-        setAutosaveStatus({ kind: "file-saved", at: new Date().toISOString(), doc: latestBaseline(written) });
-      }
-      // Remembering the handle only saves the user a re-pick next time. It must
-      // never be able to block the feature: a full or unavailable IndexedDB
-      // would otherwise turn "storage is unhappy" into "auto-save is broken".
-      void persistHandle(getFileId()).catch(() => undefined);
-      if (superseded) writebackWantedRef.current = true;
-      else controllerRef.current?.setWritebackEnabled(true, { flush: false });
-      setWritebackTarget(writebackTargetName() ?? null);
-      setShowActivateAutosave(false);
-    } catch (err) {
-      // Leaving the prompt up is the right recovery, but silently is not: this
-      // is the only entry point to write-back, and a bare "nothing happened" is
-      // impossible to diagnose from the outside.
-      console.error("FISH: enabling auto-save failed:", err);
-      setShowActivateAutosave(true);
-    }
-  }, [openedDocName, rejectTarget, store, fileDoc, latestBaseline]);
+  }, [openedDocName, rejectTarget, store, fileDoc, latestBaseline, markSaved, armWriteback]);
 
   const triggerSave = useCallback(async () => {
-    // Without `showOpenFilePicker` there is no handle to arm, so ⌘S must take
-    // `saveInPlace` down its download path instead of opening a prompt that can
-    // never succeed.
     const canPickWriteback = typeof window !== "undefined" && typeof (window as any).showOpenFilePicker === "function";
     if (canPickWriteback && (showActivateAutosave || !getFileHandle())) {
       await activateAutosave();
@@ -572,33 +309,22 @@ export function useFileWriteback(
     }
     flashSaveStatus(t("app.saving"), "busy");
     const doc = fileDoc();
-    // The document the write is about to serialize. Captured here, not read
-    // after the await: an edit during the write must leave the guard saying
-    // "unsaved", or closing the tab would discard it without a prompt.
+    // Captured before awaiting the write so concurrent edits stay marked unsaved.
     const sourceDoc = store.getDoc();
     try {
       const res = await saveInPlace(doc);
       if (res.success) {
-        // Re-anchor the fork and refresh the recovery snapshot: the file now
-        // holds this content, so a later boot must not read our own write as a
-        // foreign edit, nor offer to "recover" back to the pre-save state.
         await controllerRef.current?.noteFileSaved(doc, res.payloadHash);
         if (res.method === "fsa") {
           void persistHandle(getFileId()).catch(() => undefined);
-          if (tabRef.current?.isSuperseded()) writebackWantedRef.current = true;
-          else controllerRef.current?.setWritebackEnabled(true, { flush: false });
+          armWriteback(controllerRef.current);
           setShowActivateAutosave(false);
         }
-        lastSavedDocRef.current = latestBaseline(sourceDoc);
+        markSaved(sourceDoc);
         setWritebackTarget(writebackTargetName() ?? null);
-        // The save named the file it wrote — a picker name this tab had no other
-        // way to learn, and on the download path the only file the work now has.
         applyDocumentTitle(res.filename, store.getDoc().name);
         flashSaveStatus(t("app.saved"));
       } else if (res.error === FILE_CHANGED_REASON) {
-        // ⌘S is the user's own call, but it is still a write over someone
-        // else's change: the honest answer is the same two the banner offers,
-        // not "Save failed" — which reads as a bug rather than a decision.
         clearSaveStatus();
         setFileConflict(true);
       } else {
@@ -606,294 +332,251 @@ export function useFileWriteback(
         flashSaveStatus(t("app.saveFailed"), "error");
       }
     } catch (err) {
-      // The download fallback serializes unguarded, so a throw is a real
-      // outcome here. Left uncaught it rejects into a bare `onSave` call, which
-      // leaves the status on "Saving…" — a save that never happened then reads
-      // as one that is merely slow.
       console.error("FISH: save threw:", err);
       flashSaveStatus(t("app.saveFailed"), "error");
     }
-  }, [activateAutosave, showActivateAutosave, store, fileDoc, flashSaveStatus, clearSaveStatus, latestBaseline]);
+}, [activateAutosave, showActivateAutosave, store, fileDoc, flashSaveStatus, clearSaveStatus, markSaved, armWriteback]);
 
-  /**
-   * Take the file's version, replacing this tab's edits — one undo step, and the
-   * edits are put into version history before they are replaced.
-   *
-   * The other half of the conflict. The file is the source of truth for everyone
-   * else looking at it, so arriving at what it actually holds has to be possible
-   * without reloading the tab and losing the recovery snapshot with it.
-   */
-  const loadFromDisk = useCallback(async () => {
-    const handle = getFileHandle();
-    if (!handle) return;
-    try {
-      const file = await (handle as { getFile: () => Promise<File> }).getFile();
-      const text = await file.text();
-      const doc = documentFromHtml(text);
-      if (!doc) {
-        // Unreadable is not a version to load. Refusing leaves the conflict
-        // standing; replacing the canvas with an empty document and calling
-        // that "the file's version" would be the worse answer by a distance.
-        flashSaveStatus(t("autosave.loadFromDiskUnreadable"), "error");
-        return;
-      }
-      // The writer may have replaced the whole container, `fish:fileId` stamp
-      // included, and every stored handle and recovery row is keyed by that id.
-      const writtenId = FILE_ID_META_RE.exec(text)?.[1];
-      if (writtenId) adoptFileId(writtenId);
-      // Set before the commit, which posts a change every flush reacts to: the
-      // stamp describes the file that was just read, and it must already be the
-      // baseline by the time anything can write.
-      setFileStamp(file.lastModified);
-      // Before the commit that overwrites the live document: this is what makes
-      // "my edits" a version the user can return to instead of a thing they lost.
-      await controllerRef.current?.commitVersion({
-        label: t("autosave.beforeLoadFromDisk"),
-        kind: "pre-restore"
-      });
-      setFileConflict(false);
-      setPendingRecovery(null);
-      setPreviewingId(null);
-      store.setViewDoc(null);
-      store.setReadOnly(null);
-      store.commit(doc);
-      const hash = payloadHashFromHtml(text);
-      setOpenedFileHash(hash);
-      await controllerRef.current?.noteFileSaved(store.getDoc(), hash);
-      // On screen and on disk are the same bytes again — the stamp set above is
-      // what makes the next flush write rather than report one more conflict.
-      lastSavedDocRef.current = latestBaseline(store.getDoc());
-      void persistHandle(getFileId()).catch(() => undefined);
-      writebackWantedRef.current = false;
-      if (tabRef.current?.isSuperseded()) writebackWantedRef.current = true;
-      else controllerRef.current?.setWritebackEnabled(true, { flush: false });
-      flashSaveStatus(t("autosave.loadedFromDisk"));
-    } catch (err) {
-      console.error("FISH: load from disk failed:", err);
+const loadFromDisk = useCallback(async () => {
+  const handle = getFileHandle();
+  if (!handle) return;
+  try {
+    const file = await (handle as { getFile: () => Promise<File> }).getFile();
+    const text = await file.text();
+    const doc = documentFromHtml(text);
+    if (!doc) {
       flashSaveStatus(t("autosave.loadFromDiskUnreadable"), "error");
-    }
-  }, [store, flashSaveStatus, latestBaseline]);
-
-  /** Overwrite the file with this tab's version, once, on purpose. */
-  const keepMine = useCallback(async () => {
-    const doc = fileDoc();
-    // Captured before the write, like every other save: an edit made while the
-    // write is in flight must leave the unload guard saying "unsaved".
-    const source = store.getDoc();
-    const res = await writeBackFile(doc, { force: true });
-    if (!res.ok) {
-      setAutosaveStatus({ kind: "file-unavailable", reason: res.reason ?? "write-failed" });
       return;
     }
-    await controllerRef.current?.noteFileSaved(source, res.payloadHash);
-    lastSavedDocRef.current = latestBaseline(source);
+    const writtenId = FILE_ID_META_RE.exec(text)?.[1];
+    if (writtenId) adoptFileId(writtenId);
+    setFileStamp(file.lastModified);
+    await controllerRef.current?.commitVersion({
+      label: t("autosave.beforeLoadFromDisk"),
+      kind: "pre-restore"
+    });
     setFileConflict(false);
-    writebackWantedRef.current = false;
-    if (tabRef.current?.isSuperseded()) writebackWantedRef.current = true;
-    else controllerRef.current?.setWritebackEnabled(true, { flush: false });
-    flashSaveStatus(t("app.saved"));
-  }, [store, fileDoc, flashSaveStatus, latestBaseline]);
-
-  const triggerSaveAs = useCallback(async () => {
-    flashSaveStatus(t("app.saving"), "busy");
-    const doc = fileDoc();
-    // Same capture as `triggerSave`: the new file holds this document, whatever
-    // is committed while the picker and the write are open is not in it.
-    const sourceDoc = store.getDoc();
-    const currentName = openedName || `${(doc.name || "untitled").toLowerCase().replace(/\s+/g, "-")}.fish.html`;
-    const defaultName = saveAsCopyName(currentName);
-    try {
-      const res = await saveDocAsNewFile(doc, defaultName, undefined, { freshFileId: true });
-      if (res.ok) {
-        if (res.handle) {
-          setFileHandle(res.handle);
-          if (res.fileId) adoptFileId(res.fileId);
-          // The baseline belongs to the file, and this tab now belongs to
-          // another one: keeping the old stamp would read the new file's own
-          // mtime as somebody else's edit on the very next flush.
-          await rememberFileStamp(res.handle);
-          // This tab now edits the new file: the identity check must hold picks
-          // against its name and bytes, the tab coordinator must guard its
-          // channel, and the handle belongs under its id.
-          setOpenedFileHash(res.payloadHash);
-          setDocNameOverride(res.name ?? null);
-          // The save-as has already written the new file; suppress the flush
-          // `onRegained` would otherwise issue while switching identity.
-          writebackWantedRef.current = false;
-          tabRef.current?.setFileId(getFileId());
-          void persistHandle(getFileId()).catch(() => undefined);
-          await controllerRef.current?.noteFileSaved(doc, res.payloadHash);
-          if (tabRef.current?.isSuperseded()) writebackWantedRef.current = true;
-          else controllerRef.current?.setWritebackEnabled(true, { flush: false });
-          setShowActivateAutosave(false);
-        }
-        lastSavedDocRef.current = latestBaseline(sourceDoc);
-        setWritebackTarget(res.name ?? writebackTargetName() ?? null);
-        applyDocumentTitle(res.name, store.getDoc().name);
-        flashSaveStatus(t("app.saved"));
-      } else if (res.reason === "aborted") {
-        clearSaveStatus();
-        return;
-      } else {
-        console.error("FISH: save-as failed:", res.reason ?? "unknown");
-        flashSaveStatus(t("app.saveFailed"), "error");
-      }
-    } catch (err) {
-      console.error("FISH: save-as threw:", err);
-      flashSaveStatus(t("app.saveFailed"), "error");
-    }
-  }, [openedName, store, fileDoc, clearSaveStatus, flashSaveStatus, latestBaseline]);
-
-  /**
-   * Write a copy this tab does not adopt.
-   *
-   * It must not become the write-back target: the user is still editing the
-   * original, and the copy is a one-way export. A fresh fileId is what keeps the
-   * two from colliding on one recovery snapshot and one stored handle — the copy
-   * would otherwise inherit the original's history and its file identity.
-   */
-  const triggerSaveAsReadOnly = useCallback(async () => {
-    flashSaveStatus(t("app.saving"), "busy");
-    const doc = fileDoc();
-    const currentName = openedName || `${(doc.name || "untitled").toLowerCase().replace(/\s+/g, "-")}.fish.html`;
-    try {
-      const res = await saveDocAsNewFile(doc, readOnlyCopyName(currentName), undefined, {
-        freshFileId: true,
-        readOnly: true
-      });
-      if (res.ok) {
-        flashSaveStatus(t("app.savedReadOnly"));
-        return;
-      }
-      if (res.reason === "aborted") {
-        clearSaveStatus();
-        return;
-      }
-      console.error("FISH: read-only copy failed:", res.reason ?? "unknown");
-      flashSaveStatus(t("app.saveFailed"), "error");
-    } catch (err) {
-      console.error("FISH: read-only copy threw:", err);
-      flashSaveStatus(t("app.saveFailed"), "error");
-    }
-  }, [openedName, fileDoc, clearSaveStatus, flashSaveStatus]);
-
-  /**
-   * Reset the current document to a clean blank canvas (Bento style).
-   * Confirms with the user if the document currently contains elements.
-   * Committed through `store.commit` so it is undoable via ⌘Z.
-   */
-  const triggerNewFile = useCallback(() => {
-    const doc = store.getDoc();
-    const hasContent =
-      (getActivePage(doc).children && getActivePage(doc).children.length > 0) ||
-      (doc.pages && doc.pages.some((p) => p.children && p.children.length > 0));
-    if (hasContent) {
-      if (typeof window !== "undefined" && typeof window.confirm === "function") {
-        if (!window.confirm(t("autosave.startFromScratchConfirm"))) {
-          return;
-        }
-      }
-    }
-    store.commit(createEmptyDocument());
-    flashSaveStatus(t("autosave.startedFromScratch"));
-  }, [store, flashSaveStatus]);
-
-  /**
-   * Opening the panel is entering history mode: the panel open IS the mode, so
-   * the document stops being writable from the first moment — before any row
-   * is clicked, while the view still shows the live document.
-   */
-  const openHistory = useCallback(() => {
-    setShowHistory(true);
-    store.setReadOnly("history-preview");
-    void controllerRef.current?.listVersions().then(setVersions);
-  }, [store]);
-
-  /** Leaving the panel is the whole exit: view back to live, writes back on. */
-  const closeHistory = useCallback(() => {
-    setShowHistory(false);
-    previewTokenRef.current++;
+    setFileUpdated(false);
+    seenDiskMtimeRef.current = null;
+    dismissedDiskMtimeRef.current = null;
+    setPendingRecovery(null);
     setPreviewingId(null);
     store.setViewDoc(null);
     store.setReadOnly(null);
-  }, [store]);
+    store.commit(doc);
+    const hash = payloadHashFromHtml(text);
+    setOpenedFileHash(hash);
+    await controllerRef.current?.noteFileSaved(store.getDoc(), hash);
+    markSaved(store.getDoc());
+    void persistHandle(getFileId()).catch(() => undefined);
+    writebackWantedRef.current = false;
+    armWriteback(controllerRef.current);
+    flashSaveStatus(t("autosave.loadedFromDisk"));
+  } catch (err) {
+    console.error("FISH: load from disk failed:", err);
+    flashSaveStatus(t("autosave.loadFromDiskUnreadable"), "error");
+  }
+  }, [store, flashSaveStatus, markSaved, armWriteback, setPreviewingId]);
 
-  /**
-   * Loads a version onto the canvas without restoring it. The document it
-   * returns is a read of IndexedDB: nothing about the live document, the
-   * timeline or auto-save changes, which is what makes entering and leaving a
-   * version invisible to `saveStatus`.
-   */
-  const previewVersion = useCallback(
-    async (id: string) => {
-      if (previewingId === id) return;
-      const token = ++previewTokenRef.current;
-      const doc = await controllerRef.current?.previewVersion(id);
-      if (!doc || token !== previewTokenRef.current) return;
-      setPreviewingId(id);
-      store.setViewDoc(doc);
-    },
-    [previewingId, store]
-  );
+const keepMine = useCallback(async () => {
+  const doc = fileDoc();
+  const source = store.getDoc();
+  const res = await writeBackFile(doc, { force: true });
+  if (!res.ok) {
+    setAutosaveStatus({ kind: "file-unavailable", reason: res.reason ?? "write-failed" });
+    return;
+  }
+  await controllerRef.current?.noteFileSaved(source, res.payloadHash);
+  markSaved(source);
+  setFileConflict(false);
+  setFileUpdated(false);
+  seenDiskMtimeRef.current = null;
+  dismissedDiskMtimeRef.current = null;
+  writebackWantedRef.current = false;
+  armWriteback(controllerRef.current);
+  flashSaveStatus(t("app.saved"));
+  }, [store, fileDoc, flashSaveStatus, markSaved, armWriteback]);
 
-  /** Back to the live document. The panel stays open, so it stays read-only. */
-  const exitPreview = useCallback(() => {
-    previewTokenRef.current++;
-    setPreviewingId(null);
-    store.setViewDoc(null);
-  }, [store]);
+const triggerSaveAs = useCallback(async () => {
+  flashSaveStatus(t("app.saving"), "busy");
+  const doc = fileDoc();
+  const sourceDoc = store.getDoc();
+  const defaultName = saveAsCopyName(defaultDocumentFileName(doc, openedName));
+  try {
+    const res = await saveDocAsNewFile(doc, defaultName, undefined, { freshFileId: true });
+    if (res.ok) {
+      if (res.handle) {
+        setFileHandle(res.handle);
+        if (res.fileId) adoptFileId(res.fileId);
+        await rememberFileStamp(res.handle);
+        setOpenedFileHash(res.payloadHash);
+        setDocNameOverride(res.name ?? null);
+        writebackWantedRef.current = false;
+        tabRef.current?.setFileId(getFileId());
+        void persistHandle(getFileId()).catch(() => undefined);
+        await controllerRef.current?.noteFileSaved(doc, res.payloadHash);
+        armWriteback(controllerRef.current);
+        setShowActivateAutosave(false);
+      }
+      markSaved(sourceDoc);
+      setWritebackTarget(res.name ?? writebackTargetName() ?? null);
+      applyDocumentTitle(res.name, store.getDoc().name);
+      flashSaveStatus(t("app.saved"));
+    } else if (res.reason === "aborted") {
+      clearSaveStatus();
+    } else {
+      console.error("FISH: save-as failed:", res.reason ?? "unknown");
+      flashSaveStatus(t("app.saveFailed"), "error");
+    }
+  } catch (err) {
+    console.error("FISH: save-as threw:", err);
+    flashSaveStatus(t("app.saveFailed"), "error");
+  }
+  }, [openedName, store, fileDoc, clearSaveStatus, flashSaveStatus, markSaved, armWriteback]);
 
-  /**
-   * Record that an in-place shell update wrote the current document to disk so
-   * the unload guard and autosave baseline stay in sync across the reload.
-   */
-  const noteUpdatedFile = useCallback(
-    async (payloadHash?: string) => {
-      const saved = latestBaseline(store.getDoc());
-      lastSavedDocRef.current = saved;
-      await controllerRef.current?.noteFileSaved(fileDoc(), payloadHash);
-    },
-    [store, fileDoc, latestBaseline]
-  );
+const triggerSaveAsReadOnly = useCallback(async () => {
+  flashSaveStatus(t("app.saving"), "busy");
+  const doc = fileDoc();
+  const defaultName = readOnlyCopyName(defaultDocumentFileName(doc, openedName));
+  try {
+      const res = await saveDocAsNewFile(doc, defaultName, undefined, {
+        freshFileId: true,
+        readOnly: true
+      });
+      if(res.ok) {
+        flashSaveStatus(t("app.savedReadOnly"));
+  } else if (res.reason === "aborted") {
+    clearSaveStatus();
+  } else {
+    console.error("FISH: read-only copy failed:", res.reason ?? "unknown");
+    flashSaveStatus(t("app.saveFailed"), "error");
+  }
+} catch (err) {
+  console.error("FISH: read-only copy threw:", err);
+  flashSaveStatus(t("app.saveFailed"), "error");
+}
+  }, [openedName, fileDoc, clearSaveStatus, flashSaveStatus]);
 
-  return {
-    saveStatus,
-    flashSaveStatus,
-    pendingRecovery,
-    setPendingRecovery,
-    recoveredComments,
-    showActivateAutosave,
-    openedName,
-    openedDocName,
-    otherTabActive,
-    fileConflict,
-    loadFromDisk,
-    keepMine,
-    writebackTarget,
-    loadFailed,
-    pickMismatch,
-    dismissPickMismatch: () => setPickMismatch(null),
-    versions,
-    autosaveStatus,
-    showHistory,
-    setShowHistory,
-    controllerRef,
-    triggerSave,
-    triggerSaveAs,
-    triggerSaveAsReadOnly,
-    triggerNewFile,
-    noteUpdatedFile,
-    savedAsCopyOf,
-    filePath: savedAsCopyOf ? undefined : openedFilePath(),
-    fileDirectory: savedAsCopyOf ? undefined : openedFileDirectory(),
-    activateAutosave,
-    openHistory,
-    closeHistory,
-    previewVersion,
-    exitPreview,
-    previewingId,
-    isDirty: () =>
-      lastSavedDocRef.current !== null &&
-      latestBaseline(lastSavedDocRef.current) !== latestBaseline(store.getDoc())
+const triggerNewFile = useCallback(() => {
+  const doc = store.getDoc();
+  const hasContent =
+    (getActivePage(doc).children && getActivePage(doc).children.length > 0) ||
+    (doc.pages && doc.pages.some((p) => p.children && p.children.length > 0));
+  if (hasContent) {
+    if (typeof window !== "undefined" && typeof window.confirm === "function") {
+      if (!window.confirm(t("autosave.startFromScratchConfirm"))) {
+        return;
+      }
+    }
+  }
+  store.commit(createEmptyDocument());
+  flashSaveStatus(t("autosave.startedFromScratch"));
+}, [store, flashSaveStatus]);
+
+const checkForExternalUpdate = useCallback(async () => {
+  if (checkingDiskRef.current) return;
+  checkingDiskRef.current = true;
+  try {
+    const saved = getLastSavedDoc();
+    const hasLocalEdits =
+      fileConflictRef.current ||
+      (saved !== null &&
+        shouldWarnBeforeUnload({
+          saved: latestBaseline(saved),
+          current: latestBaseline(store.getDoc()),
+          owed: controllerRef.current?.hasPendingWork() === true
+        }));
+    const outcome = await inspectExternalUpdate({
+      handle: getFileHandle(),
+      baselineStamp: fileStamp(),
+      dismissedMtime: dismissedDiskMtimeRef.current,
+      hasLocalEdits
+    });
+    if (outcome.status === "conflict") {
+      writebackWantedRef.current = false;
+      controllerRef.current?.setWritebackEnabled(false);
+      setFileUpdated(false);
+      setFileConflict(true);
+    } else if (outcome.status === "updated") {
+      seenDiskMtimeRef.current = outcome.mtime;
+      setFileUpdated(true);
+    } else if (outcome.status === "unchanged") {
+      setFileUpdated(false);
+    }
+  } finally {
+    checkingDiskRef.current = false;
+  }
+  }, [store, latestBaseline, getLastSavedDoc]);
+
+useEffect(() => {
+  if (typeof window === "undefined") return;
+  const onFocus = () => {
+    void checkForExternalUpdate();
   };
+  const onVisibility = () => {
+    if (typeof document !== "undefined" && document.visibilityState === "visible") {
+      void checkForExternalUpdate();
+    }
+  };
+  window.addEventListener("focus", onFocus);
+  document.addEventListener("visibilitychange", onVisibility);
+  return () => {
+    window.removeEventListener("focus", onFocus);
+    document.removeEventListener("visibilitychange", onVisibility);
+  };
+}, [checkForExternalUpdate]);
+
+const dismissFileUpdated = useCallback(() => {
+  dismissedDiskMtimeRef.current = seenDiskMtimeRef.current;
+  setFileUpdated(false);
+}, []);
+
+const noteUpdatedFile = useCallback(
+  async (payloadHash?: string) => {
+    markSaved(store.getDoc());
+    await controllerRef.current?.noteFileSaved(fileDoc(), payloadHash);
+  },
+  [store, fileDoc, markSaved]
+);
+
+return {
+  saveStatus,
+  flashSaveStatus,
+  pendingRecovery,
+  setPendingRecovery,
+  recoveredComments,
+  showActivateAutosave,
+  openedName,
+  openedDocName,
+  otherTabActive,
+  fileConflict,
+  fileUpdated,
+  loadFromDisk,
+  keepMine,
+  dismissFileUpdated,
+  writebackTarget,
+  loadFailed,
+  pickMismatch,
+  dismissPickMismatch: () => setPickMismatch(null),
+  versions,
+  autosaveStatus,
+  showHistory,
+  setShowHistory,
+  controllerRef,
+  triggerSave,
+  triggerSaveAs,
+  triggerSaveAsReadOnly,
+  triggerNewFile,
+  noteUpdatedFile,
+  savedAsCopyOf,
+  filePath: savedAsCopyOf ? undefined : openedFilePath(),
+  fileDirectory: savedAsCopyOf ? undefined : openedFileDirectory(),
+  activateAutosave,
+  openHistory,
+  closeHistory,
+  previewVersion,
+  exitPreview,
+  previewingId,
+    isDirty
+};
 }

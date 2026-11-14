@@ -97,7 +97,7 @@ export function SelectedColorsStrip({
     const all = getActivePage(doc).children;
     const next = applyPaintToSelection(doc, all, color, {
       type: "solid",
-      color: colorTokenColor(token, doc.activeTheme),
+      color: colorTokenColor(token, doc.activeTheme, doc.tokens),
       tokenId: token.id
     });
     if (next !== all) {

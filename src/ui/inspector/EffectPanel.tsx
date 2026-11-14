@@ -124,7 +124,11 @@ export function EffectPanel({
               if (docRef && !docRef.current.tokens?.some((t) => t.id === token.id)) {
                 docRef.current = addTokenToDoc(docRef.current, token);
               }
-              onChange({ ...effect, color: colorTokenColor(token, effectDoc?.activeTheme), tokenId: token.id }, true);
+              const latestDoc = docRef?.current || doc;
+              onChange(
+                { ...effect, color: colorTokenColor(token, latestDoc?.activeTheme, latestDoc?.tokens), tokenId: token.id },
+                true
+              );
             }}
             onDetachToken={() => {
               const { tokenId: _tokenId, ...rest } = effect as any;

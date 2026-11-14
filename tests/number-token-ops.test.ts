@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getActivePage } from "../src/core/dsl/document-ops";
+import { numberTokenValue } from "../src/core/dsl/token-value";
 import { DesignDocument, DesignElement } from "../src/core/dsl/types";
 import {
   bindNumberTokenToElement,
@@ -211,7 +212,7 @@ describe("number-token-ops", () => {
       }
     };
 
-    const bound = bindNumberTokenToElement(textEl, "fontSize", tok.id, tok.value);
+    const bound = bindNumberTokenToElement(textEl, "fontSize", tok.id, numberTokenValue(tok));
     expect(bound.tokenBindings?.fontSize).toBe(tok.id);
     expect((bound as any).style.fontSize).toBe(32);
 
@@ -334,11 +335,11 @@ describe("number-token-ops", () => {
       borderRadius: [4, 4, 4, 4]
     };
 
-    const withTl = bindNumberTokenToElement(el, "topLeftRadius", tlTok.id, tlTok.value);
+    const withTl = bindNumberTokenToElement(el, "topLeftRadius", tlTok.id, numberTokenValue(tlTok));
     expect(withTl.tokenBindings?.topLeftRadius).toBe(tlTok.id);
     expect((withTl as any).borderRadius).toEqual([10, 4, 4, 4]);
 
-    const withBoth = bindNumberTokenToElement(withTl, "topRightRadius", trTok.id, trTok.value);
+    const withBoth = bindNumberTokenToElement(withTl, "topRightRadius", trTok.id, numberTokenValue(trTok));
     expect(withBoth.tokenBindings?.topLeftRadius).toBe(tlTok.id);
     expect(withBoth.tokenBindings?.topRightRadius).toBe(trTok.id);
     expect((withBoth as any).borderRadius).toEqual([10, 20, 4, 4]);

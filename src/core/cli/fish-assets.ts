@@ -7,9 +7,10 @@ import { createId } from "../id";
 import { openverseProvider } from "../../plugins/_shared/assets/openverse-provider";
 import { setIconifyStorage } from "../../plugins/_shared/assets/iconify";
 import { lucideProvider, remixProvider, searchIconifySet } from "../../plugins/_shared/assets/iconify-provider";
+import { parseSvgIconDocument, scaleSvgPathData } from "../../plugins/_shared/assets/svg-body";
 import { dataUriBytes, embedImageBytes, embedImageUri, formatBytes } from "./image-embed";
 import type { EmbeddedImage } from "./image-embed";
-import type { AssetRef, DesignDocument, DesignElement, ImagePaint, Paint } from "../dsl/types";
+import type { AssetRef, DesignDocument, DesignElement, ImagePaint, Paint, PathElement } from "../dsl/types";
 import { getActivePage, updateActivePageElements } from "../dsl/document-ops";
 import { pageRoots, referencedAssetIds } from "../dsl/asset-usage";
 import { DOC_BLOCK_RE, readDocument } from "./doc-source";
@@ -86,6 +87,8 @@ export interface AssetsCommandOpts {
   json: boolean;
   source?: string;
   limit?: number;
+  size?: number;
+  strokeWidth?: number;
   addTo?: string;
   pick?: number;
   embed?: boolean;
@@ -98,14 +101,15 @@ export interface AssetsCommandOpts {
 
 /**
  * `./fish assets <doc.fish.html | doc.json> [--json]`
- * `./fish assets search <query> [--source openverse|lucide|ri] [--limit N] [--add-to <doc>] [--pick N] [--embed] [--to <id>] [--replace] [--json]`
+ * `./fish assets search <query> [--source openverse|lucide|ri] [--limit N] [--size N] [--stroke-width N] [--add-to <doc>] [--pick N] [--embed] [--to <id>] [--replace] [--json]`
+ * `./fish assets icon <svg...> [--size N] [--stroke-width N] [--name N] [--json]`
  * `./fish assets import <file...> <doc.fish.html> [--name N] [--to <id>] [--replace]`
  * `./fish assets embed <doc.fish.html> (--id <assetId> | --all)`
  */
 export async function assetsCommand(args: string[], opts: AssetsCommandOpts): Promise<number> {
   if (args.length === 0) {
     console.error(
-      'assets needs a document path, or "search <query>", or "import <file> <doc>", or "embed <doc>" ' +
+      'assets needs a document path, or "search <query>", or "icon <svg...>", or "import <file> <doc>", or "embed <doc>" ' +
         "(e.g. `./fish assets design.fish.html` or `./fish assets search \"coffee\" --source openverse`)"
     );
     return 2;
@@ -120,6 +124,7 @@ export async function assetsCommand(args: string[], opts: AssetsCommandOpts): Pr
     return searchAssets(query, opts);
   }
 
+  if (args[0] === "icon") return assetsIconCommand(args.slice(1), opts);
   if (args[0] === "import") return assetsImportCommand(args.slice(1), opts);
   if (args[0] === "embed") return assetsEmbedCommand(args.slice(1), opts);
 
@@ -515,6 +520,95 @@ function installDiskIconifyCache(): void {
   });
 }
 
+function resizeIconPathElement(
+  element: PathElement,
+  size: number | undefined,
+  strokeWidthOverride: number | undefined
+): PathElement {
+  const validSize = size !== undefined && Number.isFinite(size) && size > 0 ? Math.round(size * 100) / 100 : undefined;
+  const validSw =
+    strokeWidthOverride !== undefined && Number.isFinite(strokeWidthOverride) && strokeWidthOverride > 0
+      ? Math.round(strokeWidthOverride * 100) / 100
+      : undefined;
+  if (!validSize && !validSw) return element;
+
+  const baseW = Number(element.width) || 24;
+  const baseH = Number(element.height) || 24;
+  const targetW = validSize ?? baseW;
+  const targetH = validSize ? Math.round(((validSize * baseH) / baseW) * 100) / 100 : baseH;
+  const ratio = baseW > 0 ? targetW / baseW : 1;
+  const rawD = element.d ?? "";
+  const scaledD = validSize ? scaleSvgPathData(rawD, { x: 0, y: 0, width: baseW, height: baseH }, targetW, targetH) : rawD;
+  const strokes = element.strokes?.map((s) => ({
+    ...s,
+    width: validSw ?? Math.round((s.width ?? 2) * ratio * 100) / 100
+  }));
+  return {
+    ...element,
+    width: targetW,
+    height: targetH,
+    d: scaledD ?? rawD,
+    ...(strokes ? { strokes } : {})
+  };
+}
+
+function assetsIconCommand(files: string[], opts: AssetsCommandOpts): number {
+  if (files.length === 0) {
+    console.error("assets icon needs one or more .svg files (e.g. `./fish assets icon ./chevron.svg --size 16`)");
+    return 2;
+  }
+  const items: Array<{ file: string; name: string; element: DesignElement }> = [];
+  for (const file of files) {
+    if (!fs.existsSync(file)) {
+      console.error(`cannot read SVG file: ${file}`);
+      return 1;
+    }
+    const raw = fs.readFileSync(file, "utf8");
+    const parsed = parseSvgIconDocument(raw, { size: opts.size, strokeWidth: opts.strokeWidth });
+    if (!parsed) {
+      console.error(
+        `could not flatten "${file}" into one path element (gradients, mixed fill/stroke, or unsupported SVG tags)`
+      );
+      return 1;
+    }
+    const name = opts.name && files.length === 1 ? opts.name : path.basename(file, path.extname(file));
+    const element = {
+      id: createId("path"),
+      type: "path" as const,
+      name,
+      x: 0,
+      y: 0,
+      width: parsed.width,
+      height: parsed.height,
+      d: parsed.d,
+      ...(parsed.mode === "fill"
+        ? { fills: [{ type: "solid" as const, color: "#000000" }] }
+        : {
+            strokes: [
+              {
+                color: "#000000",
+                width: parsed.strokeWidth ?? 2,
+                cap: parsed.cap ?? "round",
+                join: parsed.join ?? "round"
+              }
+            ]
+          }),
+      ...(parsed.fillRule && parsed.fillRule !== "nonzero" ? { fillRule: parsed.fillRule } : {})
+    } satisfies DesignElement;
+    items.push({ file, name, element });
+  }
+  if (opts.json) {
+    console.log(JSON.stringify({ count: items.length, results: items }, null, 2));
+    return 0;
+  }
+  for (const item of items) {
+    const el = item.element as { width: number; height: number };
+    console.log(`${item.file} (${item.name}) — ${el.width}×${el.height} path:`);
+    console.log(`  ${JSON.stringify(item.element)}`);
+  }
+  return 0;
+}
+
 async function searchAssets(query: string, opts: AssetsCommandOpts): Promise<number> {
   const source = (opts.source ?? "openverse").toLowerCase();
   const limit = opts.limit && Number.isFinite(opts.limit) && opts.limit > 0 ? Math.min(20, Math.floor(opts.limit)) : 5;
@@ -543,7 +637,7 @@ async function searchAssets(query: string, opts: AssetsCommandOpts): Promise<num
       return Promise.resolve(inserted).then((res) => ({
         id: r.id,
         name: r.name,
-        element: res.element,
+        element: resizeIconPathElement(res.element as PathElement, opts.size, opts.strokeWidth),
         credit: r.credit
       }));
     });
@@ -554,7 +648,8 @@ async function searchAssets(query: string, opts: AssetsCommandOpts): Promise<num
     }
     console.log(`${provider.name} · ${resolved.length} match(es) for "${query}"`);
     for (const [idx, item] of resolved.entries()) {
-      console.log(`  [${idx}] ${item.id} (${item.name}) — 24×24 path:`);
+      const box = item.element as { width: number; height: number };
+      console.log(`  [${idx}] ${item.id} (${item.name}) — ${box.width}×${box.height} path:`);
       console.log(`      ${JSON.stringify(item.element)}`);
     }
     return 0;

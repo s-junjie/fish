@@ -1,4 +1,5 @@
-import { useRef, useState } from "preact/hooks";
+import { useMemo, useRef, useState } from "preact/hooks";
+import { toTokenMap } from "../../core/dsl/token-value";
 import type { ColorToken, DesignDocument } from "../../core/dsl/types";
 import {
   addTokenToDoc,
@@ -49,6 +50,7 @@ export function ColorTokenList({ doc, docRef, commitSnapshot }: ColorTokenListPr
 
   const activeTheme = getActiveTheme(doc);
   const modes = getDocumentModes(doc);
+  const tokenMap = useMemo(() => toTokenMap(doc.tokens), [doc.tokens]);
 
   const save = (draft: TokenEditorDraft) => {
     const current = docRef.current;
@@ -97,9 +99,9 @@ export function ColorTokenList({ doc, docRef, commitSnapshot }: ColorTokenListPr
       row={(token) => ({
         id: token.id,
         name: token.name,
-        subtitle: colorModeLabels(token, modes).join(", "),
-        preview: renderColorTokenPreview(token, activeTheme),
-        ghostSwatch: colorTokenColor(token),
+        subtitle: colorModeLabels(token, modes, tokenMap).join(", "),
+        preview: renderColorTokenPreview(token, activeTheme, undefined, tokenMap),
+        ghostSwatch: colorTokenColor(token, activeTheme, tokenMap),
         ghostLabel: token.name
       })}
       rootAttr={{ "data-color-tokens": "1" }}
@@ -121,6 +123,7 @@ export function ColorTokenList({ doc, docRef, commitSnapshot }: ColorTokenListPr
           <TokenEditorPanel
             key={editingId}
             token={editingToken}
+            tokens={doc.tokens}
             modes={modes}
             anchorRef={editorAnchorRef}
             onSave={save}

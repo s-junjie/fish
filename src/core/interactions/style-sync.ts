@@ -17,6 +17,12 @@ import {
   TextStyleDefinition
 } from "../dsl/types";
 import { colorTokenValue, numberTokenValue, StyleTables, styleMap, tokenMap } from "./style-tables";
+import {
+  collectDependentTokenIds,
+  TokenLookup,
+  tryColorTokenValue,
+  tryNumberTokenValue
+} from "../dsl/token-value";
 import { CORNER_SLOTS, numberTokenPropValue } from "./number-token-ops";
 import { topPaint } from "../dsl/paint-stack";
 import { materializeStopTokens, withGradientEndpoints } from "../dsl/gradient-stops";
@@ -59,13 +65,21 @@ export function resolvePaintStylePaints(style: PaintStyle): PaintStack {
 }
 
 /** Resolves the hex of a Color Token for the given colour mode. */
-export function resolveColorTokenHex(token: ColorToken, activeTheme?: string): string {
-  return colorTokenValue(token, activeTheme);
+export function resolveColorTokenHex(
+  token: ColorToken,
+  activeTheme?: string,
+  tokens?: TokenLookup
+): string {
+  return colorTokenValue(token, activeTheme, tokens);
 }
 
 /** Resolves the numeric value of a Number Token for the given number mode. */
-export function resolveNumberTokenVal(token: NumberToken, activeNumberMode?: string): number {
-  return numberTokenValue(token, activeNumberMode);
+export function resolveNumberTokenVal(
+  token: NumberToken,
+  activeNumberMode?: string,
+  tokens?: TokenLookup
+): number {
+  return numberTokenValue(token, activeNumberMode, tokens);
 }
 
 /**
@@ -135,10 +149,18 @@ export function cascadeTokensIntoStyles(
   const numberMap = new Map<string, number>();
   const numberMode = activeNumberMode ?? activeTheme;
 
+  const affected = filterTokenId ? collectDependentTokenIds(tokens, filterTokenId) : null;
+  const byId = tokenMap(tokens);
+
   for (const token of tokens) {
-    if (filterTokenId && token.id !== filterTokenId) continue;
-    if (token.type === "color") colorMap.set(token.id, resolveColorTokenHex(token, activeTheme));
-    else numberMap.set(token.id, resolveNumberTokenVal(token, numberMode));
+    if (affected && !affected.has(token.id)) continue;
+    if (token.type === "color") {
+      const hex = tryColorTokenValue(token, activeTheme, byId);
+      if (hex !== undefined) colorMap.set(token.id, hex);
+    } else {
+      const num = tryNumberTokenValue(token, numberMode, byId);
+      if (num !== undefined) numberMap.set(token.id, num);
+    }
   }
 
   if (colorMap.size === 0 && numberMap.size === 0) return styles.slice();
@@ -365,7 +387,7 @@ export function syncDualStorage(
 
   const resolveColorToken = (tokenId: string): string | undefined => {
     const token = tokensById.get(tokenId);
-    return token?.type === "color" ? resolveColorTokenHex(token, effectiveTheme) : undefined;
+    return token?.type === "color" ? tryColorTokenValue(token, effectiveTheme, tokensById) : undefined;
   };
 
   if (next.fills?.length) {
@@ -402,8 +424,8 @@ export function syncDualStorage(
       if (tokenId) {
         const token = tokensById.get(tokenId);
         if (!token || token.type !== "color") return s;
-        const color = resolveColorTokenHex(token, effectiveTheme);
-        if (s.color === color) return s;
+        const color = tryColorTokenValue(token, effectiveTheme, tokensById);
+        if (color === undefined || s.color === color) return s;
         rowsChanged = true;
         return { ...s, color };
       }
@@ -439,8 +461,8 @@ export function syncDualStorage(
       if (nextEf.tokenId) {
         const token = tokensById.get(nextEf.tokenId);
         if (token?.type === "color" && "color" in nextEf) {
-          const targetColor = resolveColorTokenHex(token, effectiveTheme);
-          if (nextEf.color !== targetColor) {
+          const targetColor = tryColorTokenValue(token, effectiveTheme, tokensById);
+          if (targetColor !== undefined && nextEf.color !== targetColor) {
             nextEf = { ...nextEf, color: targetColor };
             efChanged = true;
           }
@@ -451,7 +473,8 @@ export function syncDualStorage(
         for (const [prop, boundId] of Object.entries(bindings)) {
           const tok = tokensById.get(boundId);
           if (tok && tok.type === "number") {
-            const v = resolveNumberTokenVal(tok, effectiveNumberMode);
+            const v = tryNumberTokenValue(tok, effectiveNumberMode, tokensById);
+            if (v === undefined) continue;
             if ((prop === "blur" || prop === "spread") && nextEf[prop] !== v) {
               nextEf = { ...nextEf, [prop]: v };
               efChanged = true;
@@ -490,7 +513,8 @@ export function syncDualStorage(
     for (const [prop, boundId] of Object.entries(next.tokenBindings)) {
       const tok = tokensById.get(boundId);
       if (tok && tok.type === "number") {
-        const v = resolveNumberTokenVal(tok, effectiveNumberMode);
+        const v = tryNumberTokenValue(tok, effectiveNumberMode, tokensById);
+        if (v === undefined) continue;
         const cornerSlot = CORNER_SLOTS[prop];
         if (cornerSlot !== undefined) {
           const currentRadii = parseCornerRadii(updatedEl.borderRadius);
@@ -536,7 +560,10 @@ export function syncDualStorage(
         if (!colorValues) {
           colorValues = new Map();
           for (const token of tokensById.values()) {
-            if (token.type === "color") colorValues.set(token.id, resolveColorTokenHex(token, effectiveTheme));
+            if (token.type === "color") {
+              const hex = tryColorTokenValue(token, effectiveTheme, tokensById);
+              if (hex !== undefined) colorValues.set(token.id, hex);
+            }
           }
         }
         return colorValues;
@@ -545,7 +572,10 @@ export function syncDualStorage(
         if (!numberValues) {
           numberValues = new Map();
           for (const token of tokensById.values()) {
-            if (token.type === "number") numberValues.set(token.id, resolveNumberTokenVal(token, effectiveNumberMode));
+            if (token.type === "number") {
+              const num = tryNumberTokenValue(token, effectiveNumberMode, tokensById);
+              if (num !== undefined) numberValues.set(token.id, num);
+            }
           }
         }
         return numberValues;

@@ -568,6 +568,9 @@ function InspectorPanelBase({
           doc={doc}
           docRef={docRef}
           commitSnapshot={onCommitSnapshot}
+          setDoc={setDoc}
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
         />
       ) : (
         <div className="px-3 pt-1 pb-4 flex-1 overflow-y-auto space-y-2">

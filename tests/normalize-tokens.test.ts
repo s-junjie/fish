@@ -194,10 +194,16 @@ describe("fish.schema.json declares the token table", () => {
     const variants = schema.definitions.DesignToken.oneOf;
     expect(variants).toHaveLength(2);
     expect(variants.map((v) => v.properties.type.enum[0])).toEqual(["color", "number"]);
-    // Colours go through a named pattern so the 3/6/8-digit rule has one home.
-    expect(variants[0].properties.value.$ref).toBe("#/definitions/TokenColor");
+    // Colours go through a named pattern so the 3/6/8-digit rule has one home, paired with alias refs.
+    expect(variants[0].properties.value.oneOf).toEqual([
+      { $ref: "#/definitions/TokenColor" },
+      { $ref: "#/definitions/TokenAliasRef" }
+    ]);
     expect(schema.definitions.TokenColor.type).toBe("string");
-    expect(variants[1].properties.value.type).toBe("number");
+    expect(variants[1].properties.value.oneOf).toEqual([
+      { type: "number" },
+      { $ref: "#/definitions/TokenAliasRef" }
+    ]);
   });
 });
 

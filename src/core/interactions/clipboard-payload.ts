@@ -1,6 +1,7 @@
 import { AssetRef, ComponentElement, DesignDocument, DesignElement, DesignStyle, DesignToken, InstanceElement } from "../dsl/types";
 import { STYLE_BINDING_FIELDS } from "../dsl/constants";
 import { paintLayers } from "../dsl/image-fill";
+import { directTokenRefs } from "../dsl/token-value";
 import { findMasterComponent } from "./component-inventory";
 import { heldMaster } from "./detached-masters";
 import { isContainer, flattenElements } from "../geometry/tree-ops";
@@ -196,6 +197,19 @@ export function collectReferencedTokens(
     for (const id of Object.values(el.tokenBindings ?? {})) want(id);
     if (el.type === "text") {
       for (const id of Object.values(el.style?.tokenBindings ?? {})) want(id);
+    }
+  }
+  const byId = new Map(allTokens.map((t) => [t.id, t]));
+  const queue = [...wanted];
+  while (queue.length > 0) {
+    const id = queue.pop()!;
+    const tok = byId.get(id);
+    if (!tok) continue;
+    for (const refId of directTokenRefs(tok)) {
+      if (!wanted.has(refId)) {
+        wanted.add(refId);
+        queue.push(refId);
+      }
     }
   }
   return allTokens.filter((token) => wanted.has(token.id));

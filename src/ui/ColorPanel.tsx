@@ -335,7 +335,7 @@ export function ColorPanel({
 
   const bindStopToken = (token: ColorToken) => {
     if (!gradient) return;
-    const color = colorTokenColor(token, doc?.activeTheme);
+    const color = colorTokenColor(token, doc?.activeTheme, doc?.tokens);
     applyStops(
       stops.map((s, i) => (i === stopIndex ? { ...s, tokenId: token.id, color } : s)),
       true

@@ -42,7 +42,10 @@ describe("comments CLI workflow", () => {
         ]
       }
     ],
-    "tokens": [{ "id": "t1", "name": "--fish-brand", "type": "color" }]
+    "tokens": [
+      { "id": "t1", "name": "--fish-brand", "type": "color", "value": "#3B82F6" },
+      { "id": "t2", "name": "radius/card", "type": "number", "value": 12, "category": "radius" }
+    ]
   }
   </script>
   <script id="fish-comments" type="application/json">
@@ -100,6 +103,100 @@ describe("comments CLI workflow", () => {
     expect(context.instruction).toBe("Make button width 200px");
     expect(context.target.id).toBe("btn_target");
     expect(context.tokens.colors).toContain("--fish-brand");
+    expect(context.tokens.radii).toEqual(["radius/card"]);
+  });
+
+  it("returns laid-out coordinates and derived instance targets in context", () => {
+    const html = `<!DOCTYPE html>
+<html><head>
+  <script id="design-doc" type="application/json">
+  {
+    "version": "0.1",
+    "id": "doc_layout_inst",
+    "name": "Layout & Instance",
+    "pages": [
+      {
+        "id": "page_1",
+        "name": "Page 1",
+        "children": [
+          {
+            "id": "flex_row",
+            "type": "frame",
+            "x": 20,
+            "y": 30,
+            "width": 200,
+            "height": 80,
+            "display": "flex",
+            "padding": 16,
+            "children": [
+              { "id": "child_box", "type": "rect", "x": 0, "y": 0, "width": 80, "height": 24 }
+            ]
+          },
+          {
+            "id": "comp_btn",
+            "type": "component",
+            "x": 0,
+            "y": 200,
+            "width": 120,
+            "height": 40,
+            "children": [
+              { "id": "lbl", "type": "text", "content": "Go", "x": 12, "y": 8, "width": 60, "height": 20 }
+            ]
+          },
+          {
+            "id": "inst_cta",
+            "type": "instance",
+            "componentId": "comp_btn",
+            "x": 20,
+            "y": 140
+          }
+        ]
+      }
+    ],
+    "tokens": []
+  }
+  </script>
+  <script id="fish-comments" type="application/json">
+  {
+    "version": "0.1",
+    "threads": [
+      {
+        "id": "cmt_flex",
+        "pageId": "page_1",
+        "target": { "elementId": "child_box", "canvasPoint": { "x": 36, "y": 46 } },
+        "status": "open",
+        "createdAt": "2026-10-27T10:00:00Z",
+        "updatedAt": "2026-10-27T10:00:00Z",
+        "messages": [{ "id": "m1", "author": { "id": "u1", "name": "U", "role": "user" }, "content": "Nudge", "createdAt": "2026-10-27T10:00:00Z" }]
+      },
+      {
+        "id": "cmt_inst",
+        "pageId": "page_1",
+        "target": { "elementId": "inst_cta_lbl", "canvasPoint": { "x": 32, "y": 148 } },
+        "status": "open",
+        "createdAt": "2026-10-27T10:00:00Z",
+        "updatedAt": "2026-10-27T10:00:00Z",
+        "messages": [{ "id": "m2", "author": { "id": "u1", "name": "U", "role": "user" }, "content": "Rename", "createdAt": "2026-10-27T10:00:00Z" }]
+      }
+    ]
+  }
+  </script>
+</head><body></body></html>`;
+    writeFileSync(tmpFile, html, "utf-8");
+
+    const flexCtx = JSON.parse(run(["context", tmpFile, "cmt_flex"]));
+    expect(flexCtx.target.x).toBe(16);
+    expect(flexCtx.target.y).toBe(16);
+    expect(flexCtx.tokens.radii).toEqual([]);
+
+    const instCtx = JSON.parse(run(["context", tmpFile, "cmt_inst"]));
+    expect(instCtx.target.id).toBe("inst_cta_lbl");
+    expect(instCtx.instanceTarget).toEqual({
+      instanceId: "inst_cta",
+      masterNodeId: "lbl",
+      overridable: true
+    });
+    expect(instCtx.parent.id).toBe("inst_cta");
   });
 
   it("refuses to read the design document of another dialect", () => {

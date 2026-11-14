@@ -40,7 +40,9 @@ chmod +x tools/fish tools/shot.sh
 If `references/` and `tools/` are already beside this file, the kit is already present.
 
 `./tools/fish` is a launcher for `tools/fish.cjs`. If an installer did not preserve the
-executable bit, run `node tools/fish.cjs` (or `bash tools/fish`) instead.
+executable bit, run `node tools/fish.cjs` (or `bash tools/fish`) instead. When working
+from a separate project directory, invoke `<kit-dir>/tools/fish` (or `node <kit-dir>/tools/fish.cjs`)
+against that project's `.fish.html` files.
 
 `{{SKILL_PAGE_URL}}` is this page at its unversioned address; `{{KIT_STABLE_URL}}`
 is the installer's pointer to the current archive. Both move with a release; the
@@ -52,18 +54,19 @@ The kit is self-contained: Node plus a local browser for rendering. There is no 
 
 {{SKILL_REFERENCES_ONLINE}}
 
-1. **`references/workflow.md`** — how to work: `/fast` vs `/craft`, HTML import vs compact JSON, ops, verification, and the pre-flight checklist.
-2. **`references/dsl.md`** — the document model, tokens and styles, element primitives, CSS deltas, paint, typography, components, and silent traps. Read it before writing JSON.
+1. **`references/workflow.md`** — how to work: `/fast` vs `/craft`, HTML import vs compact JSON, ops, verification, comments loop, and the pre-flight checklist.
+2. **`references/dsl.md`** — the document model, tokens and styles, element primitives, CSS deltas, paint, typography, components, and silent traps. Read before writing or structurally authoring JSON.
 3. **`references/assets.md`** — only when the job needs real photos or icons: available sources, credentials, licences, link vs embedded bytes, and the image ceiling.
 
-`tools/fish.schema.json` is the published contract for accepted keys and enums. `./tools/fish check` is the executable truth. If this documentation and the engine disagree, the engine wins.
+Task routing: *answering comments (`comments pending/context`)?* Start with `workflow.md §8` and open `dsl.md` only for unfamiliar properties. *Importing HTML only?* Start with `workflow.md §2` + `dsl.md § HTML In`. *Authoring from scratch?* Read `workflow.md` + `dsl.md`.
+
+`tools/fish.schema.json` publishes one spelling per key — the CSS name where CSS has one, the DSL name where it does not. Aliases are not published; never author a second spelling. It is a large reference file: **never read it whole** — list definitions and keys with `./tools/fish schema`, search by keyword with `./tools/fish schema --find <word>`, expand a type with `./tools/fish schema <Definition>`, or look up one key with `./tools/fish schema <key>` (`--json` for a machine; element aliases resolve to the published spelling). `./tools/fish --help` is the command syntax, `./tools/fish check` is the executable truth. If this documentation and the engine disagree, the engine wins.
 
 ## Hard rules
 
-- **Never regex-replace a `.fish.html` file.** Edit through `./tools/fish apply` / `compose`, or modify only the `#design-doc` block (and `#fish-assets` when present). The runtime blocks `#fish-rt-css`, `#fish-rt` and the inline loader must stay untouched.
-- **Verify before handing over.** Always `./tools/fish check <doc>` — structure, Node only, no browser. Add `--geometry`, and `./tools/shot.sh` (`shot.ps1` on Windows) when the picture is the deliverable, once the draft is promoted to a full pass: Fast mode hands over after the structure gate alone (`references/workflow.md` §6).
-- **Never hand-draw photos, logos or portraits.** Ask the user for their own material first (moodboard, brand files, product shots, fonts); source a real asset only when they have none.
-- **Do not invent a separate design-system document.** The document's `tokens[]` and `styles[]` are the system; `./tools/fish brief` reports what already exists.
-- **Repeated structure is a component.** If a card, button, row or nav item appears more than once, make one `component` master and place `instance`s; do not duplicate frames.
-- **Theme changes live on tokens.** Declare `modes[]` + `activeTheme`, put per-mode values on colour tokens (`tokens[].modes`); number tokens have their own axis (`numberModes[]` + `activeNumberMode`) for density variants; never duplicate styles per theme.
-- **Prefer the kit's CLI over browser automation**, and keep assets embedded when the file must open offline.
+- **Version and dialect refusals are hard stops.** Never edit the version or dialect numbers, never work around a refusal, and never hand-translate a document across dialects — re-install the kit instead (`Get the kit`).
+- **Mutate `.fish.html` only through the kit CLI.** Use `./tools/fish compose`, `apply`, `import`, `assets`, or `comments` — never regex-replace or hand-edit any block inside `.fish.html` (`#design-doc`, `#fish-assets`, `#fish-comments`, `#fish-rt-css`, `#fish-rt`, or the inline loader), and never use browser automation to drive the canvas GUI.
+- **Answer comments in `#fish-comments`, never `#design-doc`.** For review threads (`comments pending`), write suggestions only with `comments suggest` / `reply` and run `./tools/fish check` on the applied result — never modify `#design-doc` behind an open editor tab.
+- **HTML `import` is a one-way seed.** Iterate on an imported `.fish.html` with `apply`; never re-run `import` over an edited file or you will discard edits.
+- **Ground media, systems, and schema in real sources.** Never approximate photos, portraits, or existing third-party marks with hand-drawn `<path>`s (ask for the user's material first in Craft mode; in Fast mode draft labelled placeholders and ask at handover — `references/workflow.md` §4 & §6). Never invent a separate design-system document (`tokens[]` and `styles[]` inside the file are the system; inspect with `./tools/fish brief` / `inspect` first). Never read `tools/fish.schema.json` whole — list with `./tools/fish schema`, search with `--find <word>`, or inspect one with `./tools/fish schema <key|Def>`.
+- **Verify before handing over.** Always run `./tools/fish check <doc>` after document edits (`--geometry`, `--audit`, and `./tools/shot.sh` / `shot.ps1` for Craft or visual deliverables; `--strict-assets` with embedded assets whenever the file must open offline).

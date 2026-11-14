@@ -101,7 +101,7 @@ function tokenName(doc: DesignDocument, tokenId: unknown): string {
   if (typeof tokenId !== "string" || !tokenId) return "";
   const token = (doc.tokens ?? []).find((t) => t.id === tokenId);
   if (!token) return ` (token ${tokenId} is missing)`;
-  const value = token.type === "color" ? colorTokenColor(token as never, doc.activeTheme) : "";
+  const value = token.type === "color" ? colorTokenColor(token as never, doc.activeTheme, doc.tokens) : "";
   return ` ← ${token.name}${value ? ` (${value})` : ""}`;
 }
 

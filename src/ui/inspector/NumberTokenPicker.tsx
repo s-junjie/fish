@@ -1,6 +1,7 @@
-import { useState } from "preact/hooks";
+import { useMemo, useState } from "preact/hooks";
 import { Check, Edit2 } from "lucide-react";
 import type { DesignDocument, NumberToken, NumberTokenCategory } from "../../core/dsl/types";
+import { isTokenAliasRef, lookupToken, rawTokenSlot, toTokenMap } from "../../core/dsl/token-value";
 import {
   countNumberTokenUses,
   createNumberToken,
@@ -16,8 +17,9 @@ import {
 import { t } from "../../i18n";
 import { Button } from "../Button";
 import { Select } from "../Select";
-import { CategoryIcon, NUMBER_TOKEN_CATEGORIES } from "../tokens/CategoryIcon";
+import { NUMBER_TOKEN_CATEGORIES } from "../tokens/CategoryIcon";
 import { STYLE_CARD_TRAILING_BG } from "./StyleCard";
+import { renderNumberTokenPreview } from "./StylePreview";
 import { NumberTokenEditorPanel } from "./NumberTokenEditorPanel";
 import { TokenPickerPopover } from "./TokenPickerPopover";
 
@@ -28,16 +30,13 @@ interface NumberTokenPickerProps {
   boundTokenId?: string;
   currentValue?: number;
   category?: NumberTokenCategory;
-  onSelect: (token: NumberToken) => void;
+  onSelect: (token: NumberToken & { value: number }) => void;
   onDetach?: () => void;
   onClose: () => void;
   onDocChange?: (newDoc: DesignDocument) => void;
   /** The undo stream for an edit saved from here, so the host sections re-render. */
   onCommitSnapshot?: (newDoc: DesignDocument) => void;
 }
-
-const NUMBER_TOKEN_OPTION_PREVIEW_CLASS =
-  "w-6 h-6 rounded-swatch bg-inset border border-rule flex items-center justify-center text-ink-dim shrink-0";
 
 export function NumberTokenPicker({
   doc,
@@ -67,17 +66,29 @@ export function NumberTokenPicker({
       ? tokens
       : tokens.filter((tok) => (tok.category ?? "spacing") === activeCategory);
 
+  const allTokens = doc.tokens || [];
+  const tokenMap = useMemo(() => toTokenMap(allTokens), [allTokens]);
+  const baseModeId = getDocumentNumberModes(doc)[0]?.id;
+
   return (
     <TokenPickerPopover<NumberToken>
       tokens={filteredByCategory}
       matches={(tok, query) => {
-        const val = getNumberTokenModeValue(tok, activeTheme);
-        return [tok.name, tok.category, `${val}px`, String(val)].join(" ").toLowerCase().includes(query);
+        const val = getNumberTokenModeValue(tok, activeTheme, tokenMap);
+        const raw = rawTokenSlot(tok, activeTheme, baseModeId);
+        const targetName = isTokenAliasRef(raw) ? lookupToken(tokenMap, raw.ref)?.name ?? "" : "";
+        return [tok.name, targetName, tok.category, `${val}px`, String(val)]
+          .join(" ")
+          .toLowerCase()
+          .includes(query);
       }}
       row={(tok) => {
         const isBound = tok.id === boundTokenId;
         const uses = countNumberTokenUses(doc, tok.id);
-        const modeVal = getNumberTokenModeValue(tok, activeTheme);
+        const modeVal = getNumberTokenModeValue(tok, activeTheme, tokenMap);
+        const raw = rawTokenSlot(tok, activeTheme, baseModeId);
+        const target = isTokenAliasRef(raw) ? lookupToken(tokenMap, raw.ref) : undefined;
+        const valSummary = target ? `\u2192 ${target.name} \u00b7 ${modeVal}` : `${modeVal}`;
         const boundMark = (
           <span className={`${STYLE_CARD_TRAILING_BG} flex h-6 w-6 items-center justify-center text-brand`}>
             <Check size={12} />
@@ -86,12 +97,8 @@ export function NumberTokenPicker({
         return {
           id: tok.id,
           name: tok.name,
-          subtitle: `${modeVal} · ${t("tokens.uses", { n: uses })}`,
-          preview: (
-            <div className={NUMBER_TOKEN_OPTION_PREVIEW_CLASS}>
-              <CategoryIcon category={tok.category} />
-            </div>
-          ),
+          subtitle: `${valSummary} · ${t("tokens.uses", { n: uses })}`,
+          preview: renderNumberTokenPreview(tok.category),
           /* The edit button wears `STYLE_CARD_TRAILING_BG` and hides until hover
              exactly like the style list's card trailing; the bound check beside
              it stays up so the binding state is never mistaken for the
@@ -157,7 +164,7 @@ export function NumberTokenPicker({
       }
       extraDeps={[activeCategory, creating, editingTokenId]}
       onSelect={(tok) => {
-        onSelect({ ...tok, value: getNumberTokenModeValue(tok, activeTheme) });
+        onSelect({ ...tok, value: getNumberTokenModeValue(tok, activeTheme, allTokens) });
         onClose();
       }}
       onClose={onClose}
@@ -176,6 +183,7 @@ export function NumberTokenPicker({
           <NumberTokenEditorPanel
             key={creating ? "new" : editingTokenId ?? "edit"}
             token={editing}
+            tokens={docRef.current.tokens}
             modes={getDocumentNumberModes(docRef.current)}
             anchorRef={panelRef}
             initialValue={editing ? undefined : currentValue}
@@ -219,7 +227,10 @@ export function NumberTokenPicker({
                 );
                 docRef.current = addTokenToDoc(current, newToken);
                 if (onDocChange) onDocChange(addTokenToDoc(doc, newToken));
-                onSelect({ ...newToken, value: getNumberTokenModeValue(newToken, activeTheme) });
+                onSelect({
+                  ...newToken,
+                  value: getNumberTokenModeValue(newToken, activeTheme, docRef.current.tokens)
+                });
                 setCreating(false);
                 onClose();
               }

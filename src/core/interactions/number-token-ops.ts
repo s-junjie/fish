@@ -10,8 +10,10 @@ import {
   DesignElement,
   DesignToken,
   NumberToken,
-  NumberTokenCategory
+  NumberTokenCategory,
+  NumberTokenValue
 } from "../dsl/types";
+import { isTokenAliasRef } from "../dsl/token-value";
 import { getActivePage } from "../dsl/document-ops";
 import { createId } from "../id";
 import { bindNumberToken, CORNER_SLOTS, numberTokenPropValue } from "../dsl/token-bindings";
@@ -30,7 +32,7 @@ export function isNumberToken(token: DesignToken): token is NumberToken {
 
 export function createNumberToken(
   name: string,
-  value: number,
+  value: NumberTokenValue,
   category: NumberTokenCategory = "spacing",
   description?: string
 ): NumberToken {
@@ -47,7 +49,7 @@ export function createNumberToken(
 export function updateNumberToken(
   token: NumberToken,
   name: string,
-  value: number,
+  value: NumberTokenValue,
   category?: NumberTokenCategory,
   description?: string
 ): NumberToken {
@@ -86,6 +88,15 @@ export function mergeNumberTokenOrder(
  */
 export function countNumberTokenUses(doc: DesignDocument, tokenId: string): number {
   let count = 0;
+  for (const token of doc.tokens ?? []) {
+    if (token.id === tokenId) continue;
+    if (isTokenAliasRef(token.value) && token.value.ref === tokenId) count++;
+    if (token.modes) {
+      for (const v of Object.values(token.modes)) {
+        if (isTokenAliasRef(v) && v.ref === tokenId) count++;
+      }
+    }
+  }
 
   for (const s of doc.styles || []) {
     if (s.styleType === "text" && s.style?.tokenBindings) {

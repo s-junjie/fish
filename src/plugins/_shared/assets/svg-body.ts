@@ -61,13 +61,13 @@ interface OpenTag {
   selfClosing: boolean;
 }
 
-const ATTR_RE = /([a-zA-Z][a-zA-Z0-9:_-]*)\s*=\s*"([^"]*)"/g;
+const ATTR_RE = /([a-zA-Z][a-zA-Z0-9:_-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
 
 function readAttrs(source: string): Record<string, string> {
   const attrs: Record<string, string> = {};
   ATTR_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
-  while ((m = ATTR_RE.exec(source))) attrs[m[1]] = m[2];
+  while ((m = ATTR_RE.exec(source))) attrs[m[1]] = m[2] ?? m[3] ?? "";
   return attrs;
 }
 
@@ -184,11 +184,9 @@ export function parseIconBody(body: string): IconGeometry | null {
     const tag = name.toLowerCase();
 
     if (STRUCTURAL.has(tag)) {
-      // A `<g>` is where these sets put the paint: Lucide's bodies are one
-      // `<g fill="none" stroke="currentColor" stroke-width="2">` around bare
-      // shapes, so its own attributes have to join what it inherits or every
-      // icon in the set reads as unpainted.
-      if (tag === "g" && !selfClosing) {
+      // `<g>` and `<svg>` hand down stroke/fill attributes to bare shapes inside
+      // them (both Iconify `<g>` bodies and standalone Lucide `<svg>` files).
+      if ((tag === "g" || tag === "svg") && !selfClosing) {
         stack.push(effective(stack, readAttrs(raw)));
       }
       continue;
@@ -244,5 +242,84 @@ export function parseIconBody(body: string): IconGeometry | null {
     strokeWidth: stroked && width !== undefined ? num(width, 2) || 2 : undefined,
     cap: stroked && cap !== undefined && CAPS.includes(cap) ? (cap as IconLineCap) : undefined,
     join: stroked && join !== undefined && JOINS.includes(join) ? (join as IconLineJoin) : undefined
+  };
+}
+
+export interface ParsedSvgIcon extends IconGeometry {
+  width: number;
+  height: number;
+}
+
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+/** Scale an already-normalized `d` string between boxes, rounding to 2dp. */
+export function scaleSvgPathData(
+  d: string,
+  from: { x: number; y: number; width: number; height: number },
+  toWidth: number,
+  toHeight: number
+): string | null {
+  const parsed = parsePathData(d);
+  if (!parsed || !(from.width > 0) || !(from.height > 0)) return null;
+  const sx = toWidth / from.width;
+  const sy = toHeight / from.height;
+  const map = (p: { x: number; y: number }) => ({
+    x: round2((p.x - from.x) * sx),
+    y: round2((p.y - from.y) * sy)
+  });
+  return serializePathData({
+    closed: parsed.closed,
+    anchors: parsed.anchors.map((a) => ({ ...map(a), ...(a.m ? { m: true as const } : {}) })),
+    segments: parsed.segments.map((s) =>
+      s.kind === "line" ? s : s.kind === "quad" ? { ...s, c: map(s.c) } : { ...s, ca: map(s.ca), cb: map(s.cb) }
+    )
+  });
+}
+
+/**
+ * Flatten a standalone `<svg>` icon file into one FISH `path` geometry,
+ * scaling coordinates and stroke width proportionally when `targetSize` is set.
+ */
+export function parseSvgIconDocument(
+  svgMarkup: string,
+  opts: { size?: number; strokeWidth?: number } = {}
+): ParsedSvgIcon | null {
+  const geom = parseIconBody(svgMarkup);
+  if (!geom) return null;
+
+  const svgTagMatch = /<svg\b([^>]*)>/i.exec(svgMarkup);
+  const svgAttrs = svgTagMatch ? readAttrs(svgTagMatch[1]) : {};
+  const vbParts = (svgAttrs.viewBox ?? "").trim().split(/[\s,]+/).map(Number);
+  const hasVb = vbParts.length === 4 && vbParts.every(Number.isFinite) && vbParts[2] > 0 && vbParts[3] > 0;
+  const vb = hasVb
+    ? { x: vbParts[0], y: vbParts[1], width: vbParts[2], height: vbParts[3] }
+    : {
+        x: 0,
+        y: 0,
+        width: num(svgAttrs.width, 24) || 24,
+        height: num(svgAttrs.height, 24) || 24
+      };
+
+  const targetW = opts.size && opts.size > 0 ? round2(opts.size) : round2(vb.width);
+  const targetH =
+    opts.size && opts.size > 0 ? round2((opts.size * vb.height) / vb.width) : round2(vb.height);
+  const needsBake = vb.x !== 0 || vb.y !== 0 || Math.abs(targetW - vb.width) > 1e-6 || Math.abs(targetH - vb.height) > 1e-6;
+  const d = needsBake ? scaleSvgPathData(geom.d, vb, targetW, targetH) : geom.d;
+  if (!d) return null;
+
+  const baseStroke = geom.strokeWidth ?? 2;
+  const scaledStroke =
+    geom.mode === "stroke"
+      ? opts.strokeWidth && opts.strokeWidth > 0
+        ? round2(opts.strokeWidth)
+        : round2(baseStroke * (targetW / vb.width))
+      : undefined;
+
+  return {
+    ...geom,
+    d,
+    width: targetW,
+    height: targetH,
+    strokeWidth: scaledStroke
   };
 }

@@ -1,4 +1,4 @@
-import { History, AlertTriangle, X, Loader2, ImageOff } from "lucide-react";
+import { History, AlertTriangle, X, Loader2, ImageOff, RefreshCw } from "lucide-react";
 import { useRef } from "preact/hooks";
 import { t } from "../i18n";
 import type { DesignDocument } from "../core/dsl/types";
@@ -35,8 +35,11 @@ interface AppNoticesProps {
    * a question rather than a toast.
    */
   fileConflict?: boolean;
+  /** The file on disk was updated while local canvas had no unsaved changes. */
+  fileUpdated?: boolean;
   onLoadFromDisk?: () => void;
   onKeepMine?: () => void;
+  onDismissFileUpdated?: () => void;
   /** Bitmaps an import could not read; the notice offers the folder that holds them. */
   pendingAssets?: PendingAssets | null;
   onAttachAssetFolder?: (files: FileList) => void;
@@ -61,8 +64,10 @@ export function AppNotices(props: AppNoticesProps) {
     busyMessage,
     historyOpen,
     fileConflict,
+    fileUpdated,
     onLoadFromDisk,
     onKeepMine,
+    onDismissFileUpdated,
     pendingAssets,
     onAttachAssetFolder,
     onDismissAssetFolder,
@@ -76,6 +81,7 @@ export function AppNotices(props: AppNoticesProps) {
     (!pendingRecovery || historyOpen) &&
     !loadFailed &&
     !(fileConflict && !historyOpen) &&
+    !(fileUpdated && !fileConflict && !historyOpen) &&
     !hintMessage &&
     !busyMessage &&
     !pendingAssets
@@ -151,6 +157,26 @@ export function AppNotices(props: AppNoticesProps) {
             </Button>
             <Button variant="ghost" size="text" onClick={onKeepMine}>
               {t("autosave.fileChangedKeep")}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {fileUpdated && !fileConflict && !historyOpen && (
+        <div
+          data-file-updated="true"
+          className="pointer-events-auto font-sans bg-surface border border-rule-strong text-ink text-ui px-3 py-1.5 rounded-dock flex items-center gap-3 animate-pop-in"
+        >
+          <div className={ROW_CLASS}>
+            <RefreshCw size={14} className="text-brand flex-none" />
+            <span>{t("autosave.fileUpdated")}</span>
+          </div>
+          <div className={ROW_TIGHT_CLASS}>
+            <Button variant="primary" size="text" onClick={onLoadFromDisk}>
+              {t("autosave.fileUpdatedReload")}
+            </Button>
+            <Button variant="ghost" size="text" onClick={onDismissFileUpdated}>
+              {t("autosave.fileUpdatedDismiss")}
             </Button>
           </div>
         </div>

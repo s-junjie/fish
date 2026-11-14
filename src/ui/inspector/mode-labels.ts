@@ -1,4 +1,5 @@
 import type { BaseToken, ColorToken, DocumentMode, NumberToken } from "../../core/dsl/types";
+import { isTokenAliasRef, lookupToken, rawTokenSlot, type TokenLookup } from "../../core/dsl/token-value";
 import {
   getColorTokenModeColor,
   getNumberTokenModeValue
@@ -20,16 +21,29 @@ function modesHoldingValue(token: BaseToken, modes: DocumentMode[]): DocumentMod
   return modes.filter((mode) => mode.id === baseModeId || token.modes?.[mode.id] !== undefined);
 }
 
-export function colorModeLabels(token: ColorToken, modes: DocumentMode[]): string[] {
+function aliasPrefix(token: ColorToken | NumberToken, modeId: string, baseModeId: string | undefined, tokens?: TokenLookup): string | undefined {
+  const raw = rawTokenSlot(token, modeId, baseModeId);
+  if (!isTokenAliasRef(raw)) return undefined;
+  const target = tokens ? lookupToken(tokens, raw.ref) : undefined;
+  return `\u2192 ${target?.name ?? raw.ref}`;
+}
+
+export function colorModeLabels(token: ColorToken, modes: DocumentMode[], tokens?: TokenLookup): string[] {
+  const baseModeId = modes[0]?.id;
   return modesHoldingValue(token, modes).map((mode) => {
-    const { hex6, alphaPct } = parseColorAlpha(getColorTokenModeColor(token, mode.id));
+    const { hex6, alphaPct } = parseColorAlpha(getColorTokenModeColor(token, mode.id, tokens));
     const hex = hex6.toUpperCase();
-    return alphaPct < 100 ? `${hex}${DOT}${alphaPct}%` : hex;
+    const resolved = alphaPct < 100 ? `${hex}${DOT}${alphaPct}%` : hex;
+    const alias = aliasPrefix(token, mode.id, baseModeId, tokens);
+    return alias ? `${alias} (${resolved})` : resolved;
   });
 }
 
-export function numberModeLabels(token: NumberToken, modes: DocumentMode[]): string[] {
-  return modesHoldingValue(token, modes).map((mode) =>
-    String(getNumberTokenModeValue(token, mode.id))
-  );
+export function numberModeLabels(token: NumberToken, modes: DocumentMode[], tokens?: TokenLookup): string[] {
+  const baseModeId = modes[0]?.id;
+  return modesHoldingValue(token, modes).map((mode) => {
+    const resolved = String(getNumberTokenModeValue(token, mode.id, tokens));
+    const alias = aliasPrefix(token, mode.id, baseModeId, tokens);
+    return alias ? `${alias} (${resolved})` : resolved;
+  });
 }

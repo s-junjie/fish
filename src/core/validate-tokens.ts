@@ -30,7 +30,12 @@
 
 import type { CompileDiagnostic } from "./compile";
 import { getActivePage } from "./dsl/document-ops";
-import type { DesignDocument, DesignElement, DesignStyle, Effect, TextElement } from "./dsl/types";
+import {
+  isTokenAliasRef,
+  resolveColorTokenValue,
+  resolveNumberTokenValue
+} from "./dsl/token-value";
+import type { DesignDocument, DesignElement, DesignStyle, DesignToken, Effect, TextElement } from "./dsl/types";
 import { STYLE_BINDING_FIELDS } from "./dsl/constants";
 import { flattenElements } from "./geometry/tree-ops";
 
@@ -212,6 +217,45 @@ export function validateTokenRefs(doc: DesignDocument): CompileDiagnostic[] {
     });
   }
 
+  const tokensById = new Map<string, DesignToken>(tokens.map((token) => [token.id, token]));
+
+  const validateTokenAliasSlot = (
+    token: DesignToken,
+    slotLabel: string,
+    modeForResolve: string | undefined,
+    raw: unknown
+  ) => {
+    if (!isTokenAliasRef(raw)) return;
+    const targetId = raw.ref;
+    const owner = token.name || token.id;
+    const target = tokensById.get(targetId);
+    if (!target) {
+      if (styleIds.has(targetId)) {
+        crossTable(targetId, slotLabel, owner, "token");
+      } else {
+        dangling(targetId, slotLabel, owner, "token");
+      }
+      return;
+    }
+    if (target.type !== token.type) {
+      out.push({
+        level: "error",
+        message: `${slotLabel} of token "${owner}" aliases "${target.name || target.id}", which is a ${target.type} token, not a ${token.type} token.`
+      });
+      return;
+    }
+    const resolution =
+      token.type === "color"
+        ? resolveColorTokenValue(token, modeForResolve, tokensById)
+        : resolveNumberTokenValue(token, modeForResolve, tokensById);
+    if (!resolution.ok && resolution.error === "cycle") {
+      out.push({
+        level: "error",
+        message: `${slotLabel} of token "${owner}" forms a circular alias chain (${resolution.chain.join(" -> ")}).`
+      });
+    }
+  };
+
   for (const token of tokens) {
     if (styleIds.has(token.id)) {
       out.push({
@@ -224,8 +268,12 @@ export function validateTokenRefs(doc: DesignDocument): CompileDiagnostic[] {
     const isColor = token.type === "color";
     const axisIds = isColor ? colorModeIds : numberModeIds;
     const axisName = isColor ? "doc.modes[]" : "doc.numberModes[]";
-    for (const mode of Object.keys(token.modes ?? {})) {
-      if (axisIds.has(mode)) continue;
+    validateTokenAliasSlot(token, "base value", undefined, token.value);
+    for (const [mode, modeVal] of Object.entries(token.modes ?? {})) {
+      if (axisIds.has(mode)) {
+        validateTokenAliasSlot(token, `mode "${mode}"`, mode, modeVal);
+        continue;
+      }
       out.push({
         level: "warning",
         message: `Token "${token.name || token.id}" has a value for mode "${mode}", which ${axisName} does not declare (it has ${listing(axisIds)}). Nothing can select that mode, so the value is unreachable.`

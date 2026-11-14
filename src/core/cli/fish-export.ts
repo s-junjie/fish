@@ -11,7 +11,7 @@ import { screenshotPlan } from "../export-request";
 
 export function exportDocument(
   file: string,
-  opts: { out?: string; format?: string; scale?: number; element?: string }
+  opts: { out?: string; format?: string; scale?: number; element?: string; page?: string }
 ): number {
   if (!fs.existsSync(file)) {
     console.error(`no such file: ${file}`);
@@ -56,8 +56,9 @@ export function exportDocument(
     // 1440×900 page and print "exported PNG" — a plausible image of the wrong region,
     // which is the one outcome worse than a failure. A missing report is a different
     // case (a shell predating the channel), so it warns rather than fails.
-    let query = `view=canvas&report=1&scale=${scale}`;
-    if (opts.element) query += `&element=${encodeURIComponent(opts.element)}`;
+    const pageParam = opts.page ? `&page=${encodeURIComponent(opts.page)}` : "";
+    const elementParam = opts.element ? `&element=${encodeURIComponent(opts.element)}` : "";
+    const query = `view=canvas&report=1&scale=${scale}${pageParam}${elementParam}`;
 
     const domOutput = runBrowser(
       browser,
@@ -88,9 +89,11 @@ export function exportDocument(
       }
     }
 
-    if (opts.element && !reportMatch) {
+    if ((opts.element || opts.page) && !reportMatch) {
       console.error(
-        `${file}: this shell publishes no ?report channel, so an element crop cannot be aimed — rebuild the document from this kit's blank.fish.html`
+        opts.element
+          ? `${file}: this shell publishes no ?report channel, so an element crop cannot be aimed — rebuild the document from this kit's blank.fish.html`
+          : `${file}: this shell publishes no ?report channel, so --page cannot be verified — rebuild the document from this kit's blank.fish.html`
       );
       return 1;
     }
@@ -117,7 +120,7 @@ export function exportDocument(
         `--force-device-scale-factor=${scale}`,
         `--window-size=${windowSize.replace("x", ",")}`,
         `--screenshot=${finalOutResolved}`,
-        `file://${absDoc}?view=canvas${originParam}`
+        `file://${absDoc}?view=canvas${pageParam}${originParam}`
       ],
       {
         step: "screenshot",

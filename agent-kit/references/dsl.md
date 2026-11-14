@@ -4,71 +4,33 @@ This reference is for agents authoring FISH single-file HTML documents (`*.fish.
 
 ## Reference & Canonical Schema
 
-Inspect `templates/blank.fish.html` for the container shape.
+Inspect `templates/blank.fish.html` for the container shape (`#design-doc`, `#fish-assets`, `#fish-comments` hold document data; `#fish-rt-css`, `#fish-rt`, and the inline loader are shell-owned — mutate only through `./tools/fish`).
 
 Three layers, in order of authority:
 
 1. **`fish check` / the normalizer** — the executable truth.
-2. **`tools/fish.schema.json`** — the published contract for accepted keys and enums. It is descriptive, not the runtime validator.
-3. **This document** — usage, CSS deltas and traps. It is not an exhaustive field list; if it disagrees with the schema or the engine, the schema/engine wins and this file is the bug.
-
-## Verification & CLI Tooling
-
-Verify structural integrity, layout geometry, and visual rendering with the kit CLI:
-
-```bash
-./tools/fish import page.html --out design.fish.html # HTML page → editable design (the fastest way in; see "HTML In" below)
-./tools/fish brief design.fish.html           # Inspect styles (binding counts + literal gaps), components, fonts, assets
-./tools/fish compact design.fish.html         # Emit compact JSON without HTML runtime shell
-./tools/fish assets design.fish.html          # List doc.assets[]
-./tools/fish assets search "coffee" --source openverse --add-to design.fish.html --embed --to hero # Search & embed photography (--to fills an element in the same run)
-./tools/fish assets import ./hero.jpg design.fish.html --name Hero --to hero_rect # Local file → embedded asset (the only path for local files), filled in one step
-./tools/fish check design.fish.html           # Validate schema & diagnostics (Node, no browser)
-./tools/fish check design.fish.html --geometry # Verify layout bounds, overflow & clipped nodes
-./tools/fish check design.fish.html --audit   # Measure the GLYPHS in a headless browser: alignment, ink centring, group alignment, empty boxes
-./tools/fish check design.fish.html --audit --audit-tolerance 3 # Same, graded at 3px instead of 1px (graphic layouts)
-./tools/fish check design.fish.html --strict  # Strict mode: fail on design warnings too
-./tools/fish check design.fish.html --strict-assets # Strict assets: fail on any asset still left as a URL
-./tools/fish apply ops.json design.fish.html  # Apply macro-ops in place (--compact supported)
-./tools/fish compose design.json templates/blank.fish.html --out design.fish.html # Assemble JSON into shell
-./tools/fish export design.fish.html --out out.png                                 # Headless raster PNG export
-./tools/shot.sh design.fish.html out.png --element hero-title --scale 2            # Capture element + out.report.json diagnostics
-./tools/shot.ps1 design.fish.html out.png -Element hero-title -Scale 2             # Same on Windows (PowerShell)
-```
+2. **`tools/fish.schema.json`** — the published contract: one spelling per key, the one the file writes. Aliases are not published. It is a large reference file: instead of loading it whole, run `./tools/fish schema` to list definitions and keys, `--find <word>` to search descriptions/enums, or `./tools/fish schema <key|Def>` (`--json` for a machine) to inspect one. It is descriptive, not the runtime validator.
+3. **This document** — DSL structure, tokens/styles, element primitives, CSS deltas, silent traps, and `--geometry`/`--audit` diagnostic definitions. CLI command syntax lives in `./tools/fish --help`; end-to-end authoring workflows live in `workflow.md`. If this file disagrees with the schema or engine, the schema/engine wins.
 
 ### HTML In — Seed vs Embed
 
-Two ways HTML enters a document, and only one of them produces something you can edit:
+- **`fish import page.html` (authoring seed)**: measures rendered flex/grid/text in headless Chromium into editable DSL elements (`workflow.md §2`). Page `id` attributes (`A-Za-z0-9_-`) become element `id`s (collisions or invalid chars mint new ids listed in `unmapped`; fixed-viewport; baked positions listed in `downgraded`). Seed only — never re-import over an edited `.fish.html`.
+- **`type: "html"` (view-only iframe)**: displays external `src` or inline `srcdoc` with optional `posterAssetId`; contents are not FISH elements, cannot be edited, and drop from static SVG/PNG exports.
 
-- **`fish import page.html --out design.fish.html` — the primary way in.** A real browser renders the page and the layout is measured, so flex, grid, wrapping and font metrics come out as the page actually shows them — not from re-parsing CSS. The result is an **ordinary editable `*.fish.html`**: every element is a normal DSL element, `fish apply` edits it, `fish check` verifies it, and from then on THIS file is the source. The command prints what survived the trip (`elementCount`, `maxDelta`, `downgraded`, `unmapped`, missing assets) — read it before assuming the page came across whole. Known deltas: a fixed viewport (media queries are not expressed), baked coordinates where auto-layout could not be recovered (listed under `downgraded`), and remote assets that must be fetched with `fish assets`.
-  - **HTML is a seed, never a round-trip.** After importing, iterate with `fish apply` on the document. Re-importing the page after edits discards them — there is no merge, so never re-run `import` to "update" a document you have changed.
-  - **The page's `id` attributes become the element ids.** Write `id="hero_img"` and that is the handle afterwards: `fish assets import ./hero.jpg design.fish.html --to hero_img`, `{"op": "patch", "targetId": "hero_img", ...}`. Uniqueness is document-wide, so an id the target document already holds is not reused — that element mints its own and the import report names it under `unmapped`, as it does for characters an id cannot carry (`A-Za-z0-9_-` survive).
-- **`type: "html"` embed — view-only, niche.** An `HtmlEmbedElement` frames a live page (`src`) or inlines one (`srcdoc`) as an iframe on the canvas, with a `posterAssetId` snapshot for resting state. You can look at it; nothing inside it is a FISH element, so nothing inside it can be selected, styled, or edited. Use it only to show a reference page beside your work. When the goal is a design you can keep editing, use `fish import`.
+### Diagnostics (`check --geometry` & `check --audit`)
 
-### Layout Geometry Diagnostics (`check --geometry`)
-- **overflow**: In-flow child extends beyond container content box (commonly caused by text lacking a width mode).
-- **clipped**: a child's painted box — turn included, so a vertical label is measured by the column it occupies — is cut by a parent whose `overflow` clips (`hidden` or `auto`).
-- **zero-size**: Container with children and paint collapsed to 0px on an axis (`warning`).
-- **unused-space** (`info`): the mirror of overflow — a container that stacks downwards ends well short of a fixed height it was given, which is usually a pixel height written where `hug` was meant.
-- **guide-degenerate** (`warning`): a layout guide that draws nothing — `count: 0`, `size: 0`, a `margin` that leaves no room, or a `stretch` whose gutters eat the box. The panel would still list it, and the canvas would show no ruler at all.
-
-These are measurements, not verdicts: each names the DSL way to say "I meant that", and only `zero-size` and `guide-degenerate` are warnings. Runs in Node, no browser.
-
-### Text Ink Audit (`check --audit`)
-`--geometry` can be satisfied by a page whose every label is pinned to the left edge of its box: nothing in the document is wrong, only the picture. `--audit` opens the file in a headless browser and measures the glyphs. It needs a browser and a shell built with the report channel (rebuild `blank.fish.html`); a shell without it reports `NOT RUN`, never "0 findings".
-
-- **align-not-applied** / **vertical-align-not-applied**: the file asks for one alignment and the computed style returns another. This is read from the RAW `#design-doc` block, so it still fires when normalization — not the renderer — is what ate the value. The vertical axis is stored as `vertical-align` and painted as `justify-content` on the line container, so the two are compared through one map (`middle` ↔ `center`, `top` ↔ `flex-start`) rather than literally.
-- **ink-not-centred** / **ink-not-right** / **ink-not-centred-y**: the alignment was applied and the glyphs still miss the box centre / right edge / vertical centre by more than 1px. Legal CSS that produces the wrong frame: a container narrower than the box, a transform that moved the line, tracking the browser reserves but the ink does not fill. The y rule is gated on the file: it fires only when the layer CLAIMED the middle, because a box taller than its line is top-aligned by default and that is a legitimate document.
-- **group-not-centred** (`warning`): a label does not share a centre with the icon beside it. "Beside" is a stated relationship, not a nearest-neighbour search: the two boxes must be on one line, within a gutter of each other horizontally, comparable in height, and neither a surface the text sits on (an image, a gradient, a blurred or blended layer) nor a layer covering half the parent — a full-bleed texture is a sibling of everything and a partner of nothing. No qualifying sibling means no finding: a row is not an anchor, and a line that belongs in the middle of its own box is `ink-not-centred-y`'s claim, read from the file rather than guessed from a flex line.
-- **no-ink**: the box holds text and paints none of it.
-- A `textPath` has no line box and is reported as skipped, with the reason. Empty text boxes are skipped silently: a spacer is a legitimate box.
-- **The default grade is 1px.** On a poster or a cover that is tighter than the intent — `--audit-tolerance N` grades at N canvas px (0.25–16, scaled to screen px by the measured zoom) when a pixel is not the unit you are working in.
-
-### Headless Protocol
-- `?view=canvas`: Viewport-uncull artboard render.
-- `?report=1&element=<id>&scale=N`: Emits `<script id="fish-report">` with `repairs`, `validate`, `layout` (the coordinates auto-layout ignored, when any) and `element` bounds.
-- Use `chrome --headless --dump-dom "file://...?report=1"` or `./tools/shot.sh` to read reports.
-- **Never regex-replace `*.fish.html` manually.** Only modify `#design-doc` (and `#fish-assets` when present). The runtime blocks `#fish-rt-css`, `#fish-rt` and inline loader must remain untouched.
+- **`--geometry` (Node, no browser)**:
+  - `overflow` — in-flow child extends beyond container content box (often text missing a width mode).
+  - `clipped` — child painted box (including rotation) is clipped by an ancestor with `overflow: "hidden" | "auto"`.
+  - `zero-size` (`warning`) — painted container with children collapsed to `0px` on an axis.
+  - `unused-space` (`info`) — downward stack ends well short of a fixed `height` (prefer `fit-content`).
+  - `guide-degenerate` (`warning`) — layout guide renders no bands/grid (`count: 0`, `size: 0`, `margin` leaves no room, or gutters eat box).
+- **`--audit` (headless browser + report channel; reports `NOT RUN` on shells without it)**:
+  - `align-not-applied` / `vertical-align-not-applied` — raw `#design-doc` alignment differs from computed style (vertical compares stored `vertical-align` against flex `justify-content`: `middle ↔ center`, `top ↔ flex-start`).
+  - `ink-not-centred` / `ink-not-right` / `ink-not-centred-y` — glyph ink misses box centre/edge by > tolerance (`vertical` fires only when vertical alignment was explicitly claimed).
+  - `group-not-centred` (`warning`) — label misses centre of a same-line companion icon (within one gutter, comparable height, excluding background/full-bleed textures).
+  - `no-ink` — text box has content but renders no visible ink (`textPath` is skipped with reason; empty boxes are skipped).
+  - **Tolerance**: defaults to `1px`; pass `--audit-tolerance N` (`0.25–16` canvas px) for graphic layouts.
 
 ## Document Structure
 
@@ -129,7 +91,7 @@ Five consequences worth knowing before authoring:
 - **A style has no `modes`.** A style that must change per mode follows a token: `paints[0].tokenId`, `style.tokenBindings`, `effects[].tokenId`. The chain resolves token → style → layer.
 - **A one-solid paint style is a legal style** — but if the thing you are naming IS the colour, use a colour token. The UI only creates tokens for single colours.
 - **`styleType: "number"` and `modes` on a style are not read.** Number values belong in `doc.tokens[]`; a style changes per mode by following a token.
-- **There are no alias tokens** (`--a: var(--b)`). Express one with a style that follows a token.
+- **Alias tokens are direct, same-type references.** Any `tokens[].value` or `tokens[].modes[modeId]` slot may hold `{ "ref": "tok_..." }` pointing to another token of the same `type` (`color → color`, `number → number`), forming a DAG (no cycles, no modifiers/expressions). When authoring by hand, write `"$name"` (id, exact name, or slug) in that slot — `normalize` expands it to `{ "ref": "<id>" }`.
 
 **Referencing** (the value stays materialised beside the id; the engine rewrites it in the same commit when the token changes):
 
@@ -150,12 +112,12 @@ An id is minted (`tok_<replica>_<time>_<n>`), so a hand-written document cannot 
 
 ```jsonc
 { "type": "frame", "display": "flex",
-  "gap": "$space-md", "padding": "$space-lg", "borderRadius": "$radius-card",
+  "gap": "$space-md", "padding": "$space-lg", "border-radius": "$radius-card",
   "background": "$color-surface", "border": "1px solid $color-border" }
 ```
 
 - **What `$x` may be**: the token id, its exact `name` (`$color/surface`), or its slug — same name lower-cased with `/` and spaces folded to `-` (`$color-surface`). Id first, then name, then slug; two tokens landing on one slug is reported, never guessed.
-- **Where it is read**: colour — `background`, `backgroundColor`, `color`, `borderColor`, the colour inside `border`, and `fills[i].color` / `strokes[i].color` / `effects[i].color`. Number — `gap`, `row-gap`, `column-gap`, `padding`, `borderRadius` and the four corner radii, `strokeWidth`, `fontSize`, `lineHeight`, `letterSpacing`.
+- **Where it is read**: colour — `background`, `color`, the colour inside `border`, and `fills[i].color` / `strokes[i].color` / `effects[i].color`. Number — `gap`, `row-gap`, `column-gap`, `padding`, `border-radius` and the four corner radii, `stroke-width`, `font-size`, `line-height`, `letter-spacing`.
 - **What it writes**: the reference AND the value, in the active modes — the same pair the inspector writes when you bind a token (`fills[].tokenId` + `color`, `tokenBindings` + the number). The stored file never contains `$`.
 - **`tokenId` and `tokenBindings` accept a name too**, so `"tokenBindings": { "gap": "space/md" }` resolves to the same entry without you knowing its id.
 - **Not supported**: `var(--x)` (that is the document's `variables` table, a different thing — `var()` is substituted on load and creates no style), a token inside a per-side `border-top` (one colour covers every side; write it in `border`), a token inside a `boxShadow` string (write the shadow as an `effects[]` entry with `color` + `tokenId`), `width` / `height` (they belong to `sizing`), and a token inside a shape value (`padding: { "top": "$x" }`).
@@ -214,11 +176,11 @@ All scene nodes belong to one of these types:
 | `componentSet` | `children`, `name`, `variantGroupProperties`, auto-layout keys | Container for component variants. Holds `component` children only; opt into Auto-Layout (`display: flex` / `grid`) or omit `display` for free-form positioning. |
 | `instance` | `componentId`, `width`, `height`, `sizeOverride`, `overrides` (+ base element keys) | Renders master subtree; carries no `children`. As a canvas element, the instance itself supports all standard transforms (`rotate`, `scale`), coordinates, opacity, and paint. `componentId` must point at a `type:"component"` node — a `frame` is not a master and renders as a dashed empty box. An omitted width/height is copied from the master. |
 | `text` | `content`, `style`, `spans`, `onPath` | Text element. Glyphs paint via `fills` (default black). |
-| `rect` | `fills`, `strokes`, `border-radius`, `cornerSmoothing` | Rectangle / card shape. `cornerRadius` is an alias. |
+| `rect` | `fills`, `strokes`, `border-radius`, `cornerSmoothing` | Rectangle / card shape. |
 | `ellipse` | `fills`, `strokes`, `sweep`, `startAngle`, `innerRadius`, `gap` | Ellipse, pie slice, donut, gauge. |
-| `polygon` | `sides` (3..24), `cornerRadius`, `cornerSmoothing`, `fills`, `strokes` | Regular polygon. |
-| `star` | `points` (3..24), `innerRadius` (0..0.99), `cornerRadius`, `cornerSmoothing`, `fills`, `strokes` | Regular star. `points` counts spikes. |
-| `path` | `d`, `fills`, `strokes`, `fillRule` | Freeform vector path. |
+| `polygon` | `sides` (3..24), `border-radius`, `cornerSmoothing`, `fills`, `strokes` | Regular polygon. |
+| `star` | `points` (3..24), `innerRadius` (0..0.99), `border-radius`, `cornerSmoothing`, `fills`, `strokes` | Regular star. `points` counts spikes. |
+| `path` | `d`, `fills`, `strokes`, `fill-rule` | Freeform vector path. |
 | `line` | `dx`, `dy`, `strokes` | Line segment from `(x, y)` to `(x+dx, y+dy)`. |
 | `arrow` | `dx`, `dy`, `strokes` | Vector arrow with head at `(x+dx, y+dy)`. |
 | `video` | `assetId`, `autoplay`, `loop`, `muted`, `controls`, `border-radius` | Embedded or external video player. |
@@ -226,9 +188,13 @@ All scene nodes belong to one of these types:
 
 ## CSS-Diff (How FISH Differs From Standard CSS)
 
-FISH reads a fixed subset of CSS. This document names the common surface and the known deltas; it is not an exhaustive key list. The authoritative accepted surface is the normalizer and `tools/fish.schema.json`; when unsure, run `fish check`, which reports an unknown property instead of guessing.
+FISH reads a fixed subset of CSS. This document names the common surface and the known deltas; it is not an exhaustive key list. The authoritative accepted surface is the normalizer and `tools/fish.schema.json` — run `./tools/fish schema` to list definitions/keys, `--find <word>` to search, or `./tools/fish schema <key|Def>` instead of reading that file whole; when unsure, run `fish check`, which reports an unknown property instead of guessing.
 
-**Spelling.** Write a property the way CSS spells it (`grid-column`) or the way JavaScript does (`gridColumn`) — both are read, and so are `border-radius` / `borderRadius` alike. A key in `snake_case` is refused by name. A declaration the engine cannot carry is reported as a dropped property; nothing is accepted and then quietly ignored.
+**Spelling — one per key.** The file speaks CSS. Write the CSS property name where CSS has one (`border-radius`, `flex-direction`, `font-size`), and the DSL name only where CSS has no equivalent (`layoutGuides`, `componentId`, `tokenBindings`). `tools/fish.schema.json` publishes exactly that one spelling; `./tools/fish schema <key>` inspects it and resolves any element alias you may have seen in an imported or older file.
+
+The other spellings are **input-only aliases**: the normalizer accepts them so imported pages and legacy documents still load, but they are never written back and are not in the schema. Do not author them. Two places use internal field names instead of element keys and are the exception — `overrides[].property` and `tokenBindings` keys (`borderRadius`, `borderTopLeftRadius`) name a field inside the master/binding, not a key on the element.
+
+A key in `snake_case` is refused by name. A declaration the engine cannot carry is reported as a dropped property; nothing is accepted and then quietly ignored.
 
 ### 1. Coordinates & Box Model
 - **Local Coordinate Convention**: Top-level artboards sit at canvas `(x, y)`. All children of `frame` and `component` use **local coordinates relative to parent top-left `(0, 0)`**. Moving a parent never alters child coordinates.
@@ -265,7 +231,7 @@ Explicit sizing is declared via `sizing: { width?, height? }`; size bounds are C
 - **Text / CSS features**: `font` shorthand, `text-decoration-line`, `text-decoration-color`, `word-spacing`, `text-indent`, `word-break`, `oblique`, pseudo-elements, media queries, `scroll-snap`, `position: sticky` / `fixed` while scrolling.
 
 ### What this dialect has and CSS does not
-`component` / `variant` / `instance` with restricted `overrides`, `cornerSmoothing` (squircle), text on a path, `ellipse` arcs (`sweep` / `startAngle` / `innerRadius` / `gap`), `polygon` / `star` primitives, liquid glass, procedurally generated edge breaks (`edge`: torn, scallop, zigzag), slide transitions, multi-page documents, sibling masking, per-layer `blendMode` + `opacity`, a scroll position (`scroll-x` / `scroll-y`, which CSS keeps as DOM state rather than as a property).
+`component` / `variant` / `instance` with restricted `overrides`, `cornerSmoothing` (squircle), text on a path, `ellipse` arcs (`sweep` / `startAngle` / `innerRadius` / `gap`), `polygon` / `star` primitives, liquid glass, procedurally generated edge breaks (`tear`: torn, scallop, zigzag), slide transitions, multi-page documents, sibling masking, per-element `mix-blend-mode` + per-layer `blendMode` + `opacity`, a scroll position (`scroll-x` / `scroll-y`, which CSS keeps as DOM state rather than as a property).
 
 ### Silent traps
 A CSS spelling can be accepted, ignored, or stored differently:
@@ -278,12 +244,12 @@ A CSS spelling can be accepted, ignored, or stored differently:
 - **`fills` is bottom-first, `background` is top-first.** `fills[0]` paints underneath and the last entry paints on top, so a stack written from CSS intuition is upside down. A `background` STRING is CSS order (first listed on top) and is reversed on the way in — which is exactly why the array written by hand is the trap, not the string.
 - **`scale` is a mirror, not a size.** `"-1 1"` / `"1 -1"` flip an axis; any magnitude other than `1` is refused and reported, because a bigger box is `width` / `height`, not a transform.
 - **`line-height` numbers are unitless multipliers, not px.** `lineHeight: 1.4` means `1.4 * fontSize`. A bare number `27` on a 23px font resolves to `23 * 27 = 621px` and fails height check; a hug-height text hides that overflow, so `check` reports any bare number above `4` by name. Write `"27px"` for absolute pixels.
-- **`path` commands (`d`) are stored as written.** `width` / `height` are its box, not a scale, so a `d` authored for 24×24 inside a 48px box draws in the top-left quarter. Write `viewBox: "0 0 24 24"` and normalize bakes the scale into `d` once — the key itself is not stored, so `d` is still the raw geometry afterwards. Without it, author `d` in the target size. Resizing the LAYER — a canvas drag, the Scale tool, or `apply` patching `width`/`height` — bakes the factor into `d` as well, so patch a path's box instead of hand-transforming its commands. A `d` that covers under a third of its box is reported as an `info`, because an outline left behind by a box edit is otherwise invisible.
+- **`path` commands (`d`) are stored as written.** `width` / `height` are its box, not a scale, so a `d` authored for 24×24 inside a 48px box draws in the top-left quarter. Write `viewBox: "0 0 24 24"` and normalize bakes the scale into `d` once — the key itself is not stored, so `d` is still the raw geometry afterwards. Without it, author `d` in the target size (or generate via `./tools/fish assets icon <file.svg> --size N` / `--source lucide --size N`). Scaling a 24×24 outline icon down to `12`–`16px` keeps visual Lucide proportion only when `strokes[].width` scales proportionally (`strokeWidth * (size / 24)`), because `viewBox` baking scales geometry without mutating strokes. Resizing the LAYER — a canvas drag, the Scale tool, or `apply` patching `width`/`height` — bakes the factor into `d` as well, so patch a path's box instead of hand-transforming its commands. A `d` that covers under a third of its box is reported as an `info`, because an outline left behind by a box edit is otherwise invisible.
 - **A top-level frame's name is editor chrome, not artwork.** The canvas paints it above the frame while you edit; no export and no `?view=canvas` render carries it. Wrapping a design in an extra artboard frame to hide the name changes nothing — and the name is still editable in the Layers panel.
 
 ## Layout Guides
 
-A guide is a **ruler** drawn over a frame: nothing is placed into it, and the layout pass never reads it — no child's `x` / `y` / `width` changes because a guide exists. It is Figma's "layout grid", on the same node (`layoutGuides`; Figma calls the field `layoutGrids`). Frame and component only: a `componentSet` is fitted to its variants on load so it has no stable box, and an instance's geometry belongs to its master. Both are reported, not silently dropped.
+Editor-only rulers drawn over `frame` and `component` nodes (`layoutGuides`; layout ignores them, never exported/shown in `?view=canvas`, snaps drags/draws inside that frame only). `componentSet` and `instance` reject guides (reported, not dropped quietly).
 
 ```jsonc
 "layoutGuides": [
@@ -295,21 +261,17 @@ A guide is a **ruler** drawn over a frame: nothing is placed into it, and the la
 
 | key | applies to | meaning |
 |---|---|---|
-| `kind` | all | `columns` \| `rows` \| `grid`. Required. |
-| `count` | columns, rows | How many bands. Required. A grid derives its count from the box. |
-| `align` | columns, rows | `start` \| `center` \| `end` \| `stretch` (default `stretch`). UI labels follow the axis: Left/Center/Right, Top/Middle/Bottom. |
-| `width` / `height` | columns / rows | One band's size. Required when `align` is not `stretch`. |
-| `size` | grid | One cell's side. Required. |
-| `gutter` | columns, rows | Space between bands. Default `0`. |
-| `margin` | columns, rows | How far the set is inset **along the axis it measures** — columns: left/right, rows: top/bottom. Default `0`. |
-| `color` | all | `#RRGGBB` / `#RRGGBBAA` — Figma's colour and opacity in one alpha byte. Default `#FF00001A`. |
-| `visible` | all | `false` hides it. Omitted means drawn. |
+| `kind` | all | `columns` \| `rows` \| `grid` (required). |
+| `count` | columns, rows | Number of bands (required). Grid derives count from box. |
+| `align` | columns, rows | `start` \| `center` \| `end` \| `stretch` (default `stretch`). |
+| `width` / `height` | columns / rows | Band size; required unless `align: "stretch"`. |
+| `size` | grid | Cell size (required). |
+| `gutter` | columns, rows | Gap between bands (default `0`; ignored by `grid`). |
+| `margin` | columns, rows | Axis inset: both ends for `stretch`, starting edge only (`left`/`top`) for `start`/`center`/`end` (default `0`; ignored by `grid`). |
+| `color` | all | `#RRGGBB` / `#RRGGBBAA` (default `#FF00001A`). |
+| `visible` | all | `false` hides guide (default drawn). |
 
-Two rules for `margin`, and they are the whole of it: with `stretch` it insets **both** sides; with `start` / `center` / `end` it insets only the **starting** side (left/top), because the set is aligned to that edge. It only ever acts on the axis the guide measures — a column band still runs the full height of the box, and a row band the full width. `grid` has no `gutter` / `margin` at all — it is a tiling from the box origin, clipped by the box, exactly as Figma's Grid panel (Size and Colour only) describes it.
-
-Guides are also a **snap target**: a drag and a newly drawn shape take the band edges of every column / row guide, and a `grid`'s pitch (which makes an 8pt grid quantise the drag — that is what the author put it there for). Only the frame the gesture is **inside** contributes: a ruler on the artboard next door is a different drawing. They are editor furniture otherwise: never exported, never in a thumbnail, never in `?view=canvas`.
-
-A frame's guides can be saved as a `layoutGuide` style (`doc.styles[]`, `guides: LayoutGuide[]`) and applied to another frame; applying copies the array, so editing the style never moves a frame that has not re-applied it.
+Saved `layoutGuide` styles (`doc.styles[]`, `guides: LayoutGuide[]`) copy by value when applied.
 
 ## Paints, Strokes & Fills
 
@@ -349,18 +311,15 @@ A frame's guides can be saved as a `layoutGuide` style (`doc.styles[]`, `guides:
 
 - **Effects**: `effects: [{ type: "drop-shadow" | "inner-shadow" | "layer-blur" | "backdrop-blur" | "liquid-glass" | "tear", color, offset: { x, y }, blur }]`.
   - `blur` is a radius in px (double Gaussian sigma). A `drop-shadow` on a `text` element paints through the glyphs (CSS `text-shadow`), so it is the ONLY shadow a text has — `"text-shadow"` is accepted as an input alias, normalized to `drop-shadow` and reported; it is not a stored type.
-  - **`tear`**: a break in the sheet — one side of the box, or a closed loop punched through it. Unlike the filters above it is geometry: the layer's silhouette is clipped, so it holds for a photo, a solid fill, type or a whole frame, and exports as a plain path. `profile` chooses WHICH break; every profile shares one kernel.
-    `{ type: "tear", form?: "edge" | "hole" | "scrap", profile?: "torn" | "scallop" | "zigzag", side?: "top" | "right" | "bottom" | "left", at?: 0..1 | [0..1, 0..1], scale?: 150, roughness?: 0.6, fiber?: 0, seed?: 1, inset?: % | [top, right, bottom, left] }`.
-    - `form` chooses what the tear is: `edge` (the default) replaces one side of the box, `hole` closes the same break into a loop and keeps the sheet around it so whatever sits behind shows through, `scrap` keeps only the piece inside that loop. `type: "edge"`, `hole: "cut"` and `hole: "scrap"` are read as the retired spellings of `tear` + `form` and reported — the loop's two forms are `form: "hole"` and `form: "scrap"`, and `hole` is not a field.
-    - `side` is required by the edge form and unread by the loops; an unknown side drops the whole effect rather than guessing an edge.
-    - `profile` defaults to `torn`. `"torn-edge"` is accepted as an input alias for the same effect and reported, the same way `"text-shadow"` is: it is not a stored type. `"deckle"` and `"charred"` are read as `torn` too.
-    - `at` places the break across its axis as a fraction of the box: `1` is the box edge the `side` names, `0` the far side, and anything between is a straight guide at that fraction. Both ends sit slightly inside the number given, pulled inward by the break's own reach, so the silhouette never leaves the box. One number is a break parallel to its side. A PAIR gives the two ends their own positions, in the order the side runs (top then bottom for a `left`/`right` break, left then right for `top`/`bottom`), and the guide is the straight run between them — that IS the tilt, and it is linear: `[1, 0.4]` on a `right` break keeps the top end on the edge and pulls the bottom end 40% of the way across, while `[0.3, 1]` is the same slope the other way up. There is no separate tilt limit, so a difference of `0.7` tilts across 70% of the box however tall it is. The break still spans the side corner to corner; only its two ends move across.
-    - `scale`: wavelength of the coarsest feature in px (16–900); scales the whole break. For `scallop` and `zigzag` this IS the pitch of one scallop or tooth. `0` is not a tiny wave — it is a perfectly straight cut along the same guide, with no paper plies; every other value snaps into 16–900.
-    - `roughness` (0–1, default 0.6) and `fiber` (0–1, default 0) belong to `torn` only: `roughness` is how much of the two finer octaves rides on the coarsest; `fiber` is how far the fibres stray from the break — `0` is a clean cut, anything above steps the terraced paper plies out. A `scallop` or `zigzag` carries neither.
-    - `seed`: the break's identity and the determinism contract. Normalize defaults it to `1` and never rolls dice, so the same seed draws the same break on canvas, in an export and on the next machine. Two layers broken from one sheet share the seed. The periodic profiles draw no noise and ignore it.
-    - `form: "hole"` closes the break into a loop inside the sheet instead of replacing one side — the only way to put a torn sheet in FRONT of something. It keeps the paper and knocks the loop out, so whatever sits behind shows through; `form: "scrap"` keeps only the piece inside it, so two layers sharing one contour are the two halves of a torn-out hole. A loop does not read `side` or `at` — its seam sits at the middle of the box's top edge, where the mirrored field turns around — but it KEEPS them, and a break keeps `inset`, so flipping between the two forms in the inspector loses nothing.
-    - `inset`: the loop's margin from the box, in px — one number for all four sides, or `[top, right, bottom, left]` (CSS's order) to place the loop off-centre or give it another shape. Absent means the tear's own reach, which is what keeps the loop from swinging out through the layer's edge.
-    - Two breaks on different sides compose (the clips intersect); the pieces are not bound to one `profile` and may differ. Loops compose with them the same way: two holes on one layer leave the sheet minus their union.
+  - **`tear`**: geometric edge/hole silhouette clip (photos, fills, text, or frames; exports as a plain path):
+    `{ type: "tear", form?: "edge" | "hole" | "scrap", profile?: "torn" | "scallop" | "zigzag", side?: "top" | "right" | "bottom" | "left", at?: 0..1 | [0..1, 0..1], scale?: 150, roughness?: 0.6, fiber?: 0, seed?: 1, inset?: N | [top, right, bottom, left] }`.
+    - `form`: `"edge"` (default, replaces `side`), `"hole"` (closed loop cutout showing layers behind), or `"scrap"` (keeps only inside loop). Retired inputs `type: "edge"`, `hole: "cut"/"scrap"`, and `profile`/`type: "torn-edge"`/`"deckle"`/`"charred"` normalize with a report.
+    - `side`: required when `form: "edge"` (unknown `side` drops the effect); ignored but preserved on loops.
+    - `at`: break fraction along axis (`1` = named edge, `0` = far edge, pulled inward so clip stays inside box); `[start, end]` tilts linearly along that side.
+    - `scale`: coarsest wavelength/pitch in px (`16–900`, default `150`; `0` = straight cut with no noise/plies).
+    - `roughness` (`0–1`, default `0.6`) and `fiber` (`0–1`, default `0`): apply to `"torn"` only (stepped paper plies > 0).
+    - `seed` (default `1`): deterministic (`torn` only; share seed across split sheets).
+    - `inset` (px, scalar or `[top, right, bottom, left]`): loop margin on `"hole"`/`"scrap"`; default derives from tear reach so loop stays inside box. Multiple edge tears and holes compose cleanly.
   - **`liquid-glass`**: Apple/Figma-style realistic glass material with edge refraction and rim lighting:
     `{ type: "liquid-glass", frost?: 10, refraction?: 70, depth?: 20, dispersion?: 22, lightAngle?: -35, lightIntensity?: 45, splay?: 20 }`.
     - `frost`: blur radius in px (0–100, default 10).
@@ -373,13 +332,13 @@ A frame's guides can be saved as a `layoutGuide` style (`doc.styles[]`, `guides:
     All fields are optional and default to Apple iOS material calibration.
 - **Color filter**: image fill `fills[].adjust` (`image layer only`) — this is the only surface the inspector offers, so an image's look goes on its fill layer. Element-level `adjust` is import-only (CSS `filter`), renders, and cannot be edited in the app.
   Supports: `exposure`, `brightness`, `contrast`, `saturation`, `temperature`, `tint`, `highlights`, `shadows`, `hueRotate`, `invert`, `grayscale`.
-- **Masking**: `isMask: true` on an element masks subsequent siblings in the container. `mask-mode: "alpha" | "luminance"` (`maskMode` is also read; the file writes `mask-mode`). `mask-invert: true` (`maskInvert`) reads the luminance as its negative, so dark pixels reveal and bright ones hide — `luminance` mode only; it is ignored in `alpha` mode.
+- **Masking**: `isMask: true` on an element masks subsequent siblings in the container. `mask-mode: "alpha" | "luminance"`. `mask-invert: true` reads the luminance as its negative, so dark pixels reveal and bright ones hide — `luminance` mode only; it is ignored in `alpha` mode.
 - **Lock**: `locked: true` prevents canvas selection; pointer events pass through.
 - **Blend mode**: `normal` (default), `darken`, `multiply`, `color-burn`, `lighten`, `screen`, `plus-lighter`, `color-dodge`, `overlay`, `soft-light`, `hard-light`, `difference`, `exclusion`, `hue`, `saturation`, `color`, `luminosity`. Accepted per element (`mix-blend-mode`) or per paint layer.
 
 ## Typography, Spans & Text-on-Path
 
-- **Text Style**: standard CSS text properties are accepted at the element level and folded into the stored `style`: `font-family`, `font-size`, `font-weight`, `font-style`, `line-height`, `letter-spacing`, `font-variant-numeric`, `text-align`, `vertical-align`, `text-transform`, `text-decoration`, `line-clamp`, `text-overflow`, `text-shadow`. `white-space: "nowrap"` is a width statement: it measures the text as `max-content`, and an authored `width` still wins. A `text-shadow` STRING is an input alias: normalize converts it into `drop-shadow` entries in `effects[]` and drops the string, so the shadow can then be edited like any other. Inside `style`, camelCase, kebab-case and the stored aliases are equivalent: `textAlign` / `text-align` / `align`, `font-size` / `fontSize`, `line-clamp` / `maxLines`. A key inside `style` that names nothing is reported as `unknown property … is unsupported inside style` instead of being dropped in silence.
+- **Text Style**: write standard CSS text properties at the element level — `font-family`, `font-size`, `font-weight`, `font-style`, `line-height`, `letter-spacing`, `font-variant-numeric`, `text-align`, `vertical-align`, `text-transform`, `text-decoration`, `line-clamp`, `text-overflow`, `text-shadow`. `white-space: "nowrap"` is a width statement: it measures the text as `max-content`, and an authored `width` still wins. A `text-shadow` STRING is an input alias: normalize converts it into `drop-shadow` entries in `effects[]` and drops the string, so the shadow can then be edited like any other.
 - **A box taller than its line is TOP-aligned.** `vertical-align` is the only key that moves a line block inside its own box (`top` default, `middle`, `bottom`), and it places the block, not the glyphs: a generous box on a hug-height label costs nothing, while the same slack on a badge, a glyph in a circle or a seal's numeral falls entirely below the text and reads as "sitting high". State the claim — `vertical-align: "middle"` — when the slack was meant to be split; `--audit` grades the result only when the file claimed it. Getting the optical centre exactly right can still want a pixel or two of nudge, because a line box carries descender space the glyphs do not fill: author, render, and move the box rather than the text.
 - **Vertical text**: `writing-mode: "vertical-rl" | "vertical-lr"` (or `sideways-rl` / `sideways-lr`) on a text element is folded onto `rotation: 90` with the box's axes swapped about its centre — a `12 × 240` column becomes a `240 × 12` line in the same place, so the HTML importer and a hand-written document produce the same editable element. Upright vertical type (`text-orientation: "upright"`, or CJK under the default `mixed`) is reported, not turned; on a non-text element `writing-mode` is reported and dropped.
 - **Compact `style` string**: `style: "700 24/1.2 Inter #FFFFFF"` expands to the same object — tokens in any order: a weight (a bare 100–900 counts as one only when a second size token follows), `<size>[/<lineHeight>]`, a colour, a family, `left|center|right|justify`, `top|middle|bottom`, `uppercase|lowercase|capitalize`, `italic`, `underline|line-through`, `tabular-nums`, `ls=<px>`. A family may contain spaces: unquoted words are joined back together, and quotes make it explicit — `"600 28 \"SF Pro Display\""` and `"600 28 SF Pro Display"` both yield `fontFamily: "SF Pro Display"`. Quote the family when one of its words is a token (`"SF Pro Display Bold"` keeps `Bold` in the name; unquoted it is read as `fontWeight`).
@@ -393,9 +352,9 @@ A frame's guides can be saved as a `layoutGuide` style (`doc.styles[]`, `guides:
 - **When to use**: if the same structure appears more than once (button, card, nav item, list row, badge), make it a master and place instances. Duplicating the frame is a copy, not a system: a later change costs N edits instead of one.
 - **Masters**: Defined as `type: "component"` (or grouped inside `componentSet` with `variantProperties`).
 - **Instances**: `type: "instance"`, referencing master via `componentId`. Overrides apply sparsely to master nodes.
-- **Instance Element vs. Overrides**: An instance is a first-class canvas element in its own right. Transforms (`rotate`, `scale`, `transform`), placement (`x`, `y`, `position`), opacity, and instance-level styling (`fills`, `strokes`, `borderRadius`, `overflow`, `instanceScale`) belong directly on the instance element itself (e.g. `{ type: "instance", componentId: "icon-arrow", rotate: "90deg" }`). By contrast, `overrides[]` targets specific child layers inside the master component.
+- **Instance Element vs. Overrides**: An instance is a first-class canvas element in its own right. Transforms (`rotate`, `scale`, `transform`), placement (`x`, `y`, `position`), opacity, and instance-level styling (`fills`, `strokes`, `border-radius`, `overflow`, `instanceScale`) belong directly on the instance element itself (e.g. `{ type: "instance", componentId: "icon-arrow", rotate: "90deg" }`). By contrast, `overrides[]` targets specific child layers inside the master component.
 - **Instance Box**: An instance carries its own `width` / `height`. An OMITTED axis is copied from the master at load; an explicit `0` stays `0` and paints no background, stroke or padding (only its children show). Use `sizeOverride: true` when the instance must keep a box that differs from the master.
-- **Hugging Masters**: If the master's axis is `fit-content` / `max-content`, the instance re-derives that axis from content and IGNORES its stored number. Pin a different instance size with `sizeOverride: true` (or declare that axis's `sizing` on the instance). This is how one master serves Standard / Tall instances without a second master.
+- **Hugging & Stretchable Masters**: If the master's axis is `fit-content` / `max-content`, the instance re-derives that axis from content and IGNORES its stored number. Pin a different instance size with `sizeOverride: true` (or declare that axis's `sizing` on the instance). When an instance must stretch horizontally or vertically inside an Auto-Layout parent (`sizing: { width: "fill" }` or `alignItems: "stretch"`) and its children (like a progress bar fill or fluid card header) must stretch with it, give the **master itself** `display: "flex"` with child `sizing: "fill"`; a `display: "block"` master scales only its outer box while leaving fixed-pixel children behind. This is how one master serves Standard / Tall / Responsive instances without a second master.
 - **Overrides are sparse**: override only what differs inside the master (text, image, fill); leave everything else inherited. Child geometry inside the master (coordinates, rotation) is locked to preserve component integrity. A reset (`reset-instance`) is cheaper than maintaining a near-copy.
 - **Allowed Overrides**: `overrides[].property` is restricted to: `content`, `style`, `spans`, `fills`, `strokes`, `effects`, `adjust`, `borderRadius`, `cornerSmoothing`, `blendMode`, `link`, `visible`, `opacity`, `fillEnabled`, `assetId`, `locked`, `overflow`, `componentId`, `fillStyleId`, `strokeStyleId`, `textStyleId`, `effectStyleId`, `tokenBindings`, `themeMode`, `numberMode`, `scrollX`, `scrollY`, `scrollBehavior`.
 - Presence dictates inheritance: an absent property inherits master changes; an explicitly defined property (e.g. `fills: []`) overrides. The box follows the same rule at load — an omitted axis is copied from the master, an explicit `0` is kept.
@@ -413,7 +372,11 @@ A frame's guides can be saved as a `layoutGuide` style (`doc.styles[]`, `guides:
 
 ## Inspection & Verification APIs
 
-In browser contexts, `window.__fish` provides runtime inspection and verification methods:
+**Headless URL protocol** (used by `chrome --headless --dump-dom "file://...?report=1"` and `./tools/shot.sh`):
+- `?view=canvas`: viewport-uncull artboard render (`&page=<id>` targets a page).
+- `?report=1&page=<id>&element=<id>&scale=N`: emits `<script id="fish-report">` JSON with `repairs`, `validate`, `layout` (ignored auto-layout coords), and cropped `element` bounds.
+
+**Runtime bridge (`window.__fish`)** when open in a browser:
 
 | Member | Type / Signature | Description |
 | :-- | :-- | :-- |
@@ -422,11 +385,9 @@ In browser contexts, `window.__fish` provides runtime inspection and verificatio
 | `doc` | `DesignDocument` | Live design document state. |
 | `normalize(candidate)` | `(doc) => { document, repairs }` | Normalizes candidate JSON and returns repairs. |
 | `validate()` | `() => [{ level, message, elementId }]` | Semantic validation diagnostics. |
-| `check(options?)` | `(opts) => CheckReport \| Promise<CheckReport>` | One verdict over repairs, validation and geometry. `{ doc }` checks authored JSON; `{ ink: true }` adds the live text-ink audit and returns a promise. |
+| `check(options?)` | `(opts) => CheckReport \| Promise<CheckReport>` | Returns `{ ok, counts, lossyRepairs, findings, repairs, failReason, geometry?, ink? }` (`source`: `normalize`/`validate`/`geometry`/`ink`). `{ doc }` checks authored JSON; `{ ink: true }` runs DOM text-ink audit on open page (returns Promise; cannot combine with `{ doc }`). |
 | `measure(id)` | `(id) => Box \| null` | Canvas coordinates & bounds of element. |
 | `measureAll()` | `() => Box[]` | Bounds for all elements. |
 | `layoutDebug()` | `() => [{ id, box, childrenBox, delta, overflow }]` | Computes layout container deltas and overflow. |
 | `exportCanvasPng(options?)` | `(opts) => Promise<string>` | Exports artboard/selection to PNG data URL. |
 | `exportCanvasSvg(options?)` | `(opts) => Promise<string>` | Exports artboard/selection to SVG markup. |
-
-`check()` returns `{ ok, counts, lossyRepairs, findings, repairs, failReason, geometry?, ink? }`; every finding names its `source`: `normalize`, `validate`, `geometry` or `ink`. Any error or lossy repair fails it; warnings fail only under `strict`. An ink audit reads the painted DOM, so it cannot grade `doc` — call it on the open document without `doc`.

@@ -6,7 +6,17 @@
  * role, never the shape of the value.
  */
 
-import { ColorToken, DesignDocument, DesignElement, DesignToken, GradientStop, Paint, Stroke } from "../dsl/types";
+import {
+  ColorToken,
+  ColorTokenValue,
+  DesignDocument,
+  DesignElement,
+  DesignToken,
+  GradientStop,
+  Paint,
+  Stroke
+} from "../dsl/types";
+import { isTokenAliasRef, TokenLookup } from "../dsl/token-value";
 import { getActivePage } from "../dsl/document-ops";
 import { STYLE_BINDING_FIELDS } from "../dsl/constants";
 import { createId } from "../id";
@@ -19,11 +29,19 @@ export function colorTokensOf(tokens: readonly DesignToken[] | undefined): Color
 }
 
 /** The solid colour of a colour token for the given theme (or base), or default. */
-export function colorTokenColor(token: ColorToken, theme?: string): string {
-  return resolveColorTokenHex(token, theme);
+export function colorTokenColor(
+  token: ColorToken,
+  theme?: string,
+  tokens?: TokenLookup
+): string {
+  return resolveColorTokenHex(token, theme, tokens);
 }
 
-export function createColorToken(name: string, color: string, description?: string): ColorToken {
+export function createColorToken(
+  name: string,
+  color: ColorTokenValue,
+  description?: string
+): ColorToken {
   return {
     id: createId("tok"),
     name: name.trim() || "Untitled Color Token",
@@ -37,7 +55,7 @@ export function createColorToken(name: string, color: string, description?: stri
 export function updateColorToken(
   token: ColorToken,
   name: string,
-  color: string,
+  color: ColorTokenValue,
   description?: string
 ): ColorToken {
   return {
@@ -93,6 +111,15 @@ const strokeUses = (stroke: Stroke, tokenId: string): number =>
 
 export function countTokenUses(doc: DesignDocument, tokenId: string): number {
   let count = 0;
+  for (const token of doc.tokens ?? []) {
+    if (token.id === tokenId) continue;
+    if (isTokenAliasRef(token.value) && token.value.ref === tokenId) count++;
+    if (token.modes) {
+      for (const v of Object.values(token.modes)) {
+        if (isTokenAliasRef(v) && v.ref === tokenId) count++;
+      }
+    }
+  }
   // A style that follows a token is a use of it too: renaming or deleting a
   // token the palette never names is exactly the mistake "Used by N" exists to
   // prevent, and the styles are the half a layer walk cannot see.
@@ -206,6 +233,6 @@ export function reorderColorTokens(
 }
 
 /** The alpha a token's encoded hex carries, for readouts that still show a percentage. */
-export function tokenAlphaPct(token: ColorToken, theme?: string): number {
-  return parseColorAlpha(colorTokenColor(token, theme)).alphaPct;
+export function tokenAlphaPct(token: ColorToken, theme?: string, tokens?: TokenLookup): number {
+  return parseColorAlpha(colorTokenColor(token, theme, tokens)).alphaPct;
 }

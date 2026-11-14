@@ -11,7 +11,12 @@
 
 import fs from "node:fs";
 import type { DesignDocument, DesignElement } from "../dsl/types";
+import { normalizeDesignDocument } from "../dsl/normalize";
+import { findPage, getActivePage, withActivePage } from "../dsl/document-ops";
 import { layoutOf } from "../dsl/layout-flat";
+import { syncDocumentBindings } from "../interactions/style-ops";
+import { resolveInstanceSelection } from "../interactions/instance-resolve";
+import { laidOutDocument } from "../layout-report";
 import { parseCommentsBlock, spliceCommentsBlock } from "../data-bridge";
 import type { CommentThread, FishCommentsDocument, SuggestedMacroOp } from "../comments/types";
 import { AI_AUTHOR } from "../comments/types";
@@ -145,13 +150,32 @@ export function commentsCommand(args: string[], opts: CommentsCommandOptions = {
       console.error(read.error);
       return read.code;
     }
-    const doc = read.value as DesignDocument;
-    const page = doc.pages?.find((p) => p.id === thread.pageId) ?? doc.pages?.[0];
-    const elements = page?.children;
-    const target = thread.target.elementId ? findElement(elements, thread.target.elementId) : null;
-    const parent = thread.target.elementId ? findParent(elements, thread.target.elementId) : null;
+    const { document: normalized } = normalizeDesignDocument(read.value);
+    const synced = syncDocumentBindings(normalized);
+    const matchedPage = findPage(synced, thread.pageId) ?? getActivePage(synced);
+    const doc = laidOutDocument(withActivePage(synced, matchedPage.id), read.value).document;
+    const page = getActivePage(doc);
+    const elements = page.children;
+    const targetId = thread.target.elementId;
+    const storedTarget = targetId ? findElement(elements, targetId) : null;
+    const selection = !storedTarget && targetId ? resolveInstanceSelection(doc, targetId) : null;
+    const target = storedTarget ?? selection?.node ?? null;
+    const parent = targetId
+      ? findParent(elements, targetId) ?? (selection ? selection.instance : null)
+      : null;
     const children = (target as unknown as { children?: DesignElement[] })?.children ?? [];
     const siblingsPool = (parent as unknown as { children?: DesignElement[] })?.children ?? elements ?? [];
+    const docTokens = doc.tokens ?? [];
+    const colors = docTokens.filter((token) => token.type === "color").map((token) => token.name);
+    const radii = docTokens
+      .filter((token) => token.type === "number" && (token as { category?: string }).category === "radius")
+      .map((token) => token.name);
+    const numbers = docTokens
+      .filter((token) => token.type === "number")
+      .map((token) => ({
+        name: token.name,
+        category: (token as { category?: string }).category ?? null
+      }));
 
     console.log(
       JSON.stringify(
@@ -165,6 +189,15 @@ export function commentsCommand(args: string[], opts: CommentsCommandOptions = {
             content: message.content
           })),
           target,
+          ...(selection
+            ? {
+                instanceTarget: {
+                  instanceId: selection.instanceId,
+                  masterNodeId: selection.masterNodeId,
+                  overridable: selection.overridable
+                }
+              }
+            : {}),
           parent: parent
             ? {
                 id: parent.id,
@@ -180,11 +213,12 @@ export function commentsCommand(args: string[], opts: CommentsCommandOptions = {
             : null,
           children,
           siblings: siblingsPool
-            .filter((sibling) => sibling.id !== thread.target.elementId)
+            .filter((sibling) => sibling.id !== targetId)
             .map((sibling) => ({ id: sibling.id, type: sibling.type, name: sibling.name })),
           tokens: {
-            colors: doc.tokens?.filter((token) => token.type === "color").map((token) => token.name) ?? [],
-            radii: ["4px", "8px", "12px", "16px", "24px", "9999px"]
+            colors,
+            radii,
+            numbers
           },
           status: thread.status
         },

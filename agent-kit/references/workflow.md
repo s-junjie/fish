@@ -64,20 +64,20 @@ Read the report before trusting it: `elementCount`, `maxDelta`, `downgraded`, `u
 
 - **The imported file is the source from here on.** Iterate with `apply`.
 - **Never re-run `import` on a document you have edited.** It discards the edits; HTML is a seed, not a round-trip.
-- A `type: "html"` element is not this. It is a view-only iframe on the canvas.
+- A `type: "html"` element is not this. It is a view-only iframe on the canvas; `dsl.md` § "HTML In" carries the DSL facts (page `id` → element id, seed-not-round-trip, embed limits).
 
 ### Compact JSON — when exact control matters more
 
-Author JSON with the shorthands in `dsl.md`, then assemble it into the shell:
+Author JSON with the shorthands in `dsl.md`, then assemble it into the shell (`--out` defaults the template to `templates/blank.fish.html`; pass an explicit `<template.fish.html>` second if reusing a custom shell):
 
 ```bash
-./tools/fish compose design.json templates/blank.fish.html --out design.fish.html --compact
+./tools/fish compose design.json --out design.fish.html --compact
 ```
 
 Or pipe it:
 
 ```bash
-./tools/fish compose - templates/blank.fish.html --out design.fish.html --compact <<'EOF'
+./tools/fish compose - --out design.fish.html --compact <<'EOF'
 { "version": "0.1", "canvas": { "width": 1440, "height": 900 }, "elements": [] }
 EOF
 ```
@@ -86,25 +86,29 @@ EOF
 
 ## 3. Edit with macro-ops
 
-The artifact itself carries no op runtime; the agent kit's CLI runs every op in this table against the `#design-doc` block and writes it back.
+The artifact itself carries no op runtime; the agent kit's CLI runs every op below against the `#design-doc` block and writes it back. Both `ops.json` files and inline JSON (`[...]` or `{"ops":[...]}`) are accepted:
 
 ```bash
 ./tools/fish apply ops.json design.fish.html --compact
 ```
 
-| Op | Semantics |
+| Op | Shape & Semantics |
 | :-- | :-- |
-| `patch` | Modify properties on an element. |
-| `replace` | Replace a subtree, preserving its id. |
-| `insert` | Insert an element or artboard under a parent. |
-| `remove` | Delete elements by id. |
-| `intent` | Wrap layers in auto-layout (`wrap-in-stack` / `wrap-in-grid`). |
-| `boolean` | Union / subtract / intersect / exclude shapes. |
-| `make-component` | Promote a frame to a component master. |
-| `instantiate` | Place an instance of a master. |
-| `reset-instance` | Drop instance overrides. |
-| `detach-instance` | Expand an instance into a frame. |
-| `repeat` | Expand a template over data into concrete elements. |
+| `patch` | `{"op":"patch","targetId":"<id>","props":{...}}` — deep-merge fields (`null` unsets a key; accepts CSS spellings, `$token`, and instance-derived ids from `inspect`). |
+| `replace` | `{"op":"replace","targetId":"<id>","element":{...}}` — replace a subtree, preserving `targetId`. |
+| `insert` | `{"op":"insert","element":{...},"parentId":"<id?>","position":{"x":0,"y":0}\|"side-by-side"}` — add under `parentId` or canvas (`position` optional; `{x,y}` uses canvas world coords). |
+| `remove` | `{"op":"remove","targetIds":["<id>",...]}` (or `"targetId":"<id>"`) — delete elements by id. |
+| `intent` | `{"op":"intent","intent":"wrap-in-stack"\|"wrap-in-grid","targetIds":["<id>",...],"params":{"direction":"row"\|"column","columns":2,"gap":24,"padding":0,"name":"...","id":"..."}}` — wrap siblings sharing one parent. |
+| `boolean` | `{"op":"boolean","intent":"union"\|"subtract"\|"intersect"\|"exclude","targetIds":["<id1>","<id2>",...]}` — combine ≥2 top-level shape outlines (`operation` aliases `intent`). |
+| `make-component` | `{"op":"make-component","targetId":"<id>","name":"<optional>"}` — promote a frame (or wrap and promote a leaf, minting a new id) to a master. |
+| `instantiate` | `{"op":"instantiate","componentId":"<masterId>","parentId":"<id?>","position":{"x":0,"y":0}}` — place an instance of a master. |
+| `reset-instance` | `{"op":"reset-instance","targetId":"<instanceId>"}` — clear instance overrides and local instance paint/mode/scale deltas. |
+| `detach-instance` | `{"op":"detach-instance","targetId":"<instanceId>"}` — expand an instance into a plain frame. |
+| `make-variant` | `{"op":"make-variant","targetId":"<componentId>","property":"State","value":"Hover"}` — set a variant coordinate, promoting a lone component into a set if needed (`axis` aliases `property`). |
+| `add-variant` | `{"op":"add-variant","targetId":"<variantComponentId>","property":"<optional>"}` — clone a set member with the next unused value. |
+| `repeat` | `{"op":"repeat","template":{...},"over":[...]\|"count":N,"as":"item","parentId":"<id?>","position":{"x":0,"y":0}}` — stamp copies (pass **one** of `over` or `count`). |
+
+`repeat` substitution rules: `$i` is the 0-based index and `$<as>` (default `$item`, never `i`) reads the current entry (`$item.title`, `$item.0`); `$$` writes a literal `$`; a string holding only one token (`"$item.gap"`) keeps its native JSON type; `position: {x, y}` adds a per-entry offset; give `"id"` a unique expression such as `"card_$i"`.
 
 Choose by scope: surgical tweaks → `patch`; section redesign → `replace`; greenfield → `compose`.
 
@@ -117,6 +121,7 @@ Choose by scope: surgical tweaks → `patch`; section redesign → `replace`; gr
 ### Theme modes are token configuration
 
 - If the design needs light/dark or another theme, declare `modes[]` and `activeTheme`, then put per-mode values on colour tokens: `"modes": { "dark": "#0A0A0A" }`.
+- Number tokens have their own density axis (`numberModes[]`, `activeNumberMode`, and container override `numberMode`) so spacing/radii scales switch without duplicating colour modes.
 - A style has no modes. Keep one style and make its paint follow a token; never duplicate a style per theme.
 - `themeMode` on a container overrides its subtree. Only token- and style-bound values switch; literal colours and `page.canvas.background` do not.
 - Name modes by role (`light`, `dark`, `brand`), not by their current colour.
@@ -173,8 +178,8 @@ Use `--strict` to fail on warnings, `--strict-assets` before delivery, and `--al
 
 **Two renderers, one protocol.** `shot.sh` and `fish export` both drive `chrome --headless`, and neither computes the window size or the crop origin — the page reports them, both callers only pass them through. Choose by what the machine has and what you need back:
 
-- **`shot.sh`** needs bash, coreutils and a browser, and nothing else — it is the path that still works where Node is not installed. It writes `out.report.json` beside the PNG: the normalize repairs, the validate diagnostics, the coordinates auto-layout ignored (when the file states any), and the box the element actually occupies. On Windows the same tool is `powershell -File ./tools/shot.ps1`; without `-Element` it skips the report pass and writes a canvas-size stub instead, so treat its report as element-scoped.
-- **`fish export`** is already in the CLI, writes the PNG alone, and answers with an exit code instead of a report.
+- **`shot.sh`** needs bash, coreutils and a browser, and nothing else — it is the path that still works where Node is not installed. It writes `out.report.json` beside the PNG: the normalize repairs, the validate diagnostics, the coordinates auto-layout ignored (when the file states any), and the box the element actually occupies. On Windows the same tool is `powershell -File ./tools/shot.ps1`; when neither `-Element` nor `-Page` is passed it skips the report pass and writes a canvas-size stub instead, so pass `-Element` or `-Page` when you need `out.report.json`.
+- **`fish export`** is already in the CLI, exports the document (or `--page <id>`) as PNG alone (`[--scale N] [--element ID]`), and answers with an exit code instead of a report. Use `shot.sh` / `shot.ps1` when you need `out.report.json` beside the PNG (or where Node is not installed).
 
 Prefer `shot.sh` when you want the diagnostics; prefer `export` when you only want the picture.
 
@@ -243,12 +248,11 @@ Execute the approved blueprint rather than a recipe. Use the levers the directio
 ### 7.5 Pass 4 — verification and critique
 
 ```bash
-./tools/fish check design.fish.html --strict --geometry
-./tools/fish check design.fish.html --audit
+./tools/fish check design.fish.html --strict --geometry --audit
 ./tools/shot.sh design.fish.html out.png --element hero-section --scale 2
 ```
 
-Read `out.report.json` and inspect the PNG for clipping, contrast failures, misalignment and accidental inconsistency. Fix before handing over.
+Prefer running `--audit` together with `--strict --geometry` before finishing: contrast checks catch unexpanded token bindings or invisible light-on-light/dark-on-dark fallbacks that schema checks alone cannot see. Read `out.report.json` and inspect the PNG for clipping, contrast failures, misalignment and accidental inconsistency. Fix before handing over.
 
 ---
 
@@ -271,9 +275,7 @@ only.
 
 1. `pending` → one JSON row per thread: `instruction` is what the person asked
    for, `targetElementId` is the layer they pointed at.
-2. `context` → that layer plus its parent's layout, its children, its siblings
-   and the document's colour tokens. This is the whole brief; do not read the
-   full document for one comment.
+2. `context` → that layer (laid out; or resolved derived child + `instanceTarget`) plus its parent's layout, its children, its siblings, and the document's colour/number tokens. This is the whole brief; do not read the full document for one comment.
 3. `suggest` → the ops the app will show as a **diff card with before → after
    values and an Apply button**. The suggestion is not applied: the user owns
    that decision, and the app records it as one undoable step.
@@ -282,10 +284,10 @@ only.
 
 Rules that matter more than the sequence:
 
-- **Reply with the same ops vocabulary as `apply`** — `{"op":"patch","id":"…","value":{…}}`
-  — so the diff card and a direct `apply` cannot disagree.
-- A suggestion that changes nothing is worse than no suggestion: run
-  `./tools/fish check` on the result of your ops before writing them back.
+- **Reply with the same ops vocabulary as `apply`** — `{"op":"patch","targetId":"…","props":{…}}`
+  — so the diff card and a direct `apply` use the same contract (`--ops` accepts an `ops.json` path or inline JSON array / `{"ops":[...]}`).
+- A suggestion that changes nothing is worse than no suggestion: test the result
+  of your ops on a temporary copy (`./tools/fish apply ops.json design.fish.html --out preview.fish.html && ./tools/fish check preview.fish.html`) and remove it before writing suggestions back to `#fish-comments`.
 - Writing the comment block is safe while the design is open: the app reconciles
   the two sides per thread on its next save and adopts yours. Writing
   **`#design-doc`** (`fish apply`) is not — the open tab owns the document, so ask

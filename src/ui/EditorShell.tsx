@@ -511,8 +511,10 @@ export function EditorShell(p: EditorShellProps) {
           busyMessage={hint.busyMessage}
           historyOpen={file.showHistory}
           fileConflict={file.fileConflict}
+          fileUpdated={file.fileUpdated}
           onLoadFromDisk={file.loadFromDisk}
           onKeepMine={file.keepMine}
+          onDismissFileUpdated={file.dismissFileUpdated}
           pendingAssets={p.commands.pendingAssets}
           onAttachAssetFolder={p.commands.handleAttachAssetFolder}
           onDismissAssetFolder={p.commands.handleDismissAssetFolder}

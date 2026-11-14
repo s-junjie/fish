@@ -546,8 +546,8 @@ describe("maskInvert reads the luminance as its negative", () => {
     expect(normalizeDesignDocument(file).document.pages[0].children).toEqual(document.pages[0].children);
   });
 
-  it("is published in the schema", () => {
-    expect(schema.definitions.DesignElement.properties.maskInvert.type).toBe("boolean");
+  it("is published in the schema under its written spelling", () => {
+    expect(schema.definitions.DesignElement.properties["mask-invert"].type).toBe("boolean");
   });
 });
 

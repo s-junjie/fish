@@ -46,7 +46,7 @@ FISH is built to be agent-native. AI coding agents (Claude Code, ChatGPT, Cursor
 Add the FISH skill to your agent environment:
 
 ```bash
-npx skills add https://dl.fish.themindstudio.cc/skill.md --skill fish-design -y
+npx skills add https://dl.fish.themindstudio.cc/stable/fish-agent-kit.zip --skill fish-design -y
 ```
 
 *(Alternatively, paste `https://fish.themindstudio.cc/skill.md` into ChatGPT, Claude, or any chat that can read a link. Or download the kit from [Releases](https://github.com/s-junjie/fish/releases/latest)).*

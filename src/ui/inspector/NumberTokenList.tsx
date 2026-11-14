@@ -1,4 +1,5 @@
-import { useRef, useState } from "preact/hooks";
+import { useMemo, useRef, useState } from "preact/hooks";
+import { toTokenMap } from "../../core/dsl/token-value";
 import type { DesignDocument, NumberToken } from "../../core/dsl/types";
 import {
   addTokenToDoc,
@@ -12,12 +13,14 @@ import {
   reorderNumberTokens
 } from "../../core/interactions/number-token-ops";
 import {
+  getActiveNumberMode,
   getDocumentNumberModes,
+  getNumberTokenModeValue,
   updateNumberTokenWithModes
 } from "../../core/interactions/mode-ops";
 import { t } from "../../i18n";
-import { CategoryIcon } from "../tokens/CategoryIcon";
 import { TokenList } from "./TokenList";
+import { renderNumberTokenPreview } from "./StylePreview";
 import { NumberTokenEditorDraft, NumberTokenEditorPanel } from "./NumberTokenEditorPanel";
 import { numberModeLabels } from "./mode-labels";
 
@@ -26,9 +29,6 @@ interface NumberTokenListProps {
   docRef: { current: DesignDocument };
   commitSnapshot: (newDoc: DesignDocument) => void;
 }
-
-const NUMBER_TOKEN_PREVIEW_CLASS =
-  "w-6 h-6 rounded-swatch bg-inset border border-rule flex items-center justify-center text-ink-dim shrink-0";
 
 export function NumberTokenList({ doc, docRef, commitSnapshot }: NumberTokenListProps) {
   const [editingId, setEditingId] = useState<string | "new" | null>(null);
@@ -48,6 +48,7 @@ export function NumberTokenList({ doc, docRef, commitSnapshot }: NumberTokenList
 
   // The NUMBER axis owns everything in this list: its columns and the ids its values are filed under.
   const modes = getDocumentNumberModes(doc);
+  const tokenMap = useMemo(() => toTokenMap(doc.tokens), [doc.tokens]);
 
   const save = (draft: NumberTokenEditorDraft) => {
     const current = docRef.current;
@@ -96,14 +97,10 @@ export function NumberTokenList({ doc, docRef, commitSnapshot }: NumberTokenList
       row={(token) => ({
         id: token.id,
         name: token.name,
-        subtitle: numberModeLabels(token, modes).join(", "),
-        preview: (
-          <div className={NUMBER_TOKEN_PREVIEW_CLASS}>
-            <CategoryIcon category={token.category} />
-          </div>
-        ),
+        subtitle: numberModeLabels(token, modes, tokenMap).join(", "),
+        preview: renderNumberTokenPreview(token.category),
         ghostSwatch: "rgba(155,164,171,.35)",
-        ghostLabel: `${token.name} (${token.value})`
+        ghostLabel: `${token.name} (${getNumberTokenModeValue(token, getActiveNumberMode(doc), tokenMap)})`
       })}
       rootAttr={{ "data-number-tokens": "1" }}
       sectionId="number-tokens"
@@ -123,6 +120,7 @@ export function NumberTokenList({ doc, docRef, commitSnapshot }: NumberTokenList
         editingId ? (
           <NumberTokenEditorPanel
             token={editingToken}
+            tokens={doc.tokens}
             modes={modes}
             anchorRef={editorAnchorRef}
             onSave={save}

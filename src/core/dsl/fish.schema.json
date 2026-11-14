@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "FISH Design Document Schema",
-  "description": "Canonical schema for FISH single-file vector design documents. Describes what the engine ACCEPTS: the normalizer backfills id, name, createdAt, updatedAt, canvas, element geometry and element ids, so an author may omit them. This file is bundled; its enum vocabularies are mirrored at runtime by src/core/dsl/schema-enums.ts \u2014 keep the two in step (tests/version-consistency.test.ts).",
+  "description": "Canonical schema for FISH single-file vector design documents. Keys use the CSS name where CSS has one, the DSL name where it does not.",
   "type": "object",
   "required": [
     "version",
@@ -19,7 +19,7 @@
       "enum": [
         "0.1"
       ],
-      "description": "Dialect the document is written in. Write the current one; readers also accept older spellings (see normalize)."
+      "description": "Dialect the document is written in."
     },
     "id": {
       "type": "string"
@@ -156,7 +156,7 @@
     },
     "modes": {
       "type": "array",
-      "description": "Available modes for COLOUR tokens — the chromatic axis. Defaults to a single `Default` mode.",
+      "description": "Available modes for COLOUR tokens \u2014 the chromatic axis. Defaults to a single `Default` mode.",
       "items": {
         "type": "object",
         "required": [
@@ -175,11 +175,11 @@
     },
     "activeNumberMode": {
       "type": "string",
-      "description": "Active NUMBER token mode ('default', 'compact', 'mobile'…). Defaults to the first entry of `numberModes`. Independent of `activeTheme`."
+      "description": "Active NUMBER token mode ('default', 'compact', 'mobile'\u2026). Defaults to the first entry of `numberModes`. Independent of `activeTheme`."
     },
     "numberModes": {
       "type": "array",
-      "description": "Available modes for NUMBER tokens — the spatial axis (density, breakpoint). Keyed by `NumberToken.modes`, never by `modes`. Defaults to a single `Default` mode.",
+      "description": "Available modes for NUMBER tokens \u2014 the spatial axis (density, breakpoint). Keyed by `NumberToken.modes`, never by `modes`. Defaults to a single `Default` mode.",
       "items": {
         "type": "object",
         "required": [
@@ -297,17 +297,36 @@
       ]
     },
     "Tear": {
-      "description": "A break along one side of the element's box, in the element's own local coordinates. Geometry rather than an effect: the silhouette is clipped, so it holds for a photo, a solid fill, type or a whole frame alike, and exports as a plain path. `profile` chooses the field that replaces the edge; every break shares one kernel, so adding a kind of edge adds a field rather than an effect type. `seed` is the break's identity — the same seed draws the same break on canvas, in an export and on the next machine.",
+      "description": "A break along one side of the element's box, in the element's own local coordinates. Geometry rather than an effect: the silhouette is clipped, so it holds for a photo, a solid fill, type or a whole frame alike, and exports as a plain path. `profile` chooses the field that replaces the edge; every break shares one kernel, so adding a kind of edge adds a field rather than an effect type. `seed` is the break's identity \u2014 the same seed draws the same break on canvas, in an export and on the next machine.",
       "type": "object",
       "allOf": [
         {
           "if": {
             "anyOf": [
-              { "not": { "required": ["form"] } },
-              { "properties": { "form": { "const": "edge" } }, "required": ["form"] }
+              {
+                "not": {
+                  "required": [
+                    "form"
+                  ]
+                }
+              },
+              {
+                "properties": {
+                  "form": {
+                    "const": "edge"
+                  }
+                },
+                "required": [
+                  "form"
+                ]
+              }
             ]
           },
-          "then": { "required": ["side"] }
+          "then": {
+            "required": [
+              "side"
+            ]
+          }
         }
       ],
       "properties": {
@@ -326,10 +345,18 @@
         "at": {
           "description": "Where the break sits across its axis, 0..1. Absent means the box edge the side names (1 for right/bottom, 0 for left/top). A break at the edge is measured inward from it so the silhouette never leaves the box; a break inside the box is centred on this guide, which is what lets two pieces of one sheet share a cut. A PAIR puts the two ends at different positions and so tilts the break: the first is the end where the side starts (the top edge of a left/right break, the left edge of a top/bottom one), the second the end at the far corner.",
           "anyOf": [
-            { "type": "number", "minimum": 0, "maximum": 1 },
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
             {
               "type": "array",
-              "items": { "type": "number", "minimum": 0, "maximum": 1 },
+              "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
               "minItems": 2,
               "maxItems": 2
             }
@@ -370,10 +397,18 @@
         "inset": {
           "description": "A loop's margin from the box, as a percentage of the way in from each edge: 0 leaves no sheet at all (the whole box is cut away), 100 leaves no loop at all. One number for all four sides, or [top, right, bottom, left] to place the loop off-centre or give it another shape. Absent means a margin wide enough for the tear to fit in. Kept while the edge form is showing, so flipping forms is lossless.",
           "anyOf": [
-            { "type": "number", "minimum": 0, "maximum": 100 },
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
             {
               "type": "array",
-              "items": { "type": "number", "minimum": 0, "maximum": 100 },
+              "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
               "minItems": 4,
               "maxItems": 4
             }
@@ -382,7 +417,7 @@
       }
     },
     "SlideSpec": {
-      "description": "How a frame leaves when a deck advances from it, matching Figma Slides: the spec on slide N describes the N→N+1 transition. `transition: \"morph\"` pairs layers between this slide and the next by NAME — the name alone, so one name may be a `rect` on one slide and an `ellipse` on the next — so duplicating a slide and moving things is enough to get the motion, and nothing has to be keyframed. The box and the alpha interpolate; fills and strokes do not. Duration and easing are content, not workbench chrome, and are not bounded by the app's own motion scale.",
+      "description": "How a frame leaves when a deck advances from it, matching Figma Slides: the spec on slide N describes the N\u2192N+1 transition. `transition: \"morph\"` pairs layers between this slide and the next by NAME \u2014 the name alone, so one name may be a `rect` on one slide and an `ellipse` on the next \u2014 so duplicating a slide and moving things is enough to get the motion, and nothing has to be keyframed. The box and the alpha interpolate; fills and strokes do not. Duration and easing are content, not workbench chrome, and are not bounded by the app's own motion scale.",
       "type": "object",
       "properties": {
         "transition": {
@@ -478,7 +513,7 @@
         },
         "angle": {
           "type": "number",
-          "description": "Read only for the gradient's own type. LINEAR: the CSS angle the axis is symmetric about — 90 = left-to-right, 0 = bottom-to-top, default 90 — and it is re-derived when `start`/`end` are present. RADIAL and DIAMOND: the shape's rotation in degrees clockwise in the box's own (unrotated) space. ANGULAR: where the sweep begins, degrees clockwise from top centre (the convention `ellipse.startAngle` uses); the sweep runs clockwise from there and closes after 360. All of these meanings were once documented under two `angle` keys in this object, which JSON resolves to the last one, so a linear author was reading the radial description."
+          "description": "Read only for the gradient's own type. LINEAR: the CSS angle the axis is symmetric about \u2014 90 = left-to-right, 0 = bottom-to-top, default 90 \u2014 and it is re-derived when `start`/`end` are present. RADIAL and DIAMOND: the shape's rotation in degrees clockwise in the box's own (unrotated) space. ANGULAR: where the sweep begins, degrees clockwise from top centre (the convention `ellipse.startAngle` uses); the sweep runs clockwise from there and closes after 360. All of these meanings were once documented under two `angle` keys in this object, which JSON resolves to the last one, so a linear author was reading the radial description."
         },
         "start": {
           "type": "object",
@@ -843,10 +878,18 @@
         "at": {
           "description": "Where the break sits across its axis, 0..1. Absent means the box edge the side names (1 for right/bottom, 0 for left/top). A break at the edge is measured inward from it so the silhouette never leaves the box; a break inside the box is centred on this guide, which is what lets two pieces of one sheet share a cut. A PAIR puts the two ends at different positions and so tilts the break: the first is the end where the side starts (the top edge of a left/right break, the left edge of a top/bottom one), the second the end at the far corner.",
           "anyOf": [
-            { "type": "number", "minimum": 0, "maximum": 1 },
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
             {
               "type": "array",
-              "items": { "type": "number", "minimum": 0, "maximum": 1 },
+              "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
               "minItems": 2,
               "maxItems": 2
             }
@@ -887,10 +930,18 @@
         "inset": {
           "description": "A loop's margin from the box, as a percentage of the way in from each edge: 0 leaves no sheet at all (the whole box is cut away), 100 leaves no loop at all. One number for all four sides, or [top, right, bottom, left] to place the loop off-centre or give it another shape. Absent means a margin wide enough for the tear to fit in. Kept while the edge form is showing, so flipping forms is lossless.",
           "anyOf": [
-            { "type": "number", "minimum": 0, "maximum": 100 },
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
             {
               "type": "array",
-              "items": { "type": "number", "minimum": 0, "maximum": 100 },
+              "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
               "minItems": 4,
               "maxItems": 4
             }
@@ -1324,22 +1375,22 @@
           ]
         },
         "minWidth": {
-          "description": "Floor for the WIDTH the layout pass writes — CSS `min-width`. Nothing to say about a size a user typed, which is already the answer; it bites when the size is derived (fill, stretch, hug).",
+          "description": "Floor for the WIDTH the layout pass writes \u2014 CSS `min-width`. Nothing to say about a size a user typed, which is already the answer; it bites when the size is derived (fill, stretch, hug).",
           "type": "number",
           "minimum": 0
         },
         "maxWidth": {
-          "description": "Ceiling for the WIDTH the layout pass writes — CSS `max-width`. A `fill` child in a frame that is dragged wider stops here, which is the \"content block, centred, with a limited line width\" idiom.",
+          "description": "Ceiling for the WIDTH the layout pass writes \u2014 CSS `max-width`. A `fill` child in a frame that is dragged wider stops here, which is the \"content block, centred, with a limited line width\" idiom.",
           "type": "number",
           "minimum": 0
         },
         "minHeight": {
-          "description": "Floor for the HEIGHT the layout pass writes — CSS `min-height`.",
+          "description": "Floor for the HEIGHT the layout pass writes \u2014 CSS `min-height`.",
           "type": "number",
           "minimum": 0
         },
         "maxHeight": {
-          "description": "Ceiling for the HEIGHT the layout pass writes — CSS `max-height`.",
+          "description": "Ceiling for the HEIGHT the layout pass writes \u2014 CSS `max-height`.",
           "type": "number",
           "minimum": 0
         }
@@ -1590,7 +1641,7 @@
       }
     },
     "DesignToken": {
-      "description": "One value in doc.tokens[]: a colour or a number, and the type tag says which. A token is not a declaration — a style is — and nothing here is a paint stack.",
+      "description": "One value in doc.tokens[]: a colour or a number, and the type tag says which. A token is not a declaration \u2014 a style is \u2014 and nothing here is a paint stack.",
       "oneOf": [
         {
           "type": "object",
@@ -1617,13 +1668,27 @@
               ]
             },
             "value": {
-              "$ref": "#/definitions/TokenColor"
+              "oneOf": [
+                {
+                  "$ref": "#/definitions/TokenColor"
+                },
+                {
+                  "$ref": "#/definitions/TokenAliasRef"
+                }
+              ]
             },
             "modes": {
               "type": "object",
-              "description": "Mode id to value. A mode with no entry falls back to `value`.",
+              "description": "Mode id to value or alias. A mode with no entry falls back to `value`.",
               "additionalProperties": {
-                "$ref": "#/definitions/TokenColor"
+                "oneOf": [
+                  {
+                    "$ref": "#/definitions/TokenColor"
+                  },
+                  {
+                    "$ref": "#/definitions/TokenAliasRef"
+                  }
+                ]
               }
             }
           }
@@ -1653,7 +1718,14 @@
               ]
             },
             "value": {
-              "type": "number"
+              "oneOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "$ref": "#/definitions/TokenAliasRef"
+                }
+              ]
             },
             "category": {
               "type": "string",
@@ -1668,18 +1740,39 @@
             },
             "modes": {
               "type": "object",
-              "description": "Mode id to value. A mode with no entry falls back to `value`.",
+              "description": "Mode id to value or alias. A mode with no entry falls back to `value`.",
               "additionalProperties": {
-                "type": "number"
+                "oneOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "$ref": "#/definitions/TokenAliasRef"
+                  }
+                ]
               }
             }
           }
         }
       ]
     },
+    "TokenAliasRef": {
+      "type": "object",
+      "description": "Alias pointing to another token of the same type (`{ \"ref\": \"tok_...\" }`). Resolved in the active mode scope.",
+      "required": [
+        "ref"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "TokenColor": {
       "type": "string",
-      "description": "A colour value: `#RGB`, `#RRGGBB`, `#RRGGBBAA`, or `transparent`. Alpha is the last hex byte — a token has no opacity field.",
+      "description": "A colour value: `#RGB`, `#RRGGBB`, `#RRGGBBAA`, or `transparent`. Alpha is the last hex byte \u2014 a token has no opacity field.",
       "pattern": "^(#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6}|#[0-9a-fA-F]{8}|transparent)$"
     },
     "DesignStyle": {
@@ -1708,7 +1801,7 @@
             "stroke",
             "layoutGuide"
           ],
-          "description": "A style is a set of DECLARATIONS. A value — a colour, a number — is a doc.tokens[] entry, and an id lives in exactly one of the two tables."
+          "description": "A style is a set of DECLARATIONS. A value \u2014 a colour, a number \u2014 is a doc.tokens[] entry, and an id lives in exactly one of the two tables."
         },
         "guides": {
           "type": "array",
@@ -1781,17 +1874,6 @@
           "type": "string",
           "description": "The `doc.styles[]` entry this ruler follows. `layoutGuides` beside it is the materialised value, kept in step on load and on every edit."
         },
-        "layout-guide-style-id": {
-          "type": "string",
-          "description": "Kebab-case spelling of `layoutGuideStyleId`; both spellings are read."
-        },
-        "layout-guides": {
-          "type": "array",
-          "description": "Kebab-case spelling of `layoutGuides`; both spellings are read.",
-          "items": {
-            "$ref": "#/definitions/LayoutGuide"
-          }
-        },
         "name": {
           "type": "string"
         },
@@ -1836,39 +1918,13 @@
             }
           ]
         },
-        "rotation": {
-          "type": "number"
-        },
-        "flipX": {
-          "type": "boolean"
-        },
-        "flipY": {
-          "type": "boolean"
-        },
-        "rotateX": {
-          "type": "number"
-        },
-        "rotateY": {
-          "type": "number"
-        },
         "perspective": {
           "type": "number"
-        },
-        "skewX": {
-          "type": "number",
-          "description": "Shear of x by y, degrees about the box centre — the italic lean. Applied inside rotation, outside flip. Clamped to ±89; a pair whose tangents multiply to 1 (skewX 45 beside skewY 45) collapses the box to a line and is refused."
-        },
-        "skewY": {
-          "type": "number",
-          "description": "Shear of y by x, degrees about the box centre. See skewX."
         },
         "opacity": {
           "type": "number",
           "minimum": 0,
           "maximum": 1
-        },
-        "visible": {
-          "type": "boolean"
         },
         "locked": {
           "type": "boolean"
@@ -1877,18 +1933,8 @@
           "type": "boolean",
           "description": "Masks the siblings that follow it in the same container, until the next mask."
         },
-        "maskMode": {
-          "$ref": "#/definitions/MaskMode"
-        },
-        "maskInvert": {
-          "type": "boolean",
-          "description": "Reads the mask's brightness as its negative \u2014 dark pixels reveal, bright ones hide. `luminance` mode only; ignored in `alpha` mode, where inverting transparency would reveal the region the layer does not paint rather than a shape."
-        },
-        "blendMode": {
-          "$ref": "#/definitions/BlendMode"
-        },
         "sizing": {
-          "description": "Per-axis size mode. Accepts the compact string shorthand (`\"fill\"`, `\"hug\"`, `\"max-content\"`, `\"fill hug\"`, …) or the object form.",
+          "description": "Per-axis size mode. Accepts the compact string shorthand (`\"fill\"`, `\"hug\"`, `\"max-content\"`, `\"fill hug\"`, \u2026) or the object form.",
           "oneOf": [
             {
               "$ref": "#/definitions/ElementSizing"
@@ -1907,7 +1953,7 @@
           ]
         },
         "align-self": {
-          "description": "This child's own cross-axis alignment inside its layout parent, overriding the container's `align-items` (flex) or grid cell alignment for this element alone — CSS `align-self`. \"start\" is a value, not the absence of one: it means align to the start whatever the container says. \"stretch\" also sizes the child to the cross axis, which is the same thing `sizing` \"fill\" says on that axis.",
+          "description": "This child's own cross-axis alignment inside its layout parent, overriding the container's `align-items` (flex) or grid cell alignment for this element alone \u2014 CSS `align-self`. \"start\" is a value, not the absence of one: it means align to the start whatever the container says. \"stretch\" also sizes the child to the cross axis, which is the same thing `sizing` \"fill\" says on that axis.",
           "type": "string",
           "enum": [
             "start",
@@ -1916,13 +1962,8 @@
             "stretch"
           ]
         },
-        "flex-grow": {
-          "description": "The share this child's `fill` takes of its flex parent's leftover main-axis space — CSS `flex-grow`. Read only where the child fills the main axis (`sizing` `\"fill\"` on the parent's direction axis, which a positive `flex-grow` also implies). Absent and `1` are the equal split; `2` beside an implicit `1` splits the leftover 2:1.",
-          "type": "number",
-          "minimum": 0
-        },
         "margin": {
-          "description": "Space this child reserves around itself inside its layout parent — CSS `margin`. One number for all four sides, or [top, right, bottom, left]. SIGNED, unlike `padding`: a negative margin is how a child is pulled back over its neighbour. Unlike `gap`, which is one number for the whole container and sits between items, a margin belongs to one child and sits around it.",
+          "description": "Space this child reserves around itself inside its layout parent \u2014 CSS `margin`. One number for all four sides, or [top, right, bottom, left]. SIGNED, unlike `padding`: a negative margin is how a child is pulled back over its neighbour. Unlike `gap`, which is one number for the whole container and sits between items, a margin belongs to one child and sits around it.",
           "oneOf": [
             {
               "type": "number"
@@ -1938,7 +1979,7 @@
           ]
         },
         "grid-area": {
-          "description": "This child's track placement inside a grid parent — CSS grid-column / grid-row. `column` and `row` are 1-BASED, matching the grid line numbers CSS uses, so a value read off `grid-column: 2 / 4` is written the same way: { column: 2, columnSpan: 2 }. An absent axis is auto-placed and flow fills the rest around it; the two axes are independent, so `{ columnSpan: 2 }` alone spans two tracks and is still flowed into place. Read only where a grid parent is placing the child.",
+          "description": "This child's track placement inside a grid parent \u2014 CSS grid-column / grid-row. `column` and `row` are 1-BASED, matching the grid line numbers CSS uses, so a value read off `grid-column: 2 / 4` is written the same way: { column: 2, columnSpan: 2 }. An absent axis is auto-placed and flow fills the rest around it; the two axes are independent, so `{ columnSpan: 2 }` alone spans two tracks and is still flowed into place. Read only where a grid parent is placing the child.",
           "type": "object",
           "properties": {
             "column": {
@@ -2078,22 +2119,6 @@
           "type": "string",
           "description": "Explicit NUMBER token mode override for this container and its subtree."
         },
-        "borderRadius": {
-          "description": "`radius` and `cornerRadius` are aliases.",
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "array",
-              "items": {
-                "type": "number"
-              },
-              "minItems": 4,
-              "maxItems": 4
-            }
-          ]
-        },
         "children": {
           "type": "array",
           "items": {
@@ -2112,19 +2137,19 @@
         },
         "flex-direction": {
           "$ref": "#/definitions/AutoLayout/properties/direction",
-          "description": "Flex only — CSS `flex-direction`; default row."
+          "description": "Flex only \u2014 CSS `flex-direction`; default row."
         },
         "justify-content": {
           "$ref": "#/definitions/AutoLayout/properties/justify",
-          "description": "Flex only — CSS `justify-content` (main axis)."
+          "description": "Flex only \u2014 CSS `justify-content` (main axis)."
         },
         "align-items": {
           "$ref": "#/definitions/AutoLayout/properties/align",
-          "description": "Flex cross-axis — CSS `align-items`. On a grid it routes to the grid cell alignment."
+          "description": "Flex cross-axis \u2014 CSS `align-items`. On a grid it routes to the grid cell alignment."
         },
         "align-content": {
           "$ref": "#/definitions/AutoLayout/properties/alignContent",
-          "description": "Flex wrapped lines — CSS `align-content`."
+          "description": "Flex wrapped lines \u2014 CSS `align-content`."
         },
         "flex-wrap": {
           "$ref": "#/definitions/AutoLayout/properties/wrap",
@@ -2140,10 +2165,10 @@
         },
         "padding": {
           "$ref": "#/definitions/AutoLayout/properties/padding",
-          "description": "Space inside the container — CSS `padding`. One number or [top, right, bottom, left]."
+          "description": "Space inside the container \u2014 CSS `padding`. One number or [top, right, bottom, left]."
         },
         "grid-template-columns": {
-          "description": "Grid columns — CSS `grid-template-columns`. A NUMBER is the equal-division count; an ARRAY is explicit tracks, in the same spellings as `columnSizes`.",
+          "description": "Grid columns \u2014 CSS `grid-template-columns`. A NUMBER is the equal-division count; an ARRAY is explicit tracks, in the same spellings as `columnSizes`.",
           "oneOf": [
             {
               "type": "number",
@@ -2155,7 +2180,7 @@
           ]
         },
         "grid-template-rows": {
-          "description": "Grid rows — CSS `grid-template-rows`. A NUMBER is the count; an ARRAY is explicit tracks, in the same spellings as `rowSizes`. Absent means the rows are derived from the children.",
+          "description": "Grid rows \u2014 CSS `grid-template-rows`. A NUMBER is the count; an ARRAY is explicit tracks, in the same spellings as `rowSizes`. Absent means the rows are derived from the children.",
           "oneOf": [
             {
               "type": "number",
@@ -2168,7 +2193,7 @@
         },
         "grid-auto-flow": {
           "$ref": "#/definitions/AutoLayout/properties/placement",
-          "description": "Grid cell fill order — CSS `grid-auto-flow`. Maps to the grid `placement`."
+          "description": "Grid cell fill order \u2014 CSS `grid-auto-flow`. Maps to the grid `placement`."
         },
         "columns-mode": {
           "$ref": "#/definitions/AutoLayout/properties/columnsMode",
@@ -2180,7 +2205,7 @@
         },
         "masonry": {
           "$ref": "#/definitions/AutoLayout/properties/masonry",
-          "description": "Grid only — lay items out as masonry columns rather than aligned rows."
+          "description": "Grid only \u2014 lay items out as masonry columns rather than aligned rows."
         },
         "sizeOverride": {
           "type": "boolean",
@@ -2188,7 +2213,7 @@
         },
         "instanceScale": {
           "type": "object",
-          "description": "Instance only: this instance is a proportional scale of its master. Both factors multiply every length inside the master's subtree — type size, padding, gap, radii, stroke widths, shadow blur and the coordinates themselves. Absent means 1:1.",
+          "description": "Instance only: this instance is a proportional scale of its master. Both factors multiply every length inside the master's subtree \u2014 type size, padding, gap, radii, stroke widths, shadow blur and the coordinates themselves. Absent means 1:1.",
           "required": [
             "x",
             "y"
@@ -2287,12 +2312,9 @@
           "type": "string",
           "description": "Text only; `text` is an alias."
         },
-        "style": {
-          "$ref": "#/definitions/TextStyle"
-        },
         "outline": {
           "type": "object",
-          "description": "Text only: the glyphs as a path in this element's own coordinates, kept so text can act as GEOMETRY. A mask can only carry geometry — a path paints inside an SVG `mask`, a `foreignObject` (how every text node here is drawn) does not — so this is what a mask frame holding words masks by. A Figma file already carries it as `fillGeometry`. `content` + `style` still paint the text; editing the text does not update the outline.",
+          "description": "Text only: the glyphs as a path in this element's own coordinates, kept so text can act as GEOMETRY. A mask can only carry geometry \u2014 a path paints inside an SVG `mask`, a `foreignObject` (how every text node here is drawn) does not \u2014 so this is what a mask frame holding words masks by. A Figma file already carries it as `fillGeometry`. `content` + `style` still paint the text; editing the text does not update the outline.",
           "properties": {
             "d": {
               "type": "string",
@@ -2354,45 +2376,17 @@
             "fill",
             "crop"
           ],
-          "description": "Image only; `objectFit` / `object-fit` are aliases."
-        },
-        "focalPoint": {
-          "type": "object",
-          "properties": {
-            "x": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 1
-            },
-            "y": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 1
-            }
-          }
+          "description": "Image only."
         },
         "d": {
           "type": "string",
-          "description": "Path only: SVG path data in the element's LOCAL box, ideally within 0..width \u00d7 0..height. `path` / `pathData` are aliases."
-        },
-        "fillRule": {
-          "type": "string",
-          "enum": [
-            "nonzero",
-            "evenodd"
-          ],
-          "description": "Path only: which subpaths count as inside when they overlap. `evenodd` cuts a hole \u2014 a donut is one path whose second subpath punches through the first. Omit for `nonzero`, the SVG default."
+          "description": "Path only: SVG path data in the element's LOCAL box, ideally within 0..width x 0..height."
         },
         "sides": {
           "type": "number",
           "minimum": 3,
           "maximum": 24,
           "description": "Polygon only: vertex count, first vertex top-centre, clockwise. Clamped 3..24; defaults to 5."
-        },
-        "cornerRadius": {
-          "type": "number",
-          "minimum": 0,
-          "description": "Polygon and star only: how far each corner is cut back, in px \u2014 a LENGTH, so it scales with the box. 0 (default) is a hard edge. On a rect the same field is spelled `borderRadius`, which is where normalize stores it."
         },
         "cornerSmoothing": {
           "type": "number",
@@ -2425,7 +2419,7 @@
           "description": "Ellipse only: where the sweep starts, in degrees clockwise from top centre. Defaults to 0."
         },
         "gap": {
-          "description": "Ellipse only: angular gap split across both ends of the sweep, so stacked arcs keep a visible seam, 0-180 degrees. On a layout container (with `display`), the uniform gap between items — CSS `gap`: a number, a `[row, column]` pair, or a CSS two-value string.",
+          "description": "Ellipse only: angular gap split across both ends of the sweep, so stacked arcs keep a visible seam, 0-180 degrees. On a layout container (with `display`), the uniform gap between items \u2014 CSS `gap`: a number, a `[row, column]` pair, or a CSS two-value string.",
           "oneOf": [
             {
               "type": "number",
@@ -2508,43 +2502,9 @@
           ],
           "description": "A bare colour, a layered CSS `background` list, or a paint object; absorbed into the `fills` stack (reported). `background-color` / `backgroundColor` are the same declaration."
         },
-        "background-color": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "$ref": "#/definitions/Paint"
-            }
-          ],
-          "description": "A bare colour, a layered CSS `background` list, or a paint object; absorbed into the `fills` stack (reported). `background-color` / `backgroundColor` are the same declaration."
-        },
-        "backgroundColor": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "$ref": "#/definitions/Paint"
-            }
-          ],
-          "description": "A bare colour, a layered CSS `background` list, or a paint object; absorbed into the `fills` stack (reported). `background-color` / `backgroundColor` are the same declaration."
-        },
-        "blend": {
-          "$ref": "#/definitions/BlendMode",
-          "description": "Input alias of `blendMode`; both are read."
-        },
-        "blend-mode": {
-          "$ref": "#/definitions/BlendMode",
-          "description": "Kebab-case spelling of `blendMode`; both spellings are read."
-        },
         "mix-blend-mode": {
           "$ref": "#/definitions/BlendMode",
-          "description": "CSS spelling of `blendMode`; both spellings are read."
-        },
-        "mixBlendMode": {
-          "$ref": "#/definitions/BlendMode",
-          "description": "Camel-case spelling of `blendMode`; both spellings are read."
+          "description": "CSS `mix-blend-mode`: how this layer's paint combines with what is behind it."
         },
         "border": {
           "oneOf": [
@@ -2578,165 +2538,16 @@
         "border-top": {
           "$ref": "#/definitions/DesignElement/properties/border"
         },
-        "borderTop": {
-          "$ref": "#/definitions/DesignElement/properties/border"
-        },
         "border-right": {
-          "$ref": "#/definitions/DesignElement/properties/border"
-        },
-        "borderRight": {
           "$ref": "#/definitions/DesignElement/properties/border"
         },
         "border-bottom": {
           "$ref": "#/definitions/DesignElement/properties/border"
         },
-        "borderBottom": {
-          "$ref": "#/definitions/DesignElement/properties/border"
-        },
         "border-left": {
           "$ref": "#/definitions/DesignElement/properties/border"
         },
-        "borderLeft": {
-          "$ref": "#/definitions/DesignElement/properties/border"
-        },
-        "border-color": {
-          "type": "string",
-          "description": "Element-level border colour; absorbed into the stroke row. `borderColor` is the camel spelling."
-        },
-        "borderColor": {
-          "type": "string",
-          "description": "Element-level border colour; absorbed into the stroke row. `borderColor` is the camel spelling."
-        },
-        "border-style": {
-          "type": "string",
-          "description": "`\"solid\"` (default) draws solid; `\"none\"` removes the element-level border outright and wins over a width or colour beside it; anything else draws dashed. `borderStyle` is the camel spelling."
-        },
-        "borderStyle": {
-          "type": "string",
-          "description": "`\"solid\"` (default) draws solid; `\"none\"` removes the element-level border outright and wins over a width or colour beside it; anything else draws dashed. `borderStyle` is the camel spelling."
-        },
-        "border-width": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "Element-level border width; absorbed into the stroke row. `border-top-width` and friends set one side each. `borderWidth` is the camel spelling."
-        },
-        "borderWidth": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "Element-level border width; absorbed into the stroke row. `border-top-width` and friends set one side each. `borderWidth` is the camel spelling."
-        },
-        "border-top-width": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "CSS per-side border width; folded into the stroke row's `sides.top`. The four are independent declarations, so each stands alone. `borderTopWidth` is the camel spelling."
-        },
-        "borderTopWidth": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "CSS per-side border width; folded into the stroke row's `sides.top`. The four are independent declarations, so each stands alone. `borderTopWidth` is the camel spelling."
-        },
-        "border-right-width": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "CSS per-side border width; folded into the stroke row's `sides.right`. The four are independent declarations, so each stands alone. `borderRightWidth` is the camel spelling."
-        },
-        "borderRightWidth": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "CSS per-side border width; folded into the stroke row's `sides.right`. The four are independent declarations, so each stands alone. `borderRightWidth` is the camel spelling."
-        },
-        "border-bottom-width": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "CSS per-side border width; folded into the stroke row's `sides.bottom`. The four are independent declarations, so each stands alone. `borderBottomWidth` is the camel spelling."
-        },
-        "borderBottomWidth": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "CSS per-side border width; folded into the stroke row's `sides.bottom`. The four are independent declarations, so each stands alone. `borderBottomWidth` is the camel spelling."
-        },
-        "border-left-width": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "CSS per-side border width; folded into the stroke row's `sides.left`. The four are independent declarations, so each stands alone. `borderLeftWidth` is the camel spelling."
-        },
-        "borderLeftWidth": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "CSS per-side border width; folded into the stroke row's `sides.left`. The four are independent declarations, so each stands alone. `borderLeftWidth` is the camel spelling."
-        },
         "border-top-left-radius": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "CSS corner longhand; folded into the four-corner `borderRadius` shape. `borderTopLeftRadius` is the camel spelling."
-        },
-        "borderTopLeftRadius": {
           "oneOf": [
             {
               "type": "number"
@@ -2758,29 +2569,7 @@
           ],
           "description": "CSS corner longhand; folded into the four-corner `borderRadius` shape. `borderTopRightRadius` is the camel spelling."
         },
-        "borderTopRightRadius": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "CSS corner longhand; folded into the four-corner `borderRadius` shape. `borderTopRightRadius` is the camel spelling."
-        },
         "border-bottom-right-radius": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "CSS corner longhand; folded into the four-corner `borderRadius` shape. `borderBottomRightRadius` is the camel spelling."
-        },
-        "borderBottomRightRadius": {
           "oneOf": [
             {
               "type": "number"
@@ -2802,19 +2591,8 @@
           ],
           "description": "CSS corner longhand; folded into the four-corner `borderRadius` shape. `borderBottomLeftRadius` is the camel spelling."
         },
-        "borderBottomLeftRadius": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "CSS corner longhand; folded into the four-corner `borderRadius` shape. `borderBottomLeftRadius` is the camel spelling."
-        },
         "border-radius": {
-          "description": "Kebab-case spelling of `borderRadius`; both spellings are read. `radius` and `cornerRadius` are aliases.",
+          "description": "CSS `border-radius`: a number, a px length, or the CSS 1-4 value side shorthand. A four-number tuple is top-left, top-right, bottom-right, bottom-left.",
           "oneOf": [
             {
               "type": "number"
@@ -2828,609 +2606,16 @@
               "maxItems": 4
             }
           ]
-        },
-        "radius": {
-          "description": "Input alias of `borderRadius`; both are read. `radius` and `cornerRadius` are aliases.",
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "array",
-              "items": {
-                "type": "number"
-              },
-              "minItems": 4,
-              "maxItems": 4
-            }
-          ]
-        },
-        "border-sides": {
-          "type": "object",
-          "properties": {
-            "top": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "right": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "bottom": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "left": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "t": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "r": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "b": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "l": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            }
-          },
-          "description": "Per-side stroke weights as a map, input-only; folded into the stroke row's `sides`. Accepted keys per side: `top`/`right`/`bottom`/`left` and the short `t`/`r`/`b`/`l`. `strokeSides` / `borderSides` are the camel spellings."
-        },
-        "borderSides": {
-          "type": "object",
-          "properties": {
-            "top": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "right": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "bottom": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "left": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "t": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "r": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "b": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "l": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            }
-          },
-          "description": "Per-side stroke weights as a map, input-only; folded into the stroke row's `sides`. Accepted keys per side: `top`/`right`/`bottom`/`left` and the short `t`/`r`/`b`/`l`. `strokeSides` / `borderSides` are the camel spellings."
-        },
-        "stroke-sides": {
-          "type": "object",
-          "properties": {
-            "top": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "right": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "bottom": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "left": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "t": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "r": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "b": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "l": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            }
-          },
-          "description": "Per-side stroke weights as a map, input-only; folded into the stroke row's `sides`. Accepted keys per side: `top`/`right`/`bottom`/`left` and the short `t`/`r`/`b`/`l`. `strokeSides` / `borderSides` are the camel spellings."
-        },
-        "strokeSides": {
-          "type": "object",
-          "properties": {
-            "top": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "right": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "bottom": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "left": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "t": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "r": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "b": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "l": {
-              "oneOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            }
-          },
-          "description": "Per-side stroke weights as a map, input-only; folded into the stroke row's `sides`. Accepted keys per side: `top`/`right`/`bottom`/`left` and the short `t`/`r`/`b`/`l`. `strokeSides` / `borderSides` are the camel spellings."
-        },
-        "border-side": {
-          "type": "string",
-          "enum": [
-            "all",
-            "top",
-            "right",
-            "bottom",
-            "left",
-            "custom"
-          ],
-          "description": "Which side this stroke draws on, input-only; folded into the stroke row's `side`. `strokeSide` / `borderSide` are the camel spellings."
-        },
-        "borderSide": {
-          "type": "string",
-          "enum": [
-            "all",
-            "top",
-            "right",
-            "bottom",
-            "left",
-            "custom"
-          ],
-          "description": "Which side this stroke draws on, input-only; folded into the stroke row's `side`. `strokeSide` / `borderSide` are the camel spellings."
-        },
-        "stroke-side": {
-          "type": "string",
-          "enum": [
-            "all",
-            "top",
-            "right",
-            "bottom",
-            "left",
-            "custom"
-          ],
-          "description": "Which side this stroke draws on, input-only; folded into the stroke row's `side`. `strokeSide` / `borderSide` are the camel spellings."
-        },
-        "strokeSide": {
-          "type": "string",
-          "enum": [
-            "all",
-            "top",
-            "right",
-            "bottom",
-            "left",
-            "custom"
-          ],
-          "description": "Which side this stroke draws on, input-only; folded into the stroke row's `side`. `strokeSide` / `borderSide` are the camel spellings."
-        },
-        "stroke-top-weight": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "Figma's per-side stroke weight, input-only; folded into the stroke row's `sides.top`. `strokeTopWeight` is the camel spelling."
-        },
-        "strokeTopWeight": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "Figma's per-side stroke weight, input-only; folded into the stroke row's `sides.top`. `strokeTopWeight` is the camel spelling."
-        },
-        "stroke-right-weight": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "Figma's per-side stroke weight, input-only; folded into the stroke row's `sides.right`. `strokeRightWeight` is the camel spelling."
-        },
-        "strokeRightWeight": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "Figma's per-side stroke weight, input-only; folded into the stroke row's `sides.right`. `strokeRightWeight` is the camel spelling."
-        },
-        "stroke-bottom-weight": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "Figma's per-side stroke weight, input-only; folded into the stroke row's `sides.bottom`. `strokeBottomWeight` is the camel spelling."
-        },
-        "strokeBottomWeight": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "Figma's per-side stroke weight, input-only; folded into the stroke row's `sides.bottom`. `strokeBottomWeight` is the camel spelling."
-        },
-        "stroke-left-weight": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "Figma's per-side stroke weight, input-only; folded into the stroke row's `sides.left`. `strokeLeftWeight` is the camel spelling."
-        },
-        "strokeLeftWeight": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "Figma's per-side stroke weight, input-only; folded into the stroke row's `sides.left`. `strokeLeftWeight` is the camel spelling."
-        },
-        "stroke-width": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "Element-level stroke width; absorbed into the stroke row. `stroke-width` is the CSS spelling."
-        },
-        "strokeWidth": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "Element-level stroke width; absorbed into the stroke row. `stroke-width` is the CSS spelling."
-        },
-        "box-shadow": {
-          "type": "string",
-          "description": "CSS `box-shadow` list; each shadow becomes an `effects[]` row (stored bottom-first, reported). `boxShadow` is the camel spelling."
-        },
-        "boxShadow": {
-          "type": "string",
-          "description": "CSS `box-shadow` list; each shadow becomes an `effects[]` row (stored bottom-first, reported). `boxShadow` is the camel spelling."
-        },
-        "box-sizing": {
-          "type": "string",
-          "enum": [
-            "border-box",
-            "content-box"
-          ],
-          "description": "The engine always measures `\"border-box\"`, which is accepted silently; `\"content-box\"` asks for the other model, is reported and ignored. `boxSizing` is the camel spelling."
-        },
-        "boxSizing": {
-          "type": "string",
-          "enum": [
-            "border-box",
-            "content-box"
-          ],
-          "description": "The engine always measures `\"border-box\"`, which is accepted silently; `\"content-box\"` asks for the other model, is reported and ignored. `boxSizing` is the camel spelling."
         },
         "color": {
           "type": "string",
           "description": "A bare colour: text ink on a text element (folded into `style.color` and its fills), a solid fill on anything else \u2014 the same road CSS `color` takes."
         },
-        "text-color": {
-          "type": "string",
-          "description": "Text ink; folded into `style.color` and the text's fills \u2014 the same paint `color` names. `textColor` is the camel spelling."
-        },
-        "textColor": {
-          "type": "string",
-          "description": "Text ink; folded into `style.color` and the text's fills \u2014 the same paint `color` names. `textColor` is the camel spelling."
-        },
         "crop": {
           "$ref": "#/definitions/ImageCrop",
           "description": "Where the bitmap sits in its box \u2014 `{ x, y, scale, rotation }` \u2014 folded onto the image fill's own `crop`. `imageCrop` / `image-crop` are spelling twins of `crop`."
         },
-        "image-crop": {
-          "$ref": "#/definitions/ImageCrop",
-          "description": "Where the bitmap sits in its box \u2014 `{ x, y, scale, rotation }` \u2014 folded onto the image fill's own `crop`. `imageCrop` / `image-crop` are spelling twins of `crop`."
-        },
-        "imageCrop": {
-          "$ref": "#/definitions/ImageCrop",
-          "description": "Where the bitmap sits in its box \u2014 `{ x, y, scale, rotation }` \u2014 folded onto the image fill's own `crop`. `imageCrop` / `image-crop` are spelling twins of `crop`."
-        },
-        "object-fit": {
-          "type": "string",
-          "enum": [
-            "cover",
-            "contain",
-            "fill",
-            "crop"
-          ],
-          "description": "Image fit on the image fill: `\"cover\"`, `\"contain\"`, `\"fill\"` or `\"crop\"`. `fit` is the dialect's spelling; `object-fit` is the CSS one and `objectFit` its camel twin. A stack with no image fill cannot honour it and says so."
-        },
-        "objectFit": {
-          "type": "string",
-          "enum": [
-            "cover",
-            "contain",
-            "fill",
-            "crop"
-          ],
-          "description": "Image fit on the image fill: `\"cover\"`, `\"contain\"`, `\"fill\"` or `\"crop\"`. `fit` is the dialect's spelling; `object-fit` is the CSS one and `objectFit` its camel twin. A stack with no image fill cannot honour it and says so."
-        },
-        "filter": {
-          "oneOf": [
-            {
-              "$ref": "#/definitions/ColorFilter"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "The legacy spelling of `adjust`, or a CSS `filter` string: its colour adjustments merge into `adjust`, `blur()` / `drop-shadow()` become `effects[]`, and the rest are named in a repair."
-        },
         "backdrop-filter": {
-          "type": "string",
-          "description": "CSS `backdrop-filter`. Only `blur()` maps, onto an `effects[].type = \"backdrop-blur\"` row (reported); functions with no field on the backdrop are named and skipped. `backdropFilter` is the camel spelling."
-        },
-        "backdropFilter": {
           "type": "string",
           "description": "CSS `backdrop-filter`. Only `blur()` maps, onto an `effects[].type = \"backdrop-blur\"` row (reported); functions with no field on the backdrop are named and skipped. `backdropFilter` is the camel spelling."
         },
@@ -3463,29 +2648,7 @@
           ],
           "description": "A clamped bound on `sizing.minWidth`, CSS spelling; a px length. `minWidth` is the camel spelling."
         },
-        "minWidth": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "A clamped bound on `sizing.minWidth`, CSS spelling; a px length. `minWidth` is the camel spelling."
-        },
         "max-width": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "A clamped bound on `sizing.maxWidth`, CSS spelling; a px length. `maxWidth` is the camel spelling."
-        },
-        "maxWidth": {
           "oneOf": [
             {
               "type": "number"
@@ -3507,29 +2670,7 @@
           ],
           "description": "A clamped bound on `sizing.minHeight`, CSS spelling; a px length. `minHeight` is the camel spelling."
         },
-        "minHeight": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "A clamped bound on `sizing.minHeight`, CSS spelling; a px length. `minHeight` is the camel spelling."
-        },
         "max-height": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "A clamped bound on `sizing.maxHeight`, CSS spelling; a px length. `maxHeight` is the camel spelling."
-        },
-        "maxHeight": {
           "oneOf": [
             {
               "type": "number"
@@ -3577,10 +2718,6 @@
           ],
           "description": "CSS `writing-mode` on a text element. A sideways line (`vertical-rl` / `vertical-lr` / `sideways-rl` / `sideways-lr`) is folded onto `rotation` +90\u00b0 with the box's axes swapped about its centre \u2014 the same representation the HTML importer writes. Upright vertical text (`text-orientation: upright`, or upright-only scripts under the default `mixed`) is reported, not turned. On a non-text element it is reported and dropped."
         },
-        "writingMode": {
-          "type": "string",
-          "description": "Camel-case spelling of `writing-mode`; both spellings are read."
-        },
         "text-orientation": {
           "type": "string",
           "enum": [
@@ -3589,34 +2726,6 @@
             "sideways"
           ],
           "description": "CSS `text-orientation`, read only beside a vertical `writing-mode`. `upright` keeps the glyphs upright, which the DSL cannot reproduce (a vertical line is a sideways turn), so it is reported and the line is left horizontal; `mixed` / `sideways` turn as usual. Without a vertical writing-mode it has no effect and is reported."
-        },
-        "textOrientation": {
-          "type": "string",
-          "description": "Camel-case spelling of `text-orientation`; both spellings are read."
-        },
-        "rotate-x": {
-          "type": "number",
-          "description": "Kebab-case spelling of `rotateX`; both spellings are read."
-        },
-        "rotate-y": {
-          "type": "number",
-          "description": "Kebab-case spelling of `rotateY`; both spellings are read."
-        },
-        "skew-x": {
-          "type": "number",
-          "description": "Kebab-case spelling of `skewX`; both spellings are read."
-        },
-        "skew-y": {
-          "type": "number",
-          "description": "Kebab-case spelling of `skewY`; both spellings are read."
-        },
-        "flip-x": {
-          "type": "boolean",
-          "description": "Kebab-case spelling of `flipX`; both spellings are read."
-        },
-        "flip-y": {
-          "type": "boolean",
-          "description": "Kebab-case spelling of `flipY`; both spellings are read."
         },
         "from": {
           "type": "object",
@@ -3642,40 +2751,6 @@
           },
           "description": "Line and arrow only: the start (`from`) and end (`to`) point as `{ x, y }`; an axis left out falls back to the box. Together they spell the same geometry as `x`/`y` + `dx`/`dy`."
         },
-        "path": {
-          "type": "string",
-          "description": "Input alias of `d`; both are read. Path only: SVG path data in the element's LOCAL box, ideally within 0..width \u00d7 0..height. `path` / `pathData` are aliases."
-        },
-        "path-data": {
-          "type": "string",
-          "description": "Input alias of `d`; both are read. Path only: SVG path data in the element's LOCAL box, ideally within 0..width \u00d7 0..height. `path` / `pathData` are aliases."
-        },
-        "pathData": {
-          "type": "string",
-          "description": "Input alias of `d`; both are read. Path only: SVG path data in the element's LOCAL box, ideally within 0..width \u00d7 0..height. `path` / `pathData` are aliases."
-        },
-        "viewBox": {
-          "description": "Path only: SVG's `viewBox`, as `\"0 0 24 24\"`, four numbers, or `{ x, y, width, height }`. Read once and baked into `d` at the element's box, so the key is never stored; without a box the viewBox's own extent is the target."
-        },
-        "view-box": {
-          "description": "Kebab-case spelling of `viewBox`."
-        },
-        "whiteSpace": {
-          "type": "string",
-          "description": "`nowrap` is a width statement: it measures the text as `max-content`, and an authored `width` still wins. Folds into `sizing.width` on read and is not written back."
-        },
-        "white-space": {
-          "type": "string",
-          "description": "CSS spelling of `whiteSpace`."
-        },
-        "characters": {
-          "type": "string",
-          "description": "Input alias of `content`; both are read. Text only; `text` is an alias."
-        },
-        "text": {
-          "type": "string",
-          "description": "Input alias of `content`; both are read. Text only; `text` is an alias."
-        },
         "flex": {
           "oneOf": [
             {
@@ -3687,34 +2762,7 @@
           ],
           "description": "CSS `flex` shorthand, input-only: its first number is the grow share (`flex-grow`, which see). `flex: 0` means do not grow."
         },
-        "flexDirection": {
-          "$ref": "#/definitions/AutoLayout/properties/direction",
-          "description": "Camel-case spelling of `flex-direction`; both spellings are read. Flex only \u2014 CSS `flex-direction`; default row."
-        },
-        "flexGrow": {
-          "description": "Camel-case spelling of `flex-grow`; both spellings are read. The share this child's `fill` takes of its flex parent's leftover main-axis space \u2014 CSS `flex-grow`. Read only where the child fills the main axis (`sizing` `\"fill\"` on the parent's direction axis, which a positive `flex-grow` also implies). Absent and `1` are the equal split; `2` beside an implicit `1` splits the leftover 2:1.",
-          "type": "number",
-          "minimum": 0
-        },
-        "flexWrap": {
-          "$ref": "#/definitions/AutoLayout/properties/wrap",
-          "description": "Camel-case spelling of `flex-wrap`; both spellings are read. CSS `flex-wrap`."
-        },
-        "layoutGrow": {
-          "type": "number",
-          "minimum": 0,
-          "description": "Figma's spelling of `flex-grow`, input-only; a positive value means fill along the parent's main axis and is normalized onto `sizing`. Needs a flex parent \u2014 reported otherwise. `layout-grow` is the kebab twin."
-        },
-        "layout-grow": {
-          "type": "number",
-          "minimum": 0,
-          "description": "Figma's spelling of `flex-grow`, input-only; a positive value means fill along the parent's main axis and is normalized onto `sizing`. Needs a flex parent \u2014 reported otherwise. `layout-grow` is the kebab twin."
-        },
         "grid-column": {
-          "type": "string",
-          "description": "CSS grid placement on this child \u2014 a line range like `\"2 / span 2\"` \u2014 folded into `grid-area`. `gridColumn` / `gridRow` are the camel spellings."
-        },
-        "gridColumn": {
           "type": "string",
           "description": "CSS grid placement on this child \u2014 a line range like `\"2 / span 2\"` \u2014 folded into `grid-area`. `gridColumn` / `gridRow` are the camel spellings."
         },
@@ -3722,135 +2770,27 @@
           "type": "string",
           "description": "CSS grid placement on this child \u2014 a line range like `\"2 / span 2\"` \u2014 folded into `grid-area`. `gridColumn` / `gridRow` are the camel spellings."
         },
-        "gridRow": {
-          "type": "string",
-          "description": "CSS grid placement on this child \u2014 a line range like `\"2 / span 2\"` \u2014 folded into `grid-area`. `gridColumn` / `gridRow` are the camel spellings."
-        },
-        "gridArea": {
-          "description": "Camel-case spelling of `grid-area`; both spellings are read. This child's track placement inside a grid parent \u2014 CSS grid-column / grid-row. `column` and `row` are 1-BASED, matching the grid line numbers CSS uses, so a value read off `grid-column: 2 / 4` is written the same way: { column: 2, columnSpan: 2 }. An absent axis is auto-placed and flow fills the rest around it; the two axes are independent, so `{ columnSpan: 2 }` alone spans two tracks and is still flowed into place. Read only where a grid parent is placing the child.",
-          "type": "object",
-          "properties": {
-            "column": {
-              "type": "number",
-              "minimum": 1
-            },
-            "row": {
-              "type": "number",
-              "minimum": 1
-            },
-            "columnSpan": {
-              "type": "number",
-              "minimum": 1
-            },
-            "rowSpan": {
-              "type": "number",
-              "minimum": 1
-            }
-          },
-          "additionalProperties": false
-        },
-        "gridAutoFlow": {
-          "$ref": "#/definitions/AutoLayout/properties/placement",
-          "description": "Camel-case spelling of `grid-auto-flow`; both spellings are read. Grid cell fill order \u2014 CSS `grid-auto-flow`. Maps to the grid `placement`."
-        },
-        "gridTemplateColumns": {
-          "description": "Camel-case spelling of `grid-template-columns`; both spellings are read. Grid columns \u2014 CSS `grid-template-columns`. A NUMBER is the equal-division count; an ARRAY is explicit tracks, in the same spellings as `columnSizes`.",
-          "oneOf": [
-            {
-              "type": "number",
-              "minimum": 1
-            },
-            {
-              "$ref": "#/definitions/AutoLayout/properties/columnSizes"
-            }
-          ]
-        },
-        "gridTemplateRows": {
-          "description": "Camel-case spelling of `grid-template-rows`; both spellings are read. Grid rows \u2014 CSS `grid-template-rows`. A NUMBER is the count; an ARRAY is explicit tracks, in the same spellings as `rowSizes`. Absent means the rows are derived from the children.",
-          "oneOf": [
-            {
-              "type": "number",
-              "minimum": 1
-            },
-            {
-              "$ref": "#/definitions/AutoLayout/properties/rowSizes"
-            }
-          ]
-        },
-        "alignContent": {
-          "$ref": "#/definitions/AutoLayout/properties/alignContent",
-          "description": "Camel-case spelling of `align-content`; both spellings are read. Flex wrapped lines \u2014 CSS `align-content`."
-        },
-        "alignItems": {
-          "$ref": "#/definitions/AutoLayout/properties/align",
-          "description": "Camel-case spelling of `align-items`; both spellings are read. Flex cross-axis \u2014 CSS `align-items`. On a grid it routes to the grid cell alignment."
-        },
-        "alignSelf": {
-          "description": "Camel-case spelling of `align-self`; both spellings are read. This child's own cross-axis alignment inside its layout parent, overriding the container's `align-items` (flex) or grid cell alignment for this element alone \u2014 CSS `align-self`. \"start\" is a value, not the absence of one: it means align to the start whatever the container says. \"stretch\" also sizes the child to the cross axis, which is the same thing `sizing` \"fill\" says on that axis.",
-          "type": "string",
-          "enum": [
-            "start",
-            "center",
-            "end",
-            "stretch"
-          ]
-        },
-        "justifyContent": {
-          "$ref": "#/definitions/AutoLayout/properties/justify",
-          "description": "Camel-case spelling of `justify-content`; both spellings are read. Flex only \u2014 CSS `justify-content` (main axis)."
-        },
-        "rowGap": {
-          "$ref": "#/definitions/AutoLayout/properties/rowGap",
-          "description": "Camel-case spelling of `row-gap`; both spellings are read. CSS `row-gap`, in both modes."
-        },
-        "columnGap": {
-          "$ref": "#/definitions/AutoLayout/properties/columnGap",
-          "description": "Camel-case spelling of `column-gap`; both spellings are read. CSS `column-gap`, in both modes."
-        },
-        "columnWidthMin": {
-          "$ref": "#/definitions/AutoLayout/properties/columnWidthMin",
-          "description": "Camel-case spelling of `column-width-min`; both spellings are read. CSS `column-width` floor for auto columns."
-        },
-        "columnsMode": {
-          "$ref": "#/definitions/AutoLayout/properties/columnsMode",
-          "description": "Camel-case spelling of `columns-mode`; both spellings are read. CSS columns mode (`fixed` / `auto`)."
-        },
-        "scrollX": {
-          "oneOf": [
-            { "type": "number" },
-            { "type": "string" }
-          ],
-          "description": "Initial horizontal scroll offset of the container in px. Default 0."
-        },
         "scroll-x": {
           "oneOf": [
-            { "type": "number" },
-            { "type": "string" }
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
           ],
-          "description": "CSS kebab-case spelling of `scrollX`."
-        },
-        "scrollY": {
-          "oneOf": [
-            { "type": "number" },
-            { "type": "string" }
-          ],
-          "description": "Initial vertical scroll offset of the container in px. Default 0."
+          "description": "Horizontal scroll position in px when the container scrolls."
         },
         "scroll-y": {
           "oneOf": [
-            { "type": "number" },
-            { "type": "string" }
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
           ],
-          "description": "CSS kebab-case spelling of `scrollY`."
-        },
-        "scrollBehavior": {
-          "type": "string",
-          "enum": [
-            "scroll",
-            "fixed",
-            "sticky"
-          ],
-          "description": "How this child behaves when its parent container scrolls: `\"scroll\"` (default, scrolls with parent), `\"fixed\"` (stays in place), or `\"sticky\"` (sticks to top edge)."
+          "description": "Vertical scroll position in px when the container scrolls."
         },
         "scroll-behavior": {
           "type": "string",
@@ -3859,44 +2799,7 @@
             "fixed",
             "sticky"
           ],
-          "description": "Kebab-case spelling of `scrollBehavior`."
-        },
-        "scrollLeft": {
-          "oneOf": [
-            { "type": "number" },
-            { "type": "string" }
-          ],
-          "description": "Alias of `scrollX`."
-        },
-        "scroll-left": {
-          "oneOf": [
-            { "type": "number" },
-            { "type": "string" }
-          ],
-          "description": "Kebab-case alias of `scrollX`."
-        },
-        "scrollTop": {
-          "oneOf": [
-            { "type": "number" },
-            { "type": "string" }
-          ],
-          "description": "Alias of `scrollY`."
-        },
-        "scroll-top": {
-          "oneOf": [
-            { "type": "number" },
-            { "type": "string" }
-          ],
-          "description": "Kebab-case alias of `scrollY`."
-        },
-        "overflowX": {
-          "type": "string",
-          "enum": [
-            "visible",
-            "hidden",
-            "auto"
-          ],
-          "description": "CSS `overflow-x`, the per-axis override. Read only when the two axes must differ."
+          "description": "CSS `scroll-behavior` for programmatic scrolling inside the container."
         },
         "overflow-x": {
           "type": "string",
@@ -3907,15 +2810,6 @@
           ],
           "description": "CSS `overflow-x`, the per-axis override. Read only when the two axes must differ."
         },
-        "overflowY": {
-          "type": "string",
-          "enum": [
-            "visible",
-            "hidden",
-            "auto"
-          ],
-          "description": "CSS `overflow-y`, the per-axis override. Read only when the two axes must differ."
-        },
         "overflow-y": {
           "type": "string",
           "enum": [
@@ -3925,53 +2819,13 @@
           ],
           "description": "CSS `overflow-y`, the per-axis override. Read only when the two axes must differ."
         },
-        "href": {
-          "type": "string",
-          "description": "Input alias of `link`; both are read. URL opened in a NEW TAB when this layer is clicked in a viewing surface \u2014 presentation."
-        },
-        "link-url": {
-          "type": "string",
-          "description": "Input alias of `link`; both are read. URL opened in a NEW TAB when this layer is clicked in a viewing surface \u2014 presentation."
-        },
-        "linkUrl": {
-          "type": "string",
-          "description": "Input alias of `link`; both are read. URL opened in a NEW TAB when this layer is clicked in a viewing surface \u2014 presentation."
-        },
-        "asset": {
-          "type": "string",
-          "description": "Input alias of `assetId`; both are read."
-        },
-        "asset-id": {
-          "type": "string",
-          "description": "Kebab-case spelling of `assetId`; both spellings are read."
-        },
-        "poster-asset-id": {
-          "type": "string",
-          "description": "Kebab-case spelling of `posterAssetId`; both spellings are read. Video or Html: asset id for poster thumbnail snapshot."
-        },
-        "is-mask": {
-          "type": "boolean",
-          "description": "Kebab-case spelling of `isMask`; both spellings are read. Masks the siblings that follow it in the same container, until the next mask."
-        },
         "mask-mode": {
           "$ref": "#/definitions/MaskMode",
-          "description": "Kebab-case spelling of `maskMode`; both spellings are read."
+          "description": "How a mask sibling is read: `alpha` or `luminance`."
         },
         "mask-invert": {
           "type": "boolean",
-          "description": "Kebab-case spelling of `maskInvert`; both spellings are read."
-        },
-        "inner-radius": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 0.99,
-          "description": "Kebab-case spelling of `innerRadius`; both spellings are read. Ellipse: inner radius as a fraction of rx \u2014 0 is solid, above that carves a ring. Star: inner vertex radius as a fraction of the outer one \u2014 1 is a regular polygon, the Figma default is 0.382."
-        },
-        "start-angle": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 360,
-          "description": "Kebab-case spelling of `startAngle`; both spellings are read. Ellipse only: where the sweep starts, in degrees clockwise from top centre. Defaults to 0."
+          "description": "Invert a luminance mask so dark pixels reveal and bright ones hide. Ignored in `alpha` mode."
         },
         "fill-rule": {
           "type": "string",
@@ -3979,166 +2833,118 @@
             "nonzero",
             "evenodd"
           ],
-          "description": "Kebab-case spelling of `fillRule`; both spellings are read. Path only: which subpaths count as inside when they overlap. `evenodd` cuts a hole \u2014 a donut is one path whose second subpath punches through the first. Omit for `nonzero`, the SVG default."
+          "description": "Path only: which subpaths count as inside when they overlap. `evenodd` cuts a hole - a donut needs it; `nonzero` fills by winding direction."
         },
-        "fill-enabled": {
-          "type": "boolean",
-          "description": "Kebab-case spelling of `fillEnabled`; both spellings are read. Master switch for the fill stack; per-layer `enabled` hides one layer."
+        "font-family": {
+          "type": "string"
         },
-        "on-path": {
-          "type": "object",
-          "description": "Kebab-case spelling of `onPath`; both spellings are read. Text only: lay the glyph run along a path element's geometry.",
-          "required": [
-            "pathId"
-          ],
-          "properties": {
-            "pathId": {
-              "type": "string"
+        "font-size": {
+          "type": "number",
+          "minimum": 1
+        },
+        "font-weight": {
+          "oneOf": [
+            {
+              "type": "number"
             },
-            "startOffset": {
-              "type": "number",
-              "minimum": 0,
-              "description": "Percentage of the path's LENGTH from its start, 0-100 \u2014 not pixels. A closed shape's guide is the shape doubled, so 50 is halfway round the loop."
-            },
-            "side": {
+            {
               "type": "string",
               "enum": [
-                "in",
-                "out"
-              ],
-              "description": "Which side of the shape the run sits on. Default \"out\". \"in\" is done by traversing the guide the other way and reversing the string with it, so the reading order survives; a pathId with more than one subpath cannot be flipped and renders \"out\" regardless."
+                "normal",
+                "bold"
+              ]
             }
-          }
+          ]
         },
-        "size-override": {
-          "type": "boolean",
-          "description": "Kebab-case spelling of `sizeOverride`; both spellings are read. Instance only: the user sized this instance by hand, so it stops following the master's box when the master is resized."
+        "font-style": {
+          "type": "string",
+          "enum": [
+            "normal",
+            "italic"
+          ]
         },
-        "instance-scale": {
-          "type": "object",
-          "description": "Kebab-case spelling of `instanceScale`; both spellings are read. Instance only: a proportional scale of the master, applied to every length in its subtree.",
-          "required": [
-            "x",
-            "y"
-          ],
-          "properties": {
-            "x": {
-              "type": "number",
-              "exclusiveMinimum": 0
+        "font-variant-numeric": {
+          "type": "string",
+          "enum": [
+            "normal",
+            "tabular-nums"
+          ]
+        },
+        "line-height": {
+          "oneOf": [
+            {
+              "type": "number"
             },
-            "y": {
-              "type": "number",
-              "exclusiveMinimum": 0
+            {
+              "type": "string",
+              "pattern": "^-?\\d+(\\.\\d+)?px$"
             }
-          },
-          "additionalProperties": false
+          ]
         },
-        "always-live": {
-          "type": "boolean",
-          "description": "Kebab-case spelling of `alwaysLive`; both spellings are read. Html only: keep the live frame mounted even while the layer is not selected, instead of showing the poster snapshot."
-        },
-        "theme-mode": {
-          "type": "string",
-          "description": "Kebab-case spelling of `themeMode`; both spellings are read. Explicit COLOUR token mode override for this container and its subtree."
-        },
-        "number-mode": {
-          "type": "string",
-          "description": "Kebab-case spelling of `numberMode`; both spellings are read. Explicit NUMBER token mode override for this container and its subtree."
-        },
-        "token-bindings": {
-          "type": "object",
-          "description": "Kebab-case spelling of `tokenBindings`; both spellings are read. Property-to-token bindings for numeric or atomic properties.",
-          "additionalProperties": {
-            "type": "string"
-          }
-        },
-        "cached-title": {
-          "type": "string",
-          "description": "Kebab-case spelling of `cachedTitle`; both spellings are read. Html only: cached page title for fallback poster cards."
-        },
-        "cached-favicon": {
-          "type": "string",
-          "description": "Kebab-case spelling of `cachedFavicon`; both spellings are read. Html only: cached favicon URI or data URL for fallback poster cards."
-        },
-        "set-id": {
-          "type": "string",
-          "description": "Kebab-case spelling of `setId`; both spellings are read. Component only: the `componentSet` node this variant belongs to. The set's own id, so grouping survives a dissolve that leaves the id behind."
-        },
-        "component-id": {
-          "type": "string",
-          "description": "Kebab-case spelling of `componentId`; both spellings are read. Instance only: id of the master component."
-        },
-        "variant-properties": {
-          "type": "object",
-          "description": "Kebab-case spelling of `variantProperties`; both spellings are read. Component only: this variant's coordinates in the set \u2014 `{ \"State\": \"Hover\" }`, Figma's `variantProperties`. A member carries a value for every property its set declares; one that does not is a hole in the matrix.",
-          "additionalProperties": {
-            "type": "string"
-          }
-        },
-        "variant-group-properties": {
-          "type": "object",
-          "description": "Kebab-case spelling of `variantGroupProperties`; both spellings are read. componentSet only: the property table, Figma's `variantGroupProperties` \u2014 `{ \"State\": [\"Default\", \"Hover\"] }`. The set owns the list of values each property may take, including values no member uses yet, which is what lets an instance dropdown offer a variant nobody has drawn. Key order is the matrix's column order.",
-          "additionalProperties": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "effect-style-id": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "description": "Kebab-case spelling of `effectStyleId`; both spellings are read."
-        },
-        "fill-style-id": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "description": "Kebab-case spelling of `fillStyleId`; both spellings are read."
-        },
-        "stroke-style-id": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "description": "Kebab-case spelling of `strokeStyleId`; both spellings are read."
-        },
-        "text-style-id": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "description": "Kebab-case spelling of `textStyleId`; both spellings are read."
-        },
-        "focal-point": {
-          "type": "object",
-          "properties": {
-            "x": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 1
+        "letter-spacing": {
+          "oneOf": [
+            {
+              "type": "number"
             },
-            "y": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 1
+            {
+              "type": "string",
+              "pattern": "^-?\\d+(\\.\\d+)?px$"
+            },
+            {
+              "type": "string",
+              "pattern": "^-?\\d+(\\.\\d+)?em$"
             }
-          },
-          "description": "Kebab-case spelling of `focalPoint`; both spellings are read."
+          ]
         },
-        "corner-radius": {
-          "type": "number",
-          "minimum": 0,
-          "description": "Kebab-case spelling of `cornerRadius`; both spellings are read. Polygon and star only: how far each corner is cut back, in px \u2014 a LENGTH, so it scales with the box. 0 (default) is a hard edge. On a rect the same field is spelled `borderRadius`, which is where normalize stores it."
+        "text-align": {
+          "type": "string",
+          "enum": [
+            "left",
+            "center",
+            "right",
+            "justify"
+          ]
         },
-        "corner-smoothing": {
+        "vertical-align": {
+          "type": "string",
+          "enum": [
+            "top",
+            "middle",
+            "bottom"
+          ]
+        },
+        "text-decoration": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "underline",
+              "line-through"
+            ]
+          }
+        },
+        "text-transform": {
+          "type": "string",
+          "enum": [
+            "none",
+            "uppercase",
+            "lowercase",
+            "capitalize"
+          ]
+        },
+        "line-clamp": {
           "type": "number",
-          "minimum": 0,
-          "maximum": 1,
-          "description": "Kebab-case spelling of `cornerSmoothing`; both spellings are read. Frame, rect, polygon and star only: corner CHARACTER on top of the radius. 0 (default) rounds with a circular arc; higher flattens the curve where it meets each straight edge, so the corner reads as a squircle. Figma's iOS preset is 0.6. Shape-wide, so it is ignored when a rect's four radii differ."
+          "minimum": 1
+        },
+        "text-overflow": {
+          "type": "string",
+          "enum": [
+            "clip",
+            "ellipsis"
+          ]
+        },
+        "text-shadow": {
+          "type": "string"
         }
       }
     }

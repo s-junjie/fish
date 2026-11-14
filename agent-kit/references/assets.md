@@ -37,9 +37,11 @@ Search is the fallback, not the first move. Ask the user for their own material 
 ```bash
 ./tools/fish assets search "modern workspace" --source openverse --limit 5
 ./tools/fish assets search "modern workspace" --source openverse --add-to design.fish.html --pick 0 --embed --to hero_rect
-./tools/fish assets search "arrow-right" --source lucide --limit 3
+./tools/fish assets search "arrow-right" --source lucide --limit 3 --size 16
+./tools/fish assets icon ./custom-mark.svg --size 16
 ```
 
+- `--size N` (with `--source lucide|ri` or `assets icon`) scales the flattened `d` coordinates and proportional `stroke.width` cleanly to target px (`--stroke-width N` overrides it).
 - `--limit N` caps results (the CLI caps at 20).
 - `--pick N` chooses a result when writing to a document.
 - `--add-to <doc>` writes the chosen asset into `doc.assets[]`.

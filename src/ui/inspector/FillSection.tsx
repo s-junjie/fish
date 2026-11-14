@@ -397,7 +397,7 @@ export function FillSection({
     const nextFill: Paint = {
       ...fill,
       tokenId: token.id,
-      color: colorTokenColor(token, docRef.current.activeTheme)
+      color: colorTokenColor(token, docRef.current.activeTheme, docRef.current.tokens)
     };
     delete (nextFill as any).opacity;
     // Binding a token makes the covered characters follow the layer again. A run

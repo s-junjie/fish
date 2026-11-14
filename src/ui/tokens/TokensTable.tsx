@@ -1,10 +1,5 @@
-import { useState, useRef, useEffect } from "preact/hooks";
-import {
-  ChevronDown,
-  ChevronRight,
-  Plus,
-  Trash2
-} from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { Plus } from "lucide-react";
 import type {
   ColorToken,
   DesignDocument,
@@ -12,39 +7,20 @@ import type {
   NumberToken,
   NumberTokenCategory
 } from "../../core/dsl/types";
-import {
-  deleteDocumentMode,
-  deleteDocumentNumberMode,
-  getColorTokenModeColor,
-  getNumberTokenModeValue,
-  renameDocumentMode,
-  renameDocumentNumberMode
-} from "../../core/interactions/mode-ops";
-import { writeColorToken, writeNumberToken, type ColorTokenPatch, type NumberTokenPatch } from "./token-mode-patch";
-import {
-  colorTokensOf,
-  createColorToken,
-  tokenAlphaPct
-} from "../../core/interactions/token-ops";
-import {
-  createNumberToken,
-  isNumberToken
-} from "../../core/interactions/number-token-ops";
-import {
-  addTokenToDoc,
-  removeTokenFromDoc,
-  updateTokenInDoc
-} from "../../core/interactions/style-ops";
+import { getColorTokenModeColor } from "../../core/interactions/mode-ops";
+import { colorTokensOf, tokenAlphaPct } from "../../core/interactions/token-ops";
+import { isTokenAliasRef, lookupToken, rawTokenSlot, toTokenMap } from "../../core/dsl/token-value";
+import { isNumberToken } from "../../core/interactions/number-token-ops";
 import { parseColorAlpha } from "../../core/geometry/color-utils";
 import { t } from "../../i18n";
-import { HexInput } from "../HexInput";
-import { ScrubInput } from "../ScrubInput";
 import { ColorPanel } from "../ColorPanel";
-import { generateUniqueTokenName, groupTokensByName, type TokenGroup } from "./token-table-utils";
-import { PAINT_SWATCH_CHECKER, PAINT_SWATCH_CLASS } from "../inspector/paint-row-style";
-import { CategoryIcon, NUMBER_TOKEN_CATEGORIES } from "./CategoryIcon";
+import { ColorModeCell, NumberModeCell } from "./TokenModeCells";
+import { ColumnResizer, GroupRow, ModeHeaderCell, TokenNameCell } from "./TokenTableParts";
+import { TokenAliasPicker } from "./TokenAliasPicker";
+import { createTokensTableActions, type AnyTableToken } from "./token-table-actions";
+import { groupTokensByName, type TokenGroup } from "./token-table-utils";
 
-type AnyToken = ColorToken | NumberToken;
+type AnyToken = AnyTableToken;
 
 interface TokensTableProps {
   /** Which token axis this table edits — drives filtering, mode ops and cell editors. */
@@ -52,6 +28,14 @@ interface TokensTableProps {
   doc: DesignDocument;
   docRef: { current: DesignDocument };
   commitSnapshot: (newDoc: DesignDocument) => void;
+  /**
+   * A drag's frames, written without history; `onDragStart`/`onDragEnd` bracket
+   * them into one undo step. Without `setDoc` every frame records its own step,
+   * which is what a scrub of a mode cell used to do.
+   */
+  setDoc?: (updater: (doc: DesignDocument) => DesignDocument) => void;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
   searchQuery: string;
   /** The active axis' modes — the colour list for `color`, the NUMBER list for `number`. */
   modes: DocumentMode[];
@@ -62,286 +46,14 @@ interface TokensTableProps {
   onClearNewlyCreated?: () => void;
 }
 
-/** The value editor inside a colour-token mode cell: swatch + hex + opacity. */
-function ColorModeCell({
-  token,
-  modeId,
-  width,
-  hasOverride,
-  onPickColor,
-  onColorChange
-}: {
-  token: ColorToken;
-  modeId: string;
-  width: number;
-  hasOverride: boolean;
-  onPickColor: (tokenId: string, modeId: string, el: HTMLElement) => void;
-  onColorChange: (token: ColorToken, modeId: string, hex: string, opacity?: number) => void;
-}) {
-  const currentHex6 = parseColorAlpha(getColorTokenModeColor(token, modeId)).hex6;
-  const currentOpacity = tokenAlphaPct(token, modeId) / 100;
-
-  return (
-    <td
-      className="px-3 py-1.5 align-middle shrink-0 border-l border-rule"
-      style={{ width: `${width}px`, minWidth: `${width}px` }}
-    >
-      <div className="flex items-center gap-1.5 h-7 px-1.5 rounded-swatch bg-inset/60 hover:bg-inset border border-rule/50 hover:border-rule focus-within:border-brand focus-within:bg-inset transition-colors min-w-0 group/cell relative">
-        {/* Color Swatch */}
-        <button
-          type="button"
-          style={PAINT_SWATCH_CHECKER}
-          onClick={(e) => onPickColor(token.id, modeId, e.currentTarget)}
-          className={`${PAINT_SWATCH_CLASS} ${
-            !hasOverride ? "opacity-40 hover:opacity-100" : ""
-          } transition-opacity cursor-pointer shrink-0`}
-          title={currentHex6}
-          aria-label={currentHex6}
-        >
-          <span
-            className="block w-full h-full"
-            style={{ backgroundColor: currentHex6, opacity: currentOpacity }}
-          />
-        </button>
-
-        {/* Hex Input */}
-        <div className="flex-1 min-w-0">
-          <HexInput
-            value={currentHex6}
-            onChange={(nextHex, nextAlpha) => {
-              onColorChange(
-                token,
-                modeId,
-                nextHex,
-                nextAlpha !== undefined ? nextAlpha / 100 : currentOpacity
-              );
-            }}
-            className={`w-full bg-transparent text-code uppercase focus:outline-none tabular-nums ${
-              !hasOverride ? "text-ink-muted/50" : "text-ink"
-            }`}
-          />
-        </div>
-
-        {/* Opacity ScrubInput */}
-        <div className="w-14 shrink-0">
-          <ScrubInput
-            compact
-            label="%"
-            value={Math.round(currentOpacity * 100)}
-            min={0}
-            max={100}
-            onChange={(pct) => {
-              onColorChange(token, modeId, currentHex6, pct / 100);
-            }}
-            className={!hasOverride ? "opacity-50 hover:opacity-100" : ""}
-          />
-        </div>
-      </div>
-    </td>
-  );
-}
-
-/** The value editor inside a number-token mode cell: a single scrubber. */
-function NumberModeCell({
-  token,
-  modeId,
-  width,
-  hasOverride,
-  onValueChange
-}: {
-  token: NumberToken;
-  modeId: string;
-  width: number;
-  hasOverride: boolean;
-  onValueChange: (token: NumberToken, modeId: string, val: number) => void;
-}) {
-  const currentVal = getNumberTokenModeValue(token, modeId);
-
-  return (
-    <td
-      className="px-3 py-1.5 align-middle shrink-0 border-l border-rule"
-      style={{ width: `${width}px`, minWidth: `${width}px` }}
-    >
-      <div className="flex items-center gap-1.5 h-7 px-1.5 rounded-swatch bg-inset/60 hover:bg-inset border border-rule/50 hover:border-rule focus-within:border-brand focus-within:bg-inset transition-colors w-fit max-w-[120px] group/cell relative">
-        <div className="flex-1 min-w-0">
-          <ScrubInput
-            compact
-            label=""
-            value={currentVal}
-            onChange={(num) => onValueChange(token, modeId, num)}
-            className={`w-full bg-transparent ${!hasOverride ? "opacity-50 hover:opacity-100" : ""}`}
-          />
-        </div>
-      </div>
-    </td>
-  );
-}
-
-/** The grip that resizes a column — the name column and every mode column. */
-function ColumnResizer({
-  colKey,
-  active,
-  onStart
-}: {
-  colKey: string;
-  active: boolean;
-  onStart: (colKey: string, e: PointerEvent) => void;
-}) {
-  return (
-    <div
-      role="separator"
-      aria-orientation="vertical"
-      onPointerDown={(e) => onStart(colKey, e)}
-      className="absolute top-0 -right-1.5 w-3 h-full cursor-col-resize z-20 group/resize flex justify-center items-center"
-      aria-hidden="true"
-    >
-      <div
-        className={`w-[2px] h-full transition-colors ${
-          active ? "bg-brand" : "group-hover/resize:bg-brand/70"
-        }`}
-      />
-    </div>
-  );
-}
-
-/** One mode's header: its name (double-click renames), its delete, its width grip. */
-function ModeHeaderCell({
-  mode,
-  width,
-  singleMode,
-  showDelete,
-  editing,
-  editingName,
-  inputRef,
-  resizing,
-  onStartResize,
-  onStartRename,
-  onChangeName,
-  onCommitName,
-  onCancelRename,
-  onDelete
-}: {
-  mode: DocumentMode;
-  width: number;
-  /** One mode is not a choice, so the column is titled by what it holds. */
-  singleMode: boolean;
-  showDelete: boolean;
-  editing: boolean;
-  editingName: string;
-  inputRef: { current: HTMLInputElement | null };
-  resizing: boolean;
-  onStartResize: (colKey: string, e: PointerEvent) => void;
-  onStartRename: (mode: DocumentMode) => void;
-  onChangeName: (next: string) => void;
-  onCommitName: () => void;
-  onCancelRename: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <th
-      className="px-3 py-2 shrink-0 group/col relative border-l border-rule"
-      style={{ width: `${width}px`, minWidth: `${width}px` }}
-    >
-      <div className="flex items-center justify-between gap-1.5 min-w-0 pr-1">
-        {editing ? (
-          <input
-            ref={inputRef}
-            name="token-mode-name"
-            value={editingName}
-            onInput={(e) => onChangeName((e.currentTarget as HTMLInputElement).value)}
-            onBlur={onCommitName}
-            onKeyDown={(e) => {
-              if (e.isComposing || (e as any).keyCode === 229) return;
-              if (e.key === "Enter") onCommitName();
-              if (e.key === "Escape") onCancelRename();
-            }}
-            className="w-full bg-inset rounded-swatch px-1 text-ui text-ink focus:outline-none ring-1 ring-brand"
-          />
-        ) : singleMode ? (
-          <span className="truncate" title={t("tokens.columnValue")}>
-            {t("tokens.columnValue")}
-          </span>
-        ) : (
-          <span
-            onDblClick={() => onStartRename(mode)}
-            className="truncate cursor-text hover:text-ink transition-colors"
-            title={mode.name}
-          >
-            {mode.name}
-          </span>
-        )}
-        {showDelete && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete();
-            }}
-            className="opacity-0 group-hover/col:opacity-100 p-0.5 rounded-ctl text-ink-muted hover:text-measure-coral transition-opacity shrink-0"
-            title={t("tokens.deleteMode")}
-            aria-label={t("tokens.deleteMode")}
-          >
-            <Trash2 size={11} />
-          </button>
-        )}
-      </div>
-      <ColumnResizer colKey={mode.id} active={resizing} onStart={onStartResize} />
-    </th>
-  );
-}
-
-/** A `bg/…` group's own row: collapse toggle, count, and "add token here". */
-function GroupRow({
-  name,
-  count,
-  collapsed,
-  colSpan,
-  onToggle,
-  onAdd
-}: {
-  name: string;
-  count: number;
-  collapsed: boolean;
-  colSpan: number;
-  onToggle: () => void;
-  onAdd: () => void;
-}) {
-  return (
-    <tr
-      className="bg-surface/70 hover:bg-surface transition-colors cursor-pointer"
-      onClick={onToggle}
-    >
-      <td colSpan={colSpan} className="px-3 py-1.5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5 font-medium text-ink">
-            {collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
-            <span className="text-ui font-medium">{name}</span>
-            <span className="text-micro text-ink-muted font-normal">({count})</span>
-          </div>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onAdd();
-            }}
-            className="flex items-center gap-1 px-1.5 py-0.5 rounded-ctl text-micro text-ink-dim hover:text-ink hover:bg-raised transition-colors"
-            title={t("tokens.addToken")}
-            aria-label={t("tokens.addToken")}
-          >
-            <Plus size={11} />
-            <span>{t("tokens.addToken")}</span>
-          </button>
-        </div>
-      </td>
-    </tr>
-  );
-}
-
 export function TokensTable({
   variant,
   doc,
   docRef,
   commitSnapshot,
+  setDoc,
+  onDragStart,
+  onDragEnd,
   searchQuery,
   modes,
   activeCategory,
@@ -368,6 +80,11 @@ export function TokensTable({
   } | null>(null);
 
   const [colorPanelAnchor, setColorPanelAnchor] = useState<{
+    tokenId: string;
+    modeId: string;
+    el: HTMLElement;
+  } | null>(null);
+  const [aliasPickerAnchor, setAliasPickerAnchor] = useState<{
     tokenId: string;
     modeId: string;
     el: HTMLElement;
@@ -429,6 +146,8 @@ export function TokensTable({
     window.addEventListener("pointerup", onPointerUp);
   };
 
+  const docTokens = doc.tokens || [];
+  const tokenMap = useMemo(() => toTokenMap(docTokens), [docTokens]);
   const allTokens: AnyToken[] =
     variant === "color"
       ? colorTokensOf(doc.tokens)
@@ -451,11 +170,6 @@ export function TokensTable({
     }
   }, [newlyCreatedTokenId, allTokens]);
 
-  const findLatest = (tokenId: string): AnyToken | undefined =>
-    (docRef.current.tokens || []).find(
-      (entry): entry is AnyToken => entry.type === variant && entry.id === tokenId
-    );
-
   const toggleGroup = (groupName: string) => {
     setCollapsedGroups((prev) => ({
       ...prev,
@@ -468,168 +182,57 @@ export function TokensTable({
     setEditingNameValue(token.name);
   };
 
-  const handleCommitRename = (token: AnyToken) => {
-    const clean = editingNameValue.trim();
-    setEditingNameId(null);
-    if (!clean || clean === token.name) return;
-    const latest = findLatest(token.id);
-    if (!latest) return;
-    commitSnapshot(
-      updateTokenInDoc(
-        docRef.current,
-        latest.type === "color"
-          ? writeColorToken(latest, modes, baseModeId, { name: clean })
-          : writeNumberToken(latest, modes, baseModeId, { name: clean })
-      )
-    );
-  };
-
-  const handleCategoryChange = (token: NumberToken, newCat: NumberTokenCategory) => {
-    const latest = findLatest(token.id);
-    if (!latest || latest.type !== "number") return;
-    commitSnapshot(
-      updateTokenInDoc(
-        docRef.current,
-        writeNumberToken(latest, modes, baseModeId, { category: newCat })
-      )
-    );
-  };
-
   const handleStartRenameMode = (mode: DocumentMode) => {
     setEditingModeId(mode.id);
     setEditingModeName(mode.name);
   };
 
+  const writeDoc = (nextDoc: DesignDocument, discrete?: boolean) => {
+    if (discrete || !setDoc) commitSnapshot(nextDoc);
+    else setDoc(() => nextDoc);
+  };
+
+  const actions = createTokensTableActions({
+    variant,
+    docRef,
+    modes,
+    baseModeId,
+    commitSnapshot,
+    writeDoc
+  });
+
+  const handleCommitRename = (token: AnyToken) => {
+    setEditingNameId(null);
+    actions.commitRenameToken(token, editingNameValue);
+  };
+
   const handleCommitRenameMode = (modeId: string) => {
-    const clean = editingModeName.trim();
     setEditingModeId(null);
-    if (!clean) return;
-    commitSnapshot(
-      variant === "color"
-        ? renameDocumentMode(docRef.current, modeId, clean)
-        : renameDocumentNumberMode(docRef.current, modeId, clean)
-    );
+    actions.commitRenameMode(modeId, editingModeName);
   };
 
-  const handleColorChange = (
-    token: ColorToken,
-    modeId: string,
-    hex: string,
-    opacity?: number
-  ) => {
-    if (!hex || !hex.trim()) {
-      if (modeId !== baseModeId) {
-        handleResetColorMode(token, modeId);
-      }
-      return;
-    }
-    const latest = findLatest(token.id);
-    if (!latest || latest.type !== "color") return;
-
-    const cleanHex = parseColorAlpha(hex).hex6;
-    const patch: ColorTokenPatch =
-      modeId === baseModeId
-        ? /* The cell always reports an alpha; an absent one means the typed hex
-             replaced the whole value, so the base mode goes opaque. */
-          { color: cleanHex, opacity: opacity ?? 1 }
-        : {
-            mode: {
-              id: modeId,
-              patch: {
-                color: cleanHex,
-                opacity: opacity !== undefined ? opacity : tokenAlphaPct(latest, modeId) / 100
-              }
-            }
-          };
-    commitSnapshot(updateTokenInDoc(docRef.current, writeColorToken(latest, modes, baseModeId, patch)));
-  };
-
-  const handleResetColorMode = (token: ColorToken, modeId: string) => {
-    if (modeId === baseModeId) return;
-    const latest = findLatest(token.id);
-    if (!latest || latest.type !== "color") return;
-    if (!latest.modes || !(modeId in latest.modes)) return;
-    commitSnapshot(
-      updateTokenInDoc(
-        docRef.current,
-        writeColorToken(latest, modes, baseModeId, { mode: { id: modeId } })
-      )
-    );
-  };
-
-  const handleNumberValueChange = (token: NumberToken, modeId: string, val: number) => {
-    if (Number.isNaN(val)) {
-      if (modeId !== baseModeId) {
-        handleResetNumberMode(token, modeId);
-      }
-      return;
-    }
-    const latest = findLatest(token.id);
-    if (!latest || latest.type !== "number") return;
-    const patch: NumberTokenPatch =
-      modeId === baseModeId ? { value: val } : { mode: { id: modeId, value: val } };
-    commitSnapshot(updateTokenInDoc(docRef.current, writeNumberToken(latest, modes, baseModeId, patch)));
-  };
-
-  const handleResetNumberMode = (token: NumberToken, modeId: string) => {
-    if (modeId === baseModeId) return;
-    const latest = findLatest(token.id);
-    if (!latest || latest.type !== "number") return;
-    if (!latest.modes || !(modeId in latest.modes)) return;
-    commitSnapshot(
-      updateTokenInDoc(
-        docRef.current,
-        writeNumberToken(latest, modes, baseModeId, { mode: { id: modeId } })
-      )
-    );
-  };
-
-  const handleDeleteToken = (tokenId: string) => {
-    commitSnapshot(removeTokenFromDoc(docRef.current, tokenId));
-  };
-
-  const handleCreateTokenInGroup = (groupName: string) => {
-    const current = docRef.current;
-    const created =
-      variant === "color"
-        ? createColorToken(
-            generateUniqueTokenName(allTokens, "color", groupName),
-            "#1B72FF"
-          )
-        : createNumberToken(
-            generateUniqueTokenName(
-              allTokens,
-              activeCategory === "all" || !activeCategory ? "spacing" : activeCategory,
-              groupName
-            ),
-            8,
-            activeCategory === "all" || !activeCategory ? "spacing" : activeCategory
-          );
-    commitSnapshot(addTokenToDoc(current, created));
-    setEditingNameId(created.id);
-    setEditingNameValue(created.name);
-  };
-
-  const handleDeleteMode = (modeId: string) => {
-    if (modes.length <= 1) return;
-    commitSnapshot(
-      variant === "color"
-        ? deleteDocumentMode(docRef.current, modeId)
-        : deleteDocumentNumberMode(docRef.current, modeId)
-    );
-  };
-
-  const activePanelToken = colorPanelAnchor
-    ? allTokens.find(
-        (tok): tok is ColorToken => tok.type === "color" && tok.id === colorPanelAnchor.tokenId
-      )
-    : null;
+  const panelLookup = colorPanelAnchor ? lookupToken(tokenMap, colorPanelAnchor.tokenId) : undefined;
+  const activePanelToken = panelLookup?.type === "color" ? panelLookup : null;
   const activePanelColor = activePanelToken && colorPanelAnchor
-    ? parseColorAlpha(getColorTokenModeColor(activePanelToken, colorPanelAnchor.modeId)).hex6
+    ? parseColorAlpha(getColorTokenModeColor(activePanelToken, colorPanelAnchor.modeId, tokenMap)).hex6
     : "#000000";
   const activePanelOpacity = activePanelToken && colorPanelAnchor
-    ? tokenAlphaPct(activePanelToken, colorPanelAnchor.modeId) / 100
+    ? tokenAlphaPct(activePanelToken, colorPanelAnchor.modeId, tokenMap) / 100
     : 1;
+  const aliasLookup = aliasPickerAnchor ? lookupToken(tokenMap, aliasPickerAnchor.tokenId) : undefined;
+  const activeAliasSource =
+    aliasLookup && (aliasLookup.type === "color" || aliasLookup.type === "number")
+      ? aliasLookup
+      : null;
+  const activeAliasRawSlot =
+    activeAliasSource && aliasPickerAnchor
+      ? rawTokenSlot(activeAliasSource, aliasPickerAnchor.modeId, baseModeId)
+      : undefined;
+  const activeAliasRefId = isTokenAliasRef(activeAliasRawSlot) ? activeAliasRawSlot.ref : undefined;
+  const activeAliasHasOverride =
+    Boolean(activeAliasSource && aliasPickerAnchor) &&
+    (aliasPickerAnchor!.modeId === baseModeId ||
+      Boolean(activeAliasSource?.modes && aliasPickerAnchor!.modeId in activeAliasSource.modes));
 
   const totalCols = 1 + modes.length + 1;
   const nameColW = colWidths["name"] || 130;
@@ -668,7 +271,7 @@ export function TokensTable({
                   onChangeName={setEditingModeName}
                   onCommitName={() => handleCommitRenameMode(mode.id)}
                   onCancelRename={() => setEditingModeId(null)}
-                  onDelete={() => handleDeleteMode(mode.id)}
+                  onDelete={() => actions.deleteMode(mode.id)}
                 />
               ))}
               {/* Placeholder column with New mode button */}
@@ -710,7 +313,6 @@ export function TokensTable({
                         collapsed={isCollapsed}
                         colSpan={totalCols}
                         onToggle={() => toggleGroup(group.groupName)}
-                        onAdd={() => handleCreateTokenInGroup(group.groupName)}
                       />
                     )}
 
@@ -723,75 +325,21 @@ export function TokensTable({
                             key={token.id}
                             className="group hover:bg-surface/30 transition-colors border-b border-rule/30"
                           >
-                            {/* Token Name Column (Sticky left) */}
-                            <td
-                              className="sticky left-0 z-10 bg-panel border-r border-rule px-3 py-1.5 align-middle group-hover:bg-surface transition-colors shrink-0"
-                              style={{ width: `${nameColW}px`, minWidth: `${nameColW}px` }}
-                            >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteToken(token.id)}
-                                  className="opacity-0 group-hover:opacity-100 p-0.5 text-ink-muted hover:text-measure-coral transition-all rounded-ctl shrink-0"
-                                  title={t("tokens.deleteAction")}
-                                  aria-label={t("tokens.deleteAction")}
-                                >
-                                  <Trash2 size={12} />
-                                </button>
-                                {token.type === "number" && (
-                                  <div
-                                    className="relative group/cat shrink-0 flex items-center justify-center cursor-pointer"
-                                    title={`${t("tokens.category")}: ${t(`tokens.categories.${token.category ?? "spacing"}`)}`}
-                                  >
-                                    <CategoryIcon category={token.category} />
-                                    <select
-                                      name="token-category"
-                                      value={token.category ?? "spacing"}
-                                      onChange={(e) =>
-                                        handleCategoryChange(
-                                          token,
-                                          (e.target as HTMLSelectElement).value as NumberTokenCategory
-                                        )
-                                      }
-                                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                                      title={t("tokens.category")}
-                                      aria-label={t("tokens.category")}
-                                    >
-                                      {NUMBER_TOKEN_CATEGORIES.map((cat) => (
-                                        <option key={cat} value={cat}>
-                                          {t(`tokens.categories.${cat}`)}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                )}
-                                {isEditingName ? (
-                                  <input
-                                    ref={editNameInputRef}
-                                    name="token-name"
-                                    value={editingNameValue}
-                                    onInput={(e) =>
-                                      setEditingNameValue((e.currentTarget as HTMLInputElement).value)
-                                    }
-                                    onKeyDown={(e) => {
-                                      if (e.isComposing || (e as any).keyCode === 229) return;
-                                      if (e.key === "Enter") handleCommitRename(token);
-                                      if (e.key === "Escape") setEditingNameId(null);
-                                    }}
-                                    onBlur={() => handleCommitRename(token)}
-                                    className="flex-1 min-w-0 h-6 px-1.5 text-row text-ink bg-inset rounded-swatch border border-rule focus:outline-none focus:border-brand"
-                                  />
-                                ) : (
-                                  <span
-                                    onDblClick={() => handleStartRename(token)}
-                                    className="truncate text-row cursor-text text-ink hover:text-brand transition-colors"
-                                    title={fullName}
-                                  >
-                                    {displayName}
-                                  </span>
-                                )}
-                              </div>
-                            </td>
+                            <TokenNameCell
+                              token={token}
+                              displayName={displayName}
+                              fullName={fullName}
+                              width={nameColW}
+                              isEditingName={isEditingName}
+                              editingNameValue={editingNameValue}
+                              editNameInputRef={editNameInputRef}
+                              onDelete={() => actions.deleteToken(token.id)}
+                              onCategoryChange={(cat) => actions.changeCategory(token as NumberToken, cat)}
+                              onStartRename={() => handleStartRename(token)}
+                              onChangeEditingName={setEditingNameValue}
+                              onCommitRename={() => handleCommitRename(token)}
+                              onCancelRename={() => setEditingNameId(null)}
+                            />
 
                             {/* Mode Columns */}
                             {modes.map((mode) => {
@@ -806,21 +354,37 @@ export function TokensTable({
                                   key={mode.id}
                                   token={token}
                                   modeId={mode.id}
+                                  baseModeId={baseModeId}
+                                  tokenMap={tokenMap}
                                   width={modeW}
                                   hasOverride={hasOverride}
                                   onPickColor={(tokenId, mId, el) =>
                                     setColorPanelAnchor({ tokenId, modeId: mId, el })
                                   }
-                                  onColorChange={handleColorChange}
+                                  onColorChange={actions.changeColor}
+                                  onOpenAliasPicker={(tok, mId, el) =>
+                                    setAliasPickerAnchor({ tokenId: tok.id, modeId: mId, el })
+                                  }
+                                  onDetachAlias={actions.detachAlias}
+                                  onDragStart={onDragStart}
+                                  onDragEnd={onDragEnd}
                                 />
                               ) : (
                                 <NumberModeCell
                                   key={mode.id}
                                   token={token}
                                   modeId={mode.id}
+                                  baseModeId={baseModeId}
+                                  tokenMap={tokenMap}
                                   width={modeW}
                                   hasOverride={hasOverride}
-                                  onValueChange={handleNumberValueChange}
+                                  onValueChange={actions.changeNumberValue}
+                                  onOpenAliasPicker={(tok, mId, el) =>
+                                    setAliasPickerAnchor({ tokenId: tok.id, modeId: mId, el })
+                                  }
+                                  onDetachAlias={actions.detachAlias}
+                                  onDragStart={onDragStart}
+                                  onDragEnd={onDragEnd}
                                 />
                               );
                             })}
@@ -849,17 +413,41 @@ export function TokensTable({
           anchor={colorPanelAnchor.el}
           zIndex="z-[90]"
           tabs={["solid"]}
-          onChange={(paint) => {
+          onGestureStart={onDragStart}
+          onGestureEnd={onDragEnd}
+          onChange={(paint, discrete) => {
             if (paint.type === "solid") {
-              handleColorChange(
+              actions.changeColor(
                 activePanelToken,
                 colorPanelAnchor.modeId,
                 paint.color,
-                paint.opacity ?? 1
+                paint.opacity ?? 1,
+                discrete
               );
             }
           }}
           onClose={() => setColorPanelAnchor(null)}
+        />
+      )}
+
+      {aliasPickerAnchor && activeAliasSource && (
+        <TokenAliasPicker
+          sourceToken={activeAliasSource}
+          modeId={aliasPickerAnchor.modeId}
+          baseModeId={baseModeId}
+          allTokens={docTokens}
+          anchor={aliasPickerAnchor.el}
+          currentRefId={activeAliasRefId}
+          onSelect={(targetId) => actions.bindAlias(activeAliasSource, aliasPickerAnchor.modeId, targetId)}
+          onDetach={
+            activeAliasRefId && activeAliasHasOverride
+              ? () => {
+                  actions.detachAlias(activeAliasSource, aliasPickerAnchor.modeId);
+                  setAliasPickerAnchor(null);
+                }
+              : undefined
+          }
+          onClose={() => setAliasPickerAnchor(null)}
         />
       )}
 

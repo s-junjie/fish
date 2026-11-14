@@ -110,7 +110,7 @@ const CSS_VALUES: Readonly<Record<string, (value: unknown) => unknown>> = {
  * The inverse of `css-absorb.FLAT_TEXT_KEYS`, plus `color` — CSS's text ink,
  * which the reader folds into `style.color` and then derives the fill from.
  */
-const FLAT_STYLE_KEYS: Readonly<Record<string, string>> = {
+export const FLAT_STYLE_KEYS: Readonly<Record<string, string>> = {
   fontFamily: "font-family",
   fontSize: "font-size",
   fontWeight: "font-weight",
@@ -147,7 +147,7 @@ export const NO_CSS_EQUIVALENT: Readonly<Record<string, string>> = {
       "boxShadow", "objectFit", "cornerRadius", "strokeWidth",
       "strokeSides", "borderSides", "strokeTopWeight", "strokeRightWeight",
       "strokeBottomWeight", "strokeLeftWeight", "strokeSide", "borderSide",
-      "flexGrow", "assetId", "posterAssetId", "slide", "themeMode", "numberMode", "boxSizing",
+      "flexGrow", "boxSizing",
       "scrollLeft", "scrollTop"
     ],
     "an input spelling: normalize folds it into another field and never writes it back"
@@ -158,6 +158,7 @@ export const NO_CSS_EQUIVALENT: Readonly<Record<string, string>> = {
       "cornerSmoothing", "onPath", "startAngle", "innerRadius", "isMask", "fillEnabled",
       "alwaysLive", "cachedTitle", "cachedFavicon", "sizeOverride", "instanceScale", "spans", "arrow",
       "arrowhead", "autoplay", "loop", "muted", "controls", "srcdoc",
+      "slide", "themeMode", "numberMode", "assetId", "posterAssetId",
       // A ruler over the box, not a style: CSS's nearest neighbours (`background`
       // tiling, `padding`) are a different contract, so there is nothing to
       // rename it into.

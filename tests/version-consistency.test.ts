@@ -8,7 +8,9 @@ import schema from "../src/core/dsl/fish.schema.json";
 import { LATEST_DOCUMENT_VERSION } from "../src/core/dsl/version";
 import { OVERRIDABLE_PROPERTIES } from "../src/core/dsl/constants";
 import { normalizeDesignDocument, CANONICAL_KEYS } from "../src/core/dsl/normalize";
-import { canonicalKey, camelCase, FIT_ALIASES } from "../src/core/dsl/normalize/shared";
+import { FIT_ALIASES } from "../src/core/dsl/normalize/shared";
+import { WRITTEN_ELEMENT_KEYS, INPUT_ONLY_KEYS, writtenKeyOf } from "../src/core/dsl/written-keys";
+import { CSS_KEY_MAP, NO_CSS_EQUIVALENT } from "../src/core/dsl/css-spelling";
 import { ADJUST_KEYS } from "../src/core/dsl/color-filter";
 import { en } from "../src/i18n";
 import { LAYOUT_KEYS, GRID_ONLY_LAYOUT_KEYS, FLEX_ONLY_LAYOUT_KEYS } from "../src/core/dsl/normalize/auto-layout";
@@ -244,7 +246,7 @@ describe("the document dialect has one source", () => {
 });
 
 /**
- * The runtime never bundles `fish.schema.json` (~16KB), so every vocabulary the
+ * The runtime never bundles `fish.schema.json` (~98KB), so every vocabulary the
  * engine actually reads is a hand-written copy of it. Each copy needs its own
  * assertion or it drifts in silence, and the drift is always *deletion*: the
  * overridable list carried 18 entries on the write side and 14 on the read side,
@@ -264,30 +266,36 @@ describe("hand-written schema copies stay in step", () => {
   });
 
   /**
-   * `CANONICAL_KEYS` is the answer to "does the engine read this key at all",
-   * and `fish.schema.json` is the copy an external author is handed. A key the
-   * vocabulary reads and the schema does not declare is invisible to the author
-   * it exists for; a key the schema declares that nothing reads is a silent
-   * no-op that still saves and still round-trips. The two must therefore be the
-   * SAME SET — measured through the camel/kebab closure, because both spellings
-   * are accepted and the schema publishes everything an author may write.
-   * Case-folded variants are the gate's tolerance layer and are not published.
+   * The schema publishes ONE spelling per key: the one `applyCssSpelling`
+   * leaves on disk. Input-only aliases stay internal so an author cannot be
+   * handed a second spelling the file would never write. `WRITTEN_ELEMENT_KEYS`
+   * derives that set from the vocabulary and the writer's rename table, so a
+   * new field cannot reach the file as a spelling the schema does not publish.
    */
-  it("declares exactly the element keys the vocabulary reads, in both spellings", () => {
+  it("publishes exactly the keys the file writes", () => {
     for (const key of CANONICAL_KEYS) {
-      // The one rule the closure must not grow: a snake_case key is refused by
-      // name (`isKnownElementKey`), so it has no spelling twin to publish — and
-      // `canonicalKey` would fold its underscores away into one anyway. None
-      // are listed today; this is the guard for the first one that tries.
       expect(key.includes("_"), `snake_case key listed: ${key}`).toBe(false);
     }
-    const closure = new Set<string>();
-    for (const key of CANONICAL_KEYS) {
-      closure.add(key);
-      closure.add(canonicalKey(key));
-      closure.add(camelCase(key));
+    sameSet([...WRITTEN_ELEMENT_KEYS], Object.keys(schema.definitions.DesignElement.properties));
+  });
+
+  it("publishes no input-only alias", () => {
+    const published = Object.keys(schema.definitions.DesignElement.properties);
+    expect(published.filter((key) => INPUT_ONLY_KEYS.has(key))).toEqual([]);
+    for (const key of published) {
+      expect(writtenKeyOf(key), `${key} must be its own published spelling`).toBe(key);
     }
-    sameSet([...closure], Object.keys(schema.definitions.DesignElement.properties));
+    expect([...INPUT_ONLY_KEYS].filter((key) => WRITTEN_ELEMENT_KEYS.has(key))).toEqual([]);
+  });
+
+  it("publishes CSS names, and camelCase only where CSS has no property", () => {
+    const published = Object.keys(schema.definitions.DesignElement.properties);
+    for (const key of published.filter((name) => /[a-z][A-Z]/.test(name))) {
+      expect(
+        key in NO_CSS_EQUIVALENT || key in CSS_KEY_MAP,
+        `${key} has a CSS name or must be exempt in css-spelling.ts`
+      ).toBe(true);
+    }
   });
 
   // The element-level `fit` enum sat at three values while `FIT_ALIASES`

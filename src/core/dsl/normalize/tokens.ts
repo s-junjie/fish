@@ -1,5 +1,6 @@
 /**
- * `doc.tokens[]` — one value per entry, the document's CSS-custom-property half.
+ * `doc.tokens[]` — one value (or alias `{ ref }`) per entry, the document's
+ * CSS-custom-property half.
  *
  * A token is either a colour or a number and the `type` tag says which, so the
  * reader dispatches on it instead of inferring a role from the shape of a paint
@@ -9,7 +10,15 @@
  * silent rewrite of a value the author did not write in this form.
  */
 
-import type { ColorToken, DesignToken, NumberToken, NumberTokenCategory } from "../types";
+import type {
+  ColorToken,
+  ColorTokenValue,
+  DesignToken,
+  NumberToken,
+  NumberTokenCategory,
+  NumberTokenValue,
+  TokenAliasRef
+} from "../types";
 import { isValidHex } from "../../geometry/color-utils";
 import { isPlainObject, NormalizationRepair } from "./shared";
 
@@ -21,6 +30,28 @@ const NUMBER_CATEGORIES: readonly NumberTokenCategory[] = [
   "typography",
   "effect"
 ];
+
+const SHORTHAND_REF = /^\$([A-Za-z0-9._/-]+)$/;
+const slugOf = (name: string): string => name.trim().toLowerCase().replace(/[\s/]+/g, "-");
+
+interface PendingRef {
+  __pendingRef: string;
+}
+
+function isPendingRef(v: unknown): v is PendingRef {
+  return Boolean(v) && typeof v === "object" && typeof (v as PendingRef).__pendingRef === "string";
+}
+
+function readAliasOrShorthand(raw: unknown): TokenAliasRef | PendingRef | undefined {
+  if (isPlainObject(raw) && typeof raw.ref === "string" && raw.ref.trim()) {
+    return { ref: raw.ref.trim() };
+  }
+  if (typeof raw === "string") {
+    const match = SHORTHAND_REF.exec(raw.trim());
+    if (match) return { __pendingRef: match[1] };
+  }
+  return undefined;
+}
 
 /**
  * A colour token value: `#RGB`, `#RRGGBB`, `#RRGGBBAA`, or `transparent`.
@@ -40,14 +71,22 @@ export function normalizeTokenColor(raw: unknown): string | undefined {
   return `#${digits.toLowerCase()}`;
 }
 
-function normalizeTokenModes(
+function normalizeColorSlot(raw: unknown): ColorTokenValue | PendingRef | undefined {
+  return readAliasOrShorthand(raw) ?? normalizeTokenColor(raw);
+}
+
+function normalizeNumberSlot(raw: unknown): NumberTokenValue | PendingRef | undefined {
+  return readAliasOrShorthand(raw) ?? finiteNumber(raw);
+}
+
+function normalizeTokenModes<T>(
   raw: unknown,
-  read: (value: unknown) => string | number | undefined,
+  read: (value: unknown) => T | undefined,
   path: string,
   repairs: NormalizationRepair[]
-): Record<string, string> | Record<string, number> | undefined {
+): Record<string, T> | undefined {
   if (!isPlainObject(raw)) return undefined;
-  const out: Record<string, string | number> = {};
+  const out: Record<string, T> = {};
   for (const [mode, value] of Object.entries(raw)) {
     if (!mode) continue;
     // A mode key no `doc.modes` declares is kept — `validateTokenRefs` warns
@@ -64,7 +103,7 @@ function normalizeTokenModes(
     }
     out[mode] = kept;
   }
-  return Object.keys(out).length > 0 ? (out as Record<string, string> & Record<string, number>) : undefined;
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 const finiteNumber = (raw: unknown): number | undefined =>
@@ -76,13 +115,34 @@ function numberCategory(raw: unknown): NumberTokenCategory | undefined {
     : undefined;
 }
 
+function resolvePendingRef(
+  ref: string,
+  expectedType: "color" | "number",
+  byId: Map<string, DesignToken>,
+  byName: Map<string, DesignToken[]>,
+  bySlug: Map<string, DesignToken[]>
+): { ref?: string; error?: string } {
+  const exactId = byId.get(ref);
+  if (exactId) {
+    return exactId.type === expectedType
+      ? { ref: exactId.id }
+      : { error: `"$${ref}" is a ${exactId.type} token, expected ${expectedType}` };
+  }
+  const matches = byName.get(ref) ?? bySlug.get(slugOf(ref)) ?? [];
+  if (matches.length === 0) return { error: `"$${ref}" names no token` };
+  const typed = matches.filter((m) => m.type === expectedType);
+  if (typed.length === 1) return { ref: typed[0].id };
+  if (typed.length === 0) return { error: `"$${ref}" is not a ${expectedType} token` };
+  return { error: `"$${ref}" matches more than one ${expectedType} token by name` };
+}
+
 /**
  * Repair paths point at the SOURCE index, not the output index, so a dropped
  * entry does not renumber every later message.
  */
 export function normalizeTokens(raw: unknown, repairs?: NormalizationRepair[]): DesignToken[] {
   if (!Array.isArray(raw)) return [];
-  const out: DesignToken[] = [];
+  const staged: Array<{ token: DesignToken; sourceIndex: number }> = [];
   const seen = new Set<string>();
   raw.forEach((item, index) => {
     if (!isPlainObject(item)) return;
@@ -96,7 +156,7 @@ export function normalizeTokens(raw: unknown, repairs?: NormalizationRepair[]): 
       });
       return;
     }
-    const id = typeof item.id === "string" && item.id.trim() ? item.id.trim() : `tok_${out.length + 1}`;
+    const id = typeof item.id === "string" && item.id.trim() ? item.id.trim() : `tok_${staged.length + 1}`;
     if (seen.has(id)) {
       repairs?.push({
         kind: "document",
@@ -110,49 +170,127 @@ export function normalizeTokens(raw: unknown, repairs?: NormalizationRepair[]): 
       typeof item.description === "string" && item.description.trim() ? item.description.trim() : undefined;
 
     if (type === "color") {
-      const value = normalizeTokenColor(item.value);
+      const value = normalizeColorSlot(item.value);
       if (value === undefined) {
         repairs?.push({
           kind: "document",
           path: `${path}/value`,
-          message: `colour token "${name}" has the value ${JSON.stringify(item.value ?? null)}, which is not a 3/6/8-digit hex or "transparent"; entry dropped`
+          message: `colour token "${name}" has the value ${JSON.stringify(item.value ?? null)}, which is not a 3/6/8-digit hex, "transparent", or alias ref; entry dropped`
         });
         return;
       }
-      const modes = normalizeTokenModes(item.modes, normalizeTokenColor, path, repairs ?? []) as
-        | Record<string, string>
+      const modes = normalizeTokenModes(item.modes, normalizeColorSlot, path, repairs ?? []) as
+        | Record<string, ColorTokenValue>
         | undefined;
-      const token: ColorToken = { id, name, type: "color", value, ...(description ? { description } : {}) };
+      const token: ColorToken = {
+        id,
+        name,
+        type: "color",
+        value: value as ColorTokenValue,
+        ...(description ? { description } : {})
+      };
       if (modes) token.modes = modes;
       seen.add(id);
-      out.push(token);
+      staged.push({ token, sourceIndex: index });
       return;
     }
 
-    const value = typeof item.value === "number" && Number.isFinite(item.value) ? item.value : undefined;
+    const value = normalizeNumberSlot(item.value);
     if (value === undefined) {
       repairs?.push({
         kind: "document",
         path: `${path}/value`,
-        message: `number token "${name}" has the value ${JSON.stringify(item.value ?? null)}, which is not a finite number; entry dropped`
+        message: `number token "${name}" has the value ${JSON.stringify(item.value ?? null)}, which is not a finite number or alias ref; entry dropped`
       });
       return;
     }
     const category = numberCategory(item.category);
-    const modes = normalizeTokenModes(item.modes, finiteNumber, path, repairs ?? []) as
-      | Record<string, number>
+    const modes = normalizeTokenModes(item.modes, normalizeNumberSlot, path, repairs ?? []) as
+      | Record<string, NumberTokenValue>
       | undefined;
     const token: NumberToken = {
       id,
       name,
       type: "number",
-      value,
+      value: value as NumberTokenValue,
       ...(category ? { category } : {}),
       ...(description ? { description } : {})
     };
     if (modes) token.modes = modes;
     seen.add(id);
-    out.push(token);
+    staged.push({ token, sourceIndex: index });
   });
+
+  // Pass 2: resolve authoring-time `$name` alias shorthands against the full table.
+  const hasPending = staged.some(
+    ({ token }) =>
+      isPendingRef(token.value) ||
+      (token.modes && Object.values(token.modes).some(isPendingRef))
+  );
+  if (!hasPending) return staged.map((s) => s.token);
+
+  const byId = new Map<string, DesignToken>();
+  const byName = new Map<string, DesignToken[]>();
+  const bySlug = new Map<string, DesignToken[]>();
+  for (const { token } of staged) {
+    byId.set(token.id, token);
+    const nameList = byName.get(token.name) ?? [];
+    nameList.push(token);
+    byName.set(token.name, nameList);
+    const slug = slugOf(token.name);
+    const slugList = bySlug.get(slug) ?? [];
+    slugList.push(token);
+    bySlug.set(slug, slugList);
+  }
+
+  const out: DesignToken[] = [];
+  for (const { token, sourceIndex } of staged) {
+    const path = `/tokens/${sourceIndex}`;
+    let nextValue: ColorTokenValue | NumberTokenValue = token.value;
+    if (isPendingRef(token.value)) {
+      const resolved = resolvePendingRef(token.value.__pendingRef, token.type, byId, byName, bySlug);
+      if (!resolved.ref) {
+        repairs?.push({
+          kind: "document",
+          path: `${path}/value`,
+          message: `token "${token.name}" alias ${resolved.error}; entry dropped`
+        });
+        continue;
+      }
+      nextValue = { ref: resolved.ref };
+    }
+
+    let nextModes = token.modes;
+    if (token.modes) {
+      const cleaned: Record<string, ColorTokenValue | NumberTokenValue> = {};
+      for (const [mode, val] of Object.entries(token.modes)) {
+        if (isPendingRef(val)) {
+          const resolved = resolvePendingRef(val.__pendingRef, token.type, byId, byName, bySlug);
+          if (!resolved.ref) {
+            repairs?.push({
+              kind: "document",
+              path: `${path}/modes/${mode}`,
+              message: `token "${token.name}" mode "${mode}" alias ${resolved.error}; dropped`
+            });
+            continue;
+          }
+          cleaned[mode] = { ref: resolved.ref };
+        } else {
+          cleaned[mode] = val;
+        }
+      }
+      nextModes =
+        Object.keys(cleaned).length > 0
+          ? (cleaned as Record<string, ColorTokenValue> | Record<string, NumberTokenValue>)
+          : undefined;
+    }
+
+    const { modes: _prevModes, ...baseToken } = token;
+    out.push({
+      ...baseToken,
+      value: nextValue as never,
+      ...(nextModes ? { modes: nextModes as never } : {})
+    } as DesignToken);
+  }
   return out;
 }

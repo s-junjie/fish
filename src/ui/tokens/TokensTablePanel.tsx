@@ -36,6 +36,10 @@ interface TokensTablePanelProps {
   doc: DesignDocument;
   docRef: { current: DesignDocument };
   commitSnapshot: (newDoc: DesignDocument) => void;
+  /** Drag frames of a cell value: written without history, closed by the pair below. */
+  setDoc: (updater: (doc: DesignDocument) => DesignDocument) => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
   isOpen: boolean;
   onClose: () => void;
 }
@@ -44,6 +48,9 @@ export function TokensTablePanel({
   doc,
   docRef,
   commitSnapshot,
+  setDoc,
+  onDragStart,
+  onDragEnd,
   isOpen,
   onClose
 }: TokensTablePanelProps) {
@@ -238,6 +245,9 @@ export function TokensTablePanel({
               doc={doc}
               docRef={docRef}
               commitSnapshot={commitSnapshot}
+              setDoc={setDoc}
+              onDragStart={onDragStart}
+              onDragEnd={onDragEnd}
               searchQuery={searchQuery}
               modes={modes}
               activeCategory={activeCategory}

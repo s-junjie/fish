@@ -25,6 +25,7 @@ import { check } from "./fish-check";
 import { apply } from "./fish-apply";
 import { compose } from "./fish-compose";
 import { exportDocument } from "./fish-export";
+import { schemaCommand } from "./fish-schema";
 import { commandSpec, parseArgs, renderUsage } from "./command-spec";
 
 const USAGE = `fish — the FISH agent CLI (nothing to install)
@@ -41,6 +42,7 @@ Exit codes: 0 clean, 1 an error diagnostic or a failed op, 2 bad usage.
 
 What a report means, and which check to run when: references/workflow.md.
 What each flag's diagnostics are: references/dsl.md.
+The key contract is tools/fish.schema.json — one published spelling per key; run ./fish schema to list definitions and keys, or query ./fish schema <key|Def> or --find <word> (never read the whole file).
 This text is the syntax, not the judgement.
 `;
 // ---------------------------------------------------------------------------
@@ -120,6 +122,8 @@ function dispatch(argv: string[]): number | Promise<number> {
     element: valueOf("--element"),
     source: valueOf("--source"),
     limit: numberOf("--limit"),
+    size: numberOf("--size"),
+    strokeWidth: numberOf("--stroke-width"),
     addTo: valueOf("--add-to"),
     to: valueOf("--to"),
     pick: numberOf("--pick"),
@@ -132,7 +136,9 @@ function dispatch(argv: string[]): number | Promise<number> {
     summary: valueOf("--summary"),
     ops: valueOf("--ops"),
     reply: valueOf("--reply"),
-    text: valueOf("--text")
+    text: valueOf("--text"),
+    list: values.has("--list"),
+    find: valueOf("--find")
   };
   if (command === "check") {
     if (args.length < 1) return usage("check needs a document");
@@ -152,6 +158,13 @@ function dispatch(argv: string[]): number | Promise<number> {
   if (command === "compact") {
     if (args.length < 1) return usage("compact needs a document");
     return compactCommand(args[0], opts);
+  }
+  if (command === "schema") {
+    if (args.length > 1) return usage("schema takes at most one key or definition");
+    if (args.length > 0 && (opts.list || opts.find !== undefined)) {
+      return usage("pass either <key|Def>, --list, or --find WORD");
+    }
+    return schemaCommand(args[0] ?? "", { json: opts.json, list: opts.list, find: opts.find });
   }
   if (command === "assets") {
     return assetsCommand(args, opts);

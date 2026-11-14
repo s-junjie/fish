@@ -15,6 +15,10 @@ interface DesignSystemSectionProps {
   doc: DesignDocument;
   docRef: { current: DesignDocument };
   commitSnapshot: (newDoc: DesignDocument) => void;
+  /** Drag frames of a token value: written without history, closed by the pair below. */
+  setDoc: (updater: (doc: DesignDocument) => DesignDocument) => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
 }
 
 /**
@@ -25,7 +29,14 @@ interface DesignSystemSectionProps {
  * offers one (seeded from the frame you are looking at) because that is where a
  * ruler is usually first drawn.
  */
-export function DesignSystemSection({ doc, docRef, commitSnapshot }: DesignSystemSectionProps) {
+export function DesignSystemSection({
+  doc,
+  docRef,
+  commitSnapshot,
+  setDoc,
+  onDragStart,
+  onDragEnd
+}: DesignSystemSectionProps) {
   const [tab, setTab] = useState<DesignSystemTab>("tokens");
   const [isTableOpen, setIsTableOpen] = useState(false);
 
@@ -79,6 +90,9 @@ export function DesignSystemSection({ doc, docRef, commitSnapshot }: DesignSyste
         doc={doc}
         docRef={docRef}
         commitSnapshot={commitSnapshot}
+        setDoc={setDoc}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
         isOpen={isTableOpen}
         onClose={() => setIsTableOpen(false)}
       />

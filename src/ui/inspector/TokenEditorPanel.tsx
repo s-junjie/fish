@@ -1,6 +1,7 @@
 import { useState } from "preact/hooks";
 
-import type { ColorToken, DocumentMode } from "../../core/dsl/types";
+import type { ColorToken, ColorTokenValue, DocumentMode, TokenAliasRef } from "../../core/dsl/types";
+import { isTokenAliasRef, rawTokenSlot, type TokenLookup } from "../../core/dsl/token-value";
 import { DEFAULT_MODES, getColorTokenModeColor } from "../../core/interactions/mode-ops";
 import { DEFAULT_ELEMENT_COLOR } from "../../core/dsl/defaults";
 import { colorTokenColor } from "../../core/interactions/token-ops";
@@ -19,15 +20,16 @@ import { TokenEditorDialog, type TokenEditorRow } from "./TokenEditorDialog";
 
 export interface TokenEditorDraft {
   name: string;
-  color: string;
-  modes?: Record<string, string | undefined>;
-  darkColor?: string;
+  color: ColorTokenValue;
+  modes?: Record<string, ColorTokenValue | undefined>;
+  darkColor?: ColorTokenValue;
   description: string;
 }
 
 interface TokenEditorPanelProps {
   /** `null` creates; an existing token edits in place. */
   token: ColorToken | null;
+  tokens?: TokenLookup;
   /** Available document modes. */
   modes?: DocumentMode[];
   /** The row or + that opened this panel. */
@@ -94,6 +96,7 @@ function ColorValue({
  */
 export function TokenEditorPanel({
   token,
+  tokens,
   modes = DEFAULT_MODES,
   anchorRef,
   initialColor,
@@ -107,30 +110,50 @@ export function TokenEditorPanel({
 
   const [name, setName] = useState(token?.name ?? initialName ?? "");
   const [description, setDescription] = useState(token?.description ?? "");
-  const [lightColor, setLightColor] = useState(
-    token ? colorTokenColor(token) : initialColor ?? DEFAULT_ELEMENT_COLOR
+  const [lightColor, setLightColorState] = useState(
+    token ? colorTokenColor(token, baseMode.id, tokens) : initialColor ?? DEFAULT_ELEMENT_COLOR
   );
 
   const initialModeColors: Record<string, string> = {};
+  const initialAliases: Record<string, TokenAliasRef> = {};
+  if (token) {
+    const rawBase = rawTokenSlot(token, baseMode.id, baseMode.id);
+    if (isTokenAliasRef(rawBase)) initialAliases[baseMode.id] = rawBase;
+  }
   for (const m of otherModes) {
-    if (token?.modes?.[m.id]) {
-      initialModeColors[m.id] = getColorTokenModeColor(token, m.id);
+    if (token?.modes?.[m.id] !== undefined) {
+      initialModeColors[m.id] = getColorTokenModeColor(token, m.id, tokens);
+      if (isTokenAliasRef(token.modes[m.id])) initialAliases[m.id] = token.modes[m.id] as TokenAliasRef;
     } else if (m.id === "dark" && (token as any)?.darkColor) {
       initialModeColors[m.id] = (token as any).darkColor;
     }
   }
 
   const [modeColors, setModeColors] = useState<Record<string, string>>(initialModeColors);
+  const [preservedAliases, setPreservedAliases] = useState<Record<string, TokenAliasRef>>(initialAliases);
   const [colorAnchor, setColorAnchor] = useState<{ modeId: string; el: HTMLElement } | null>(null);
 
   const parsedLight = parseColorAlpha(lightColor);
-  const setModeColor = (modeId: string, value: string | undefined) =>
+  const dropPreservedAlias = (modeId: string) =>
+    setPreservedAliases((prev) => {
+      if (!(modeId in prev)) return prev;
+      const next = { ...prev };
+      delete next[modeId];
+      return next;
+    });
+  const setLightColor = (value: string) => {
+    dropPreservedAlias(baseMode.id);
+    setLightColorState(value);
+  };
+  const setModeColor = (modeId: string, value: string | undefined) => {
+    dropPreservedAlias(modeId);
     setModeColors((prev) => {
       const next = { ...prev };
       if (value === undefined) delete next[modeId];
       else next[modeId] = value;
       return next;
     });
+  };
 
   const rows: TokenEditorRow[] = [
     {
@@ -200,15 +223,20 @@ export function TokenEditorPanel({
       rows={rows}
       submitLabel={token ? t("tokens.save") : t("tokens.create")}
       canSubmit={!!name.trim()}
-      onSubmit={() =>
+      onSubmit={() => {
+        const nextModes: Record<string, ColorTokenValue | undefined> = {};
+        for (const m of otherModes) {
+          if (preservedAliases[m.id]) nextModes[m.id] = preservedAliases[m.id];
+          else if (modeColors[m.id]) nextModes[m.id] = modeColors[m.id];
+        }
         onSave({
           name: name.trim(),
-          color: lightColor,
-          modes: modeColors,
-          darkColor: modeColors["dark"] || undefined,
+          color: preservedAliases[baseMode.id] ?? lightColor,
+          modes: nextModes,
+          darkColor: nextModes["dark"],
           description: description.trim()
-        })
-      }
+        });
+      }}
       onClose={onClose}
       keepOpenFor={["[data-color-panel]"]}
       nestedOpen={() => Boolean(colorAnchor)}

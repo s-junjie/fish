@@ -1,8 +1,9 @@
 import { useState } from "preact/hooks";
 import { X } from "lucide-react";
 
-import type { DocumentMode, NumberToken, NumberTokenCategory } from "../../core/dsl/types";
-import { DEFAULT_NUMBER_MODES } from "../../core/interactions/mode-ops";
+import type { DocumentMode, NumberToken, NumberTokenCategory, NumberTokenValue, TokenAliasRef } from "../../core/dsl/types";
+import { isTokenAliasRef, rawTokenSlot, type TokenLookup } from "../../core/dsl/token-value";
+import { DEFAULT_NUMBER_MODES, getNumberTokenModeValue } from "../../core/interactions/mode-ops";
 import { t } from "../../i18n";
 import { ScrubInput } from "../ScrubInput";
 import { Select } from "../Select";
@@ -13,15 +14,16 @@ import { TokenEditorDialog, type TokenEditorRow } from "./TokenEditorDialog";
 
 export interface NumberTokenEditorDraft {
   name: string;
-  value: number;
-  modes?: Record<string, number | undefined>;
-  darkValue?: number;
+  value: NumberTokenValue;
+  modes?: Record<string, NumberTokenValue | undefined>;
+  darkValue?: NumberTokenValue;
   category: NumberTokenCategory;
   description: string;
 }
 
 interface NumberTokenEditorPanelProps {
   token: NumberToken | null;
+  tokens?: TokenLookup;
   /** The NUMBER axis' modes — the ids this token's per-mode values are filed under. */
   modes?: DocumentMode[];
   anchorRef: { current: HTMLElement | null };
@@ -34,6 +36,7 @@ interface NumberTokenEditorPanelProps {
 
 export function NumberTokenEditorPanel({
   token,
+  tokens,
   modes = DEFAULT_NUMBER_MODES,
   anchorRef,
   initialValue = 0,
@@ -48,27 +51,49 @@ export function NumberTokenEditorPanel({
 
   const [name, setName] = useState(token?.name ?? initialName ?? "");
   const [description, setDescription] = useState(token?.description ?? "");
-  const [value, setValue] = useState(token?.value ?? initialValue);
+  const [value, setValueState] = useState(
+    token ? getNumberTokenModeValue(token, baseMode.id, tokens) : initialValue
+  );
 
   const initialModeValues: Record<string, number | undefined> = {};
+  const initialAliases: Record<string, TokenAliasRef> = {};
+  if (token) {
+    const rawBase = rawTokenSlot(token, baseMode.id, baseMode.id);
+    if (isTokenAliasRef(rawBase)) initialAliases[baseMode.id] = rawBase;
+  }
   for (const m of otherModes) {
     if (token?.modes?.[m.id] !== undefined) {
-      initialModeValues[m.id] = token.modes[m.id];
+      initialModeValues[m.id] = getNumberTokenModeValue(token, m.id, tokens);
+      if (isTokenAliasRef(token.modes[m.id])) initialAliases[m.id] = token.modes[m.id] as TokenAliasRef;
     }
   }
 
   const [modeValues, setModeValues] = useState<Record<string, number | undefined>>(initialModeValues);
+  const [preservedAliases, setPreservedAliases] = useState<Record<string, TokenAliasRef>>(initialAliases);
   const [category, setCategory] = useState<NumberTokenCategory>(
     token?.category ?? initialCategory
   );
 
-  const setModeValue = (modeId: string, next: number | undefined) =>
+  const dropPreservedAlias = (modeId: string) =>
+    setPreservedAliases((prev) => {
+      if (!(modeId in prev)) return prev;
+      const next = { ...prev };
+      delete next[modeId];
+      return next;
+    });
+  const setValue = (next: number) => {
+    dropPreservedAlias(baseMode.id);
+    setValueState(next);
+  };
+  const setModeValue = (modeId: string, next: number | undefined) => {
+    dropPreservedAlias(modeId);
     setModeValues((prev) => {
       const copy = { ...prev };
       if (next === undefined) delete copy[modeId];
       else copy[modeId] = next;
       return copy;
     });
+  };
 
   const rows: TokenEditorRow[] = [
     {
@@ -154,16 +179,21 @@ export function NumberTokenEditorPanel({
       rows={rows}
       submitLabel={token ? t("tokens.save") : t("tokens.create")}
       canSubmit={!!name.trim()}
-      onSubmit={() =>
+      onSubmit={() => {
+        const nextModes: Record<string, NumberTokenValue | undefined> = {};
+        for (const m of otherModes) {
+          if (preservedAliases[m.id]) nextModes[m.id] = preservedAliases[m.id];
+          else if (modeValues[m.id] !== undefined) nextModes[m.id] = modeValues[m.id];
+        }
         onSave({
           name: name.trim(),
-          value,
-          modes: modeValues,
-          darkValue: modeValues["dark"],
+          value: preservedAliases[baseMode.id] ?? value,
+          modes: nextModes,
+          darkValue: nextModes["dark"],
           category,
           description: description.trim()
-        })
-      }
+        });
+      }}
       onClose={onClose}
     />
   );

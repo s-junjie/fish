@@ -61,24 +61,11 @@ export function areSvgNodePropsEqual(prev: SvgNodeProps, next: SvgNodeProps): bo
   if (prev.isSelected !== next.isSelected) return false;
   if (prev.isDragOver !== next.isDragOver) return false;
   if (prev.isEditingText !== next.isEditingText) return false;
-  // The edited id is a DESCENDANT's state, so a frame whose own `isEditingText`
-  // is false in both props still looks unchanged when the editor closes on a
-  // child — and the whitelist then skips the subtree, leaving the in-place
-  // editor mounted after Escape or after a click that changes neither the
-  // selection nor the document. Compared as an id, not a boolean: it is still
-  // one re-render of the tree per edit start/stop, and none while typing.
+  // Compared as ids so closing an editor on a descendant still re-renders the ancestor subtree.
   if (prev.ctx.editingCanvasTextId !== next.ctx.editingCanvasTextId) return false;
   if (prev.ctx.editingPathId !== next.ctx.editingPathId) return false;
   if (next.isEditingText && prev.ctx.canvasTextDraft !== next.ctx.canvasTextDraft) return false;
   if (prev.isMaskStencil !== next.isMaskStencil) return false;
-  // A selection change reaches a node through its own `isSelected` — already
-  // compared above — and through the children it renders. Only a node that has a
-  // changed id INSIDE it has something new to pass down: an unrelated selection
-  // leaves this node's markup byte-identical. Comparing the set itself made a
-  // mousedown on one layer re-render all 1,841 nodes on Page 1.
-  //
-  // `selectionChangedIds` is built once per selection change and compared by
-  // identity, so a drag — which does not touch the selection — pays nothing.
   const changedIds = next.ctx.selectionChangedIds;
   if (
     changedIds &&
@@ -88,30 +75,9 @@ export function areSvgNodePropsEqual(prev: SvgNodeProps, next: SvgNodeProps): bo
   ) {
     return false;
   }
-  // A guide only changes when its text element or its target does, so identity
-  // is the cheap correct test — and it must be compared at all, because this is a
-  // whitelist: a `side` edit rewrites the string with the element and leaves the
-  // guide map to a new generation only when the tree does.
   if (prev.el.type === "text" && prev.ctx.onPathGuides !== next.ctx.onPathGuides) return false;
-  // Deliberately NOT compared: `zoom`, and `viewportBox`.
-  //
-  // `viewportBox` decides what is MOUNTED, and that now happens in
-  // `renderNodeList`, which is not memoized — so by the time a node is asked
-  // whether to re-render, the mounted set is already right. Comparing it here is
-  // what made every wheel tick rebuild the whole visible tree to no effect.
-  //
-  // `zoom` is not compared either, because NO node reads it. Everything that
-  // holds a constant number of screen pixels — the 8px hit slop, the component
-  // mark, a set's dashed border — is expressed in CSS against `--fish-zoom`,
-  // which CanvasArea writes outside the node markup; frame titles are painted by
-  // their own overlay, outside the node; everything that is a raster is built
-  // from `rasterScale`, which is quantised. So a zoom tick produces byte-identical
-  // markup and the whole visible tree is served from memory.
-  //
-  // This is the invariant to re-check first if a zoom ever stops re-sizing
-  // something: a node that reads `ctx.zoom` (or drops a `style={{ ... }}` that
-  // feeds a `--fish-` variable) puts zoom back into markup, and this comparator
-  // will happily skip the update.
+  // `zoom` and `viewportBox` are intentionally omitted: viewport culling runs in `renderNodeList`
+  // and zoom-scaled chrome uses `--fish-zoom` CSS variables outside node markup.
   if (prev.ctx.rasterScale !== next.ctx.rasterScale) return false;
   if (prev.ctx.theme !== next.ctx.theme) return false;
   if (prev.ctx.numberMode !== next.ctx.numberMode) return false;
@@ -124,6 +90,82 @@ export function areSvgNodePropsEqual(prev: SvgNodeProps, next: SvgNodeProps): bo
     if (prevMaster !== nextMaster) return false;
   }
   return true;
+}
+
+const EMPTY_EFFECTS: any[] = [];
+const EMPTY_FILLS: Paint[] = [];
+const EMPTY_STROKES: any[] = [];
+const EMPTY_SHADOW_MARKS: Record<string, string | undefined> = {};
+const MASK_STENCIL_FILLS: Paint[] = [{ type: "solid", color: CANVAS_ON_SELECT }];
+
+function buildBackdropFilterCss(
+  el: DesignElement,
+  activeEffects: any[],
+  glass: ReturnType<typeof bakeGlass>
+): string | undefined {
+  if (activeEffects.length === 0) return undefined;
+  const parts: string[] = [];
+  for (const ef of cssPaintOrder(activeEffects)) {
+    if (ef.type === "backdrop-blur" && el.type !== "text") {
+      parts.push(cssBlurFilter((ef as BackdropBlurEffect).blur));
+    } else if (ef.type === "liquid-glass" && glass) {
+      const chain = glassBackdropCss(el.id, glass);
+      if (chain) parts.push(chain);
+    }
+  }
+  return parts.length > 0 ? parts.join(" ") : undefined;
+}
+
+function resolveElementEffects(
+  el: DesignElement,
+  rawEffects: any[],
+  isMaskStencil: boolean,
+  rasterScale?: number
+) {
+  if (isMaskStencil || rawEffects.length === 0) {
+    return {
+      svgFilterEffects: EMPTY_EFFECTS,
+      edgeEffects: EMPTY_EFFECTS,
+      glass: null as ReturnType<typeof bakeGlass>,
+      backdropFilterCss: undefined as string | undefined
+    };
+  }
+  const activeEffects: any[] = [];
+  const svgFilterEffects: any[] = [];
+  const edgeEffects: any[] = [];
+  let hasGlass = false;
+  let hasBackdropEffect = false;
+  for (let i = 0; i < rawEffects.length; i++) {
+    const ef = rawEffects[i];
+    if (ef.enabled === false) continue;
+    activeEffects.push(ef);
+    if (ef.type === "tear") {
+      edgeEffects.push(ef);
+    } else if (ef.type === "backdrop-blur") {
+      hasBackdropEffect = true;
+    } else if (ef.type === "liquid-glass") {
+      hasGlass = true;
+      hasBackdropEffect = true;
+    } else if (!(el.type === "text" && ef.type === "drop-shadow")) {
+      svgFilterEffects.push(ef);
+    }
+  }
+  if (activeEffects.length === 0) {
+    return {
+      svgFilterEffects: EMPTY_EFFECTS,
+      edgeEffects: EMPTY_EFFECTS,
+      glass: null as ReturnType<typeof bakeGlass>,
+      backdropFilterCss: undefined as string | undefined
+    };
+  }
+  const glass =
+    hasGlass && el.type !== "instance"
+      ? bakeGlass(el, activeEffects, undefined, rasterScale)
+      : null;
+  const backdropFilterCss = hasBackdropEffect
+    ? buildBackdropFilterCss(el, activeEffects, glass)
+    : undefined;
+  return { svgFilterEffects, edgeEffects, glass, backdropFilterCss };
 }
 
 // Exported for the double-application guard in tests/instance-effects.test.ts:
@@ -139,11 +181,6 @@ export function SvgNodeRenderer({
 }: SvgNodeProps) {
   if (el.visible === false && !isMaskStencil) return null;
 
-  // The master is resolved FIRST because it is part of the theme question: an
-  // instance inherits its master's mode exactly as it inherits its fills, and a
-  // page authored in dark under a light document only reads as dark while that
-  // holds. Asking the element alone fell back to the document's active theme and
-  // re-materialised every cloned child in the wrong one.
   const instanceMaster =
     el.type === "instance"
       ? findMasterComponentFast(ctx.docRef.current, (el as InstanceElement).componentId, ctx.registry)
@@ -154,10 +191,6 @@ export function SvgNodeRenderer({
       ? resolveInstanceTheme(el as InstanceElement, instanceMaster, inheritedTheme)
       : el.themeMode || inheritedTheme;
 
-  // The NUMBER axis is resolved the same way and travels beside `theme`, never
-  // inside it: a compact card inside a dark page keeps its spacing, and vice
-  // versa. Falling back to the colour mode is what an element that declares
-  // neither inherits.
   const inheritedNumberMode = ctx.numberMode || getActiveNumberMode(ctx.docRef.current);
   const elementNumberMode =
     el.type === "instance"
@@ -186,87 +219,38 @@ export function SvgNodeRenderer({
       })
     : null;
 
-  // Effects inherit from the master too — otherwise a component that carries a
-  // shadow or blur paints flat the moment it is instantiated. `activeEffects`
-  // feeds both the SVG `<filter>` and the backdrop-filter path below.
-  const activeEffects = isMaskStencil
-    ? []
-    : (instanceBox ? instanceBox.effects : el.effects || []).filter((ef) => ef.enabled !== false);
-  const svgFilterEffects = activeEffects.filter(
-    (ef) =>
-      ef.type !== "backdrop-blur" &&
-      ef.type !== "liquid-glass" &&
-      // A break is geometry around the artwork, not a filter primitive over it.
-      ef.type !== "tear" &&
-      !(el.type === "text" && ef.type === "drop-shadow")
+  const rawEffects = instanceBox ? instanceBox.effects : el.effects || EMPTY_EFFECTS;
+  const { svgFilterEffects, edgeEffects, glass, backdropFilterCss } = resolveElementEffects(
+    el,
+    rawEffects,
+    isMaskStencil,
+    ctx.rasterScale
   );
-  const edgeEffects = activeEffects.filter((ef) => ef.type === "tear");
   const colorFilter = isMaskStencil || isNeutralColorFilter(el.adjust) ? undefined : el.adjust;
   const filterAttr =
     svgFilterEffects.length > 0 || colorFilter ? `url(#filter_${el.id})` : undefined;
-  /* Marks for the pass that turns this off when the zoom has shrunk the shadow
-     below a pixel of reach — see `shadow-lod.ts`. Only a filter made ENTIRELY of
-     drop shadows is eligible: anything else changes pixels that survive being
-     small (its colour, its silhouette), and none of those have been measured. */
-  const shadowMarks = shadowLodMarks(filterAttr, svgFilterEffects, colorFilter);
+  const shadowMarks = filterAttr
+    ? shadowLodMarks(filterAttr, svgFilterEffects, colorFilter)
+    : EMPTY_SHADOW_MARKS;
 
-  /* Liquid Glass goes through the bake rather than being spelled out here: the
-     chain has to know whether a displacement map exists at all, and the map's own
-     filter region comes from the same numbers. `backdrop-blur` keeps its own
-     blur — a frosted panel that is also lensed is a supported pair, and the two
-     effects compose in the order they were declared.
-     An INSTANCE resolves its own stack (see `ownsEffects` below), glass included,
-     so this pass must not paint a second copy of the plate and the rim over the
-     child's. */
-  const glass =
-    isMaskStencil || el.type === "instance"
-      ? null
-      : bakeGlass(el, activeEffects, undefined, ctx.rasterScale);
-  let backdropFilterCss: string | undefined;
-  if (activeEffects.length > 0) {
-    const backdropFilterParts: string[] = [];
-    for (const ef of cssPaintOrder(activeEffects)) {
-      if (ef.type === "backdrop-blur" && el.type !== "text") {
-        backdropFilterParts.push(cssBlurFilter((ef as BackdropBlurEffect).blur));
-      } else if (ef.type === "liquid-glass" && glass) {
-        const chain = glassBackdropCss(el.id, glass);
-        if (chain) backdropFilterParts.push(chain);
-      }
-    }
-    if (backdropFilterParts.length > 0) backdropFilterCss = backdropFilterParts.join(" ");
-  }
-
-  /* A mask layer is PAINTED as well as being a mask — Figma draws it, and a
-     tinted icon cannot work without it: the glyphs are the mask and they are
-     also what you see. The stencil fade exists only to hide the white silhouette
-     a mask draws of itself, so it belongs on the element's OWN paint and never
-     on a container's children — which is where it was, and which is why a mask
-     frame's icon and label painted at 0.1% and vanished. An instance mask is
-     untouched: its paint comes from `InstanceNode`, which has no group of its
-     own to fade. */
+  // Fade only leaf mask stencils; container stencils fade their own frame group so children keep alpha.
   const stencilFadesSelf = isMaskStencil && !isContainer(el);
   const elOpacity = stencilFadesSelf ? 0.001 : typeof el.opacity === "number" ? el.opacity : 1;
-  // `InstanceNode` resolves the inherited stack itself and wraps ITSELF in this
-  // same `filter_<id>` (and emits its own backdrop-filter foreignObject). Applying
-  // either here as well ran the chain twice: a drop-shadow composited over an
-  // already-shadowed result, so every instance of a component with elevation read
-  // about twice as dark as the master — and as the same box detached into a frame.
+  // `InstanceNode` applies its own filter/backdrop stack; applying it here would double-composite.
   const ownsEffects = el.type === "instance";
 
   const hasBackdrop =
     !ownsEffects && backdropFilterCss !== undefined && el.type !== "line" && el.type !== "arrow" && el.type !== "text";
 
-  // The pivot follows the RESOLVED box, not the stored snapshot: an instance that
-  // inherits a size from its master rotates around the size it is painted at.
   const { x: cx, y: cy } = elementPivot(el, instanceBox ? instanceBox.width : el.width, instanceBox ? instanceBox.height : el.height);
   const transform = elementTransform(el, cx, cy);
   const transform3d = elementTransform3d(el);
 
   let activeFills = isMaskStencil
-    ? [{ type: "solid" as const, color: CANVAS_ON_SELECT }]
-    : el.fillEnabled !== false
-      ? (el.fills || []).filter((f) => f && f.enabled !== false)
-      : [];
+    ? MASK_STENCIL_FILLS
+    : el.fillEnabled !== false && el.fills && el.fills.length > 0
+      ? el.fills.filter((f) => f && f.enabled !== false)
+      : EMPTY_FILLS;
 
   if (
     !isMaskStencil &&
@@ -284,29 +268,29 @@ export function SvgNodeRenderer({
     }
   }
 
-  /* Whether the element paints its own interior, and so owns it for hit testing.
-     A leaf shape with no fill is deliberately click-through — an outline is
-     grabbable, its inside belongs to whatever is behind it — but a BACKDROP
-     EFFECT paints the whole box: the lens (or the frosted plate) is what the user
-     sees and aims at, so a press inside it must select the element instead of
-     falling through and marquee-ing every layer under the point. Containers
-     already take their whole box unconditionally; this is the leaf-shape side of
-     the same rule. */
   const ownsInterior = activeFills.length > 0 || hasBackdrop;
 
-  const allStrokes = (el as any).strokes || [];
-  const activeStrokes = isMaskStencil
-    ? []
-    : allStrokes.filter((s: any) => {
-      if (!s || s.enabled === false) return false;
-      if (s.width > 0) return true;
-      if (s.side === "custom" && s.sides) {
-        return Object.values(s.sides).some((v: any) => typeof v === "number" && v > 0);
-      }
-      return false;
-    });
+  const allStrokes = (el as any).strokes || EMPTY_STROKES;
+  const activeStrokes =
+    isMaskStencil || allStrokes.length === 0
+      ? EMPTY_STROKES
+      : allStrokes.filter((s: any) => {
+          if (!s || s.enabled === false) return false;
+          if (s.width > 0) return true;
+          if (s.side === "custom" && s.sides) {
+            return Object.values(s.sides).some((v: any) => typeof v === "number" && v > 0);
+          }
+          return false;
+        });
 
-  const shapeLocalD = getShapeLocalPath(el);
+  const needsShapePath =
+    hasBackdrop ||
+    (el.type !== "text" &&
+      el.type !== "line" &&
+      el.type !== "arrow" &&
+      el.type !== "instance" &&
+      el.type !== "componentSet");
+  const shapeLocalD = needsShapePath ? getShapeLocalPath(el) : "";
   // Only a path can carry an interior rule, and it is read on the fill layers
   // AND on the transparent hit target: with `evenodd` the hole is not part of
   // the shape, so a hit path that ignored the rule would swallow clicks on it.
@@ -332,31 +316,32 @@ export function SvgNodeRenderer({
     ctx.setSelectedIds(new Set([el.id]));
   };
 
-  // The group is only ever here to carry `pointer-events: none` while ANOTHER
-  // element is being path-edited. Emitted unconditionally it was a bare wrapper
-  // on every painted element — one of the canvas's ~3,400 single-child groups,
-  // and a vnode Preact creates, diffs and inserts again on every mount.
+  const renderShapePaintGroup = (hitFill: string, pointerEvents: "all" | "stroke", opacity?: number) => (
+    <g
+      transform={`translate(${el.x}, ${el.y})`}
+      onMouseDown={(e) => ctx.onElementMouseDown(e, el)}
+      onDblClick={handleDoubleClickToSelect}
+      opacity={opacity}
+    >
+      <path
+        d={shapeLocalD}
+        fill={hitFill}
+        data-hit="true"
+        fillRule={fillRule}
+        stroke="transparent"
+        style={{ "--hit-stroke": `${activeStrokes[0]?.width || 0}px` }}
+        pointerEvents={pointerEvents}
+      />
+      {renderFills(el, activeFills, shapeLocalD, fillRule, fillLayerIndex, resolveAssetUri, isMaskStencil, Boolean(glass))}
+      {renderStrokes(el, activeStrokes, shapeLocalD, strokeLayerIndex)}
+    </g>
+  );
+
+  // Only wrap when another element is path-editing to avoid an extra <g> on every node.
   const contentBody = (
     <>
-      {(el.type === "rect" || el.type === "ellipse" || el.type === "polygon" || el.type === "star" || el.type === "path") && (
-        <g
-          transform={`translate(${el.x}, ${el.y})`}
-          onMouseDown={(e) => ctx.onElementMouseDown(e, el)}
-          onDblClick={handleDoubleClickToSelect}
-        >
-          <path
-            d={shapeLocalD}
-            fill={ownsInterior ? "transparent" : "none"}
-            data-hit="true"
-            fillRule={fillRule}
-            stroke="transparent"
-            style={{ "--hit-stroke": `${activeStrokes[0]?.width || 0}px` }}
-            pointerEvents={ownsInterior ? "all" : "stroke"}
-          />
-          {renderFills(el, activeFills, shapeLocalD, fillRule, fillLayerIndex, resolveAssetUri, isMaskStencil, Boolean(glass))}
-          {renderStrokes(el, activeStrokes, shapeLocalD, strokeLayerIndex)}
-        </g>
-      )}
+      {(el.type === "rect" || el.type === "ellipse" || el.type === "polygon" || el.type === "star" || el.type === "path") &&
+        renderShapePaintGroup(ownsInterior ? "transparent" : "none", ownsInterior ? "all" : "stroke")}
 
       {(el.type === "line" || el.type === "arrow") && (
         <SvgLineArrowNode
@@ -392,25 +377,7 @@ export function SvgNodeRenderer({
 
       {(el.type === "frame" || el.type === "component") && (
         <>
-          <g
-            transform={`translate(${el.x}, ${el.y})`}
-            onMouseDown={(e) => ctx.onElementMouseDown(e, el)}
-            onDblClick={handleDoubleClickToSelect}
-            /* The container's own silhouette, and only that — see `stencilFadesSelf`. */
-            opacity={isMaskStencil ? 0.001 : undefined}
-          >
-            <path
-              d={shapeLocalD}
-              fill={activeFills.length > 0 ? "transparent" : "none"}
-              data-hit="true"
-              fillRule={fillRule}
-              stroke="transparent"
-              style={{ "--hit-stroke": `${activeStrokes[0]?.width || 0}px` }}
-              pointerEvents="all"
-            />
-            {renderFills(el, activeFills, shapeLocalD, fillRule, fillLayerIndex, resolveAssetUri, isMaskStencil, Boolean(glass))}
-            {renderStrokes(el, activeStrokes, shapeLocalD, strokeLayerIndex)}
-          </g>
+          {renderShapePaintGroup(activeFills.length > 0 ? "transparent" : "none", "all", isMaskStencil ? 0.001 : undefined)}
 
           {isDragOver && (
             <rect
@@ -516,12 +483,7 @@ export function SvgNodeRenderer({
     contentBody
   );
 
-  /**
-   * The torn silhouette is a clip in the element's LOCAL space, which is what the
-   * flat branch draws in. A tilted layer paints inside a `foreignObject` whose
-   * nested `svg` carries its own viewBox, so its user space is not this one — the
-   * break is left off there rather than clipped against the wrong coordinates.
-   */
+  // Tear clip uses flat local coordinates; skip on 3D-tilted foreignObject layers.
   const flatContent = edgeEffects.length && !transform3d ? (
     <EdgeShell
       el={el}
@@ -536,15 +498,6 @@ export function SvgNodeRenderer({
     content
   );
 
-  /**
-   * Liquid Glass's own paint, as real shapes: the plate UNDER the artwork and the
-   * rim OVER it.
-   *
-   * Both used to be filter primitives. A pair of offset inner shadows can only
-   * make a highlight that runs all the way round, which reads as a bevel — the
-   * mark of a raised button — and neither a directional light with a spread nor a
-   * dark edge that fades inward is expressible as one. Baked images are.
-   */
   const glassRim = glass ? (
     <>
       {[glass.dark, glass.light].filter(Boolean).map((img, i) => (
@@ -562,27 +515,11 @@ export function SvgNodeRenderer({
     </>
   ) : null;
 
-  /**
-   * The perspective tilt renders through a foreignObject + HTML div, NOT a
-   * `<g style>`. Chromium computes CSS 3D transforms on SVG elements in a
-   * space that mishandles ancestor transforms and viewport scale — the further
-   * the element sits from the view-box origin, the more the projection shears
-   * and flattens (measured: a 30°-tilted card at x=2400 under a 0.47x viewport
-   * painted as a parallelogram). An HTML div's 3D pipeline is spec-conformant
-   * and lands the projected quad to a tenth of a user unit. The nested svg
-   * carries the element's box as its viewBox, so every child keeps its stored
-   * coordinates, and `overflow: visible` lets strokes and shadows leave the
-   * box. Export unwraps this wrapper (`convertForeignObjectsToSvg`) — static
-   * SVG cannot carry the projection — degrading to the flat artwork.
-   */
+  // CSS 3D runs on an HTML div inside foreignObject because Chromium mis-projects 3D transforms on SVG <g>.
   const tiltBody = transform3d ? (() => {
     const w = Math.max(1, instanceBox ? instanceBox.width : el.width);
     const h = Math.max(1, instanceBox ? instanceBox.height : el.height);
-    // The filter rides INSIDE the nested svg, not the outer group. The filter
-    // region is laid out for the FLAT box, so a projection that widens the near
-    // edge past it clips the artwork with straight vertical cuts. Filtering
-    // pre-projection draws the shadow in flat space and lets the div's
-    // transform carry it along — which is also what a tilted shadow should do.
+    // Filter inside the nested svg so the projection transforms the shadow instead of clipping against flat bounds.
     return (
       <foreignObject
         data-tilt-fo="true"
@@ -624,25 +561,11 @@ export function SvgNodeRenderer({
           y={el.y}
           width={Math.max(1, el.width)}
           height={Math.max(1, el.height)}
-          // The backdrop is decoration: `backdrop-filter` has no shape of its own,
-          // and the `<div>` inside carries `pointer-events: none` — but that does
-          // NOT make the `foreignObject` inert, because the element itself still
-          // hit-tests its own box. Left hittable it outranked a fill-less shape's
-          // stroke-only hit area, so a press inside a glass panel reached the
-          // canvas root and started a marquee, selecting every layer under the
-          // point (the panel included) and refusing every drag.
           pointerEvents="none"
         >
           <div
-            // `BACKDROP_CHAIN_ATTR` in `backdrop-lod.ts`. Written as a literal to
-            // stay greppable, like every other marker on the canvas; the pass
-            // that disables this blur reads the authored chain back off it.
             data-backdrop-chain={backdropFilterCss}
             style={{
-              // Not grown by the lens pad: growing it would force a `clip-path`,
-              // which Chromium flattens to a rectangle under a clipping frame
-              // (see `backdropShapeStyle`). `lg_refract_<id>` is offset by `-pad`
-              // to match this box instead.
               width: "100%",
               height: "100%",
               pointerEvents: "none",
@@ -668,15 +591,7 @@ export function SvgNodeRenderer({
     <g
       key={el.id}
       data-element-id={el.id}
-      // A link rides the element's own group so a click anywhere inside it —
-      // including a resolved instance child, whose id the document cannot look
-      // up — resolves to the nearest layer that declared one. Absent when there
-      // is no link, so a document that uses none is byte-for-byte what it was.
       data-link={el.link || undefined}
-      // Consumed by one stylesheet rule that makes the whole locked subtree
-      // transparent to the pointer (style.css, `[data-locked]`). `locked` is
-      // materialized onto every descendant, so marking the node is enough —
-      // the selector reaches the children without them carrying it too.
       data-locked={el.locked ? "true" : undefined}
       transform={transform}
       filter={!transform3d && !ownsEffects ? filterAttr : undefined}
@@ -696,48 +611,16 @@ function isZeroAlphaMask(el: DesignElement): boolean {
   return fills.length > 0 && fills.every((f) => typeof f.opacity === "number" && f.opacity <= 0);
 }
 
-/**
- * Whether a TOP-LEVEL element stays out of the mounted set.
- *
- * This lives in `renderNodeList` and not in the node for a reason that is the
- * whole point of the function: the node is memoized, and a memoized component
- * that returns null on one tick and a tree on the next has to be re-run to say so.
- * Comparing `viewportBox` in the comparator forced exactly that — every wheel tick
- * rebuilt and re-diffed every visible element (measured: 51 ms per tick on a
- * 3120-element page at 6 % zoom) to produce, for all but a ring at the edge, the
- * same markup. Deciding the mounted set OUTSIDE the memo keeps the set identical
- * and lets the node ignore the viewport entirely.
- *
- * Top-level only, which is what the renderer has always done: a visible frame
- * paints its whole subtree. That is why the defs pass culls at the same
- * granularity (`computeVisibleElementIds`) — the two must agree, or a nested
- * element loses its gradient while its geometry stays.
- *
- * The exemptions are not negotiable. A selected element, a mask stencil, and an
- * on-path text all paint outside their own box: the first two are deliberate, and
- * on-path glyphs run along a target path that can be nowhere near the stored
- * bounds — cull those on their box and the text vanishes, and can then never be
- * measured back into existence.
- */
+// Keep in sync with `computeVisibleElementIds` in defs culling.
 function isCulledTopLevel(el: DesignElement, ctx: NodeRenderContext, isSelected: boolean, isMaskStencil: boolean): boolean {
   if (!ctx.viewportBox) return false;
   if (isSelected || isMaskStencil) return false;
   if ((el as TextElement).onPath?.pathId) return false;
-  // A resolved clone is not in the document tree, so it has no world box. "No
-  // opinion" has to mean "keep it" — the alternative is an empty box culling
-  // live content.
   const box = ctx.worldBounds.get(el.id);
   if (!box) return false;
   return !isElementInViewport(box, ctx.viewportBox);
 }
 
-/**
- * The name a frame's label would say, before it is truncated to fit.
- *
- * An instance may have no name of its own and be wearing its master's, so the
- * answer has to be the same one `InstanceNode` paints — resolved here rather
- * than there because the truncation needs the string before the node runs.
- */
 function titleNameOf(ctx: NodeRenderContext): FrameTitleName {
   return (el) => {
     if (el.type !== "instance") return el.name || "";
@@ -754,10 +637,6 @@ export function renderNodeList(
   ctx: NodeRenderContext,
   isTopLevel = false
 ): preact.VNode[] {
-  // Titles are the cull's twin: a screen-space measurement that moves with the
-  // zoom and decides what gets PAINTED, so it is answered here — in the pass that
-  // is not memoized — and painted as its own layer, outside every element's
-  // effects, transform and blend mode.
   const titles =
     isTopLevel && ctx.frameTitles !== false
       ? resolveFrameTitles(list, ctx.zoom, titleNameOf(ctx))
@@ -783,11 +662,16 @@ export function renderNodeList(
   }
 
   const rendered = groups.map((grp, gIdx) => {
-    const renderNode = (item: DesignElement, isMaskStencil: boolean, key = item.id) => (
+    const renderNode = (
+      item: DesignElement,
+      isMaskStencil: boolean,
+      isSelected = ctx.selectedIds.has(item.id),
+      key = item.id
+    ) => (
       <MemoizedSvgNode
         key={key}
         el={item}
-        isSelected={ctx.selectedIds.has(item.id)}
+        isSelected={isSelected}
         isDragOver={ctx.dragOverFrameId === item.id}
         isEditingText={ctx.editingCanvasTextId === item.id}
         isEditingPath={ctx.editingPathId === item.id}
@@ -796,20 +680,21 @@ export function renderNodeList(
       />
     );
 
-    const renderedItems = grp.items
-      .filter((item) => !isTopLevel || !isCulledTopLevel(item, ctx, ctx.selectedIds.has(item.id), false))
-      .map((item) => renderNode(item, false));
+    const renderedItems: preact.VNode[] = [];
+    for (let i = 0; i < grp.items.length; i++) {
+      const item = grp.items[i];
+      const isSelected = ctx.selectedIds.has(item.id);
+      if (isTopLevel && isCulledTopLevel(item, ctx, isSelected, false)) continue;
+      renderedItems.push(renderNode(item, false, isSelected));
+    }
 
     if (grp.maskEl) {
-      const maskNode = renderNode(grp.maskEl, true, `mask_${grp.maskEl.id}`);
+      const maskNode = renderNode(grp.maskEl, true, ctx.selectedIds.has(grp.maskEl.id), `mask_${grp.maskEl.id}`);
       if (isZeroAlphaMask(grp.maskEl)) {
         return maskNode;
       }
       const maskBox = maskLayerBox(grp.maskEl, ctx);
-      /* A mask that is pure geometry is stated as a CLIP, because a `<mask>`
-         ancestor is a backdrop root and blanks the backdrop blur of everything it
-         covers — see `maskIsClip`. The two are the same coverage; only the one
-         that leaves `backdrop-filter` working is usable here. */
+      // Pure-geometry masks use clipPath because `<mask>` acts as a backdrop root and blanks backdrop-filter.
       if (maskIsClip(grp.maskEl, maskBox)) {
         return (
           <Fragment key={`mask_grp_${grp.maskEl.id}`}>
@@ -853,19 +738,7 @@ function maskLayerBox(el: DesignElement, ctx: NodeRenderContext): InstanceBox | 
   return resolveInstanceBox(inst, master, resolveInstanceContent(inst, master) ?? undefined);
 }
 
-/**
- * Emits backdrop-filter `<foreignObject>` hosts outside `<g mask="...">` when a
- * soft mask (such as a `LAYER_BLUR` feathered mask) covers siblings that carry
- * `backdrop-blur` or `liquid-glass`.
- *
- * In Chromium, `<g mask="url(#...)">` is a backdrop root that blanks every
- * `backdrop-filter` inside it, and applying CSS `mask-image` to a backdrop
- * `<div>` inside `<foreignObject>` detaches its compositor RenderSurface at high
- * zoom. Clipping the backdrop `<foreignObject>` to the mask's `clip-path`
- * silhouette outside `<g mask>` while the sibling's SVG fills remain masked by
- * `<g mask="url(#mask_layer_...)">` preserves both the live backdrop blur and
- * the feathered mask edge without compositor surface corruption.
- */
+// Emit backdrop-filter hosts outside `<g mask>` so soft masks don't blank backdrop blur in Chromium.
 function renderMaskedBackdrops(
   maskEl: DesignElement,
   items: DesignElement[],
@@ -877,20 +750,13 @@ function renderMaskedBackdrops(
   const out: preact.VNode[] = [];
   for (const el of items) {
     if (el.visible === false || el.type === "line" || el.type === "arrow" || el.type === "text") continue;
-    const activeEffects = (el.effects || []).filter((ef) => ef.enabled !== false);
+    const rawEffects = el.effects;
+    if (!rawEffects || rawEffects.length === 0) continue;
+    const activeEffects = rawEffects.filter((ef) => ef.enabled !== false);
     if (activeEffects.length === 0) continue;
     const glass = el.type === "instance" ? null : bakeGlass(el, activeEffects, undefined, ctx.rasterScale);
-    const parts: string[] = [];
-    for (const ef of cssPaintOrder(activeEffects)) {
-      if (ef.type === "backdrop-blur") {
-        parts.push(cssBlurFilter((ef as BackdropBlurEffect).blur));
-      } else if (ef.type === "liquid-glass" && glass) {
-        const chain = glassBackdropCss(el.id, glass);
-        if (chain) parts.push(chain);
-      }
-    }
-    if (parts.length === 0) continue;
-    const backdropFilterCss = parts.join(" ");
+    const backdropFilterCss = buildBackdropFilterCss(el, activeEffects, glass);
+    if (!backdropFilterCss) continue;
     out.push(
       <foreignObject
         key={`masked_bd_${el.id}`}

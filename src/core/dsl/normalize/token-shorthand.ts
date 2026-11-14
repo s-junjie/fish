@@ -27,7 +27,7 @@
 
 import type { ColorToken, DesignToken, NumberToken } from "../types";
 import { normalizeTokens } from "./tokens";
-import { colorTokenValue, numberModeOf, numberTokenValue, themeOf } from "../token-value";
+import { tryColorTokenValue, numberModeOf, tryNumberTokenValue, themeOf } from "../token-value";
 import { bindNumberToken, CORNER_SLOTS, writeNumberValue } from "../token-bindings";
 import { cornerRadiusInput, parseBorderShorthand, parseRadiusString } from "./stroke";
 import { parseBoxShadows } from "../../import/css-values";
@@ -214,10 +214,10 @@ interface Context {
 }
 
 const colorOf = (token: DesignToken, ctx: Context): string | undefined =>
-  token.type === "color" ? colorTokenValue(token as ColorToken, ctx.theme) : undefined;
+  token.type === "color" ? tryColorTokenValue(token as ColorToken, ctx.theme, ctx.table.byId) : undefined;
 
 const numberOf = (token: DesignToken, ctx: Context): number | undefined =>
-  token.type === "number" ? numberTokenValue(token as NumberToken, ctx.numberMode) : undefined;
+  token.type === "number" ? tryNumberTokenValue(token as NumberToken, ctx.numberMode, ctx.table.byId) : undefined;
 
 function reportError(
   error: "unknown" | "ambiguous" | "dropped" | "type",
