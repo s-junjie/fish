@@ -10,8 +10,8 @@ import {
   clampAxis,
   hugsAxis,
   maxFrom,
+  resolveContentInsets,
   resolveMargin,
-  resolvePadding,
   round2,
   sizeForEnvelope
 } from "./box";
@@ -322,7 +322,7 @@ export function gridRowGeometry(
   placements: GridPlacement[],
   resolveChild?: ChildSizeResolver
 ): GridRowGeometry {
-  const [pt, , pb] = resolvePadding(layout.padding);
+  const [pt, , pb] = resolveContentInsets(frameEl, layout.padding);
   const rowGap = rowGapOf(layout);
   const reachedRows = placements.reduce((max, p) => Math.max(max, p.row + p.rowSpan), 0);
   const authoredRows = Math.max(Math.round(layout.rows ?? 0), layout.rowSizes?.length ?? 0);
@@ -401,7 +401,7 @@ export const MAX_GRID_CELL_RECTS = 240;
 export function gridCellRects(frameEl: ContainerElement, limit = MAX_GRID_CELL_RECTS): GridCellRect[] {
   const layout = layoutOf(frameEl as AutoLayoutFields);
   if (!layout || layout.mode !== "grid" || layout.masonry === true) return [];
-  const [pt, pr, , pl] = resolvePadding(layout.padding);
+  const [pt, pr, , pl] = resolveContentInsets(frameEl, layout.padding);
   const tracks = gridColumnTracks(layout, Math.max(0, frameEl.width - pl - pr));
   const children = frameEl.children ?? [];
   const placements = gridPlacements(
@@ -443,7 +443,7 @@ export function applyGridLayout(
   resolveChild?: ChildSizeResolver
 ): FrameElement {
   const layout = layoutOf(frameEl)!;
-  const [pt, pr, pb, pl] = resolvePadding(layout.padding);
+  const [pt, pr, pb, pl] = resolveContentInsets(frameEl, layout.padding);
   const columnsMode = layout.columnsMode ?? "fixed";
   const colGap = layout.columnGap ?? layout.gap ?? 0;
   const rowGap = layout.rowGap ?? layout.gap ?? 0;
@@ -514,7 +514,11 @@ export function applyGridLayout(
     const mode = resolveAxis(child, frameEl, "width");
     const stretched =
       mode === "fill" || (cellAlign === "stretch" && mode === "fixed" && !axisIsPinned(child, "width"));
-    const paintedWidth = stretched ? Math.max(0, cellWidthAt(i) - m.left - m.right) : child.width;
+    const paintedWidth = clampAxis(
+      child,
+      "width",
+      stretched ? Math.max(0, cellWidthAt(i) - m.left - m.right) : child.width
+    );
     if (paintedWidth === child.width) return child;
     const height = measureText(child.content, textSpec(child.style, (child as TextElement).spans), paintedWidth).height;
     return height === child.height ? child : { ...child, height };

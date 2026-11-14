@@ -1,8 +1,8 @@
 import { normalizeFillStack } from "../paint";
-import { cornerRadiusInput, normalizeCornerRadius, normalizeStrokes } from "../stroke";
+import { applyNormalizedBorderRadius, normalizeStrokes } from "../stroke";
 import { normalizeCornerControls, type ElementBranch } from "./shared";
 
-export const normalizeRect: ElementBranch = ({ el, base, path, repairs, box }) => {
+export const normalizeRect: ElementBranch = ({ el, base, sizing, path, repairs, box }) => {
   // `fills` is required by the schema. An explicit empty stack (fills: []) or
   // disabled fill means the author intentionally declared no fill (e.g. pure wireframe).
   // If omitted entirely, backfill transparent and report it so authors are guided.
@@ -22,7 +22,6 @@ export const normalizeRect: ElementBranch = ({ el, base, path, repairs, box }) =
   const strokes = normalizeStrokes(el, path, repairs);
   if (strokes) base.strokes = strokes;
 
-  const radius = normalizeCornerRadius(cornerRadiusInput(el), path, repairs, box);
-  if (radius !== undefined) base.borderRadius = radius;
+  applyNormalizedBorderRadius(el, base, sizing, path, repairs, box);
   normalizeCornerControls(el, base, true);
 };

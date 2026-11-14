@@ -28,13 +28,15 @@ import { performBooleanOperation, type BooleanOp } from "../geometry/boolean-ops
 import { variantName } from "../interactions/variant-naming";
 import { layoutOf } from "../dsl/layout-flat";
 import { canonicalKey, pxLength, type NormalizationRepair } from "../dsl/normalize/shared";
-import { collectVariables, resolveValueTokens } from "../dsl/normalize/resolve-values";
-import { applyTokenShorthandsToElement } from "../dsl/normalize/token-shorthand";
+import { collectVariables, hasVarCallInValue, resolveValueTokens } from "../dsl/normalize/resolve-values";
+import { applyTokenShorthandsToElement, createTokenVarResolver } from "../dsl/normalize/token-shorthand";
 import {
   CSS_PATCH_SPELLINGS,
   STRING_LENGTH_AXES,
+  hasTokenRef,
   mergeProps,
   normalizePatchedElement,
+  parentBoxOf,
   patchDerivedClone,
   preparePatch
 } from "./patch-props";
@@ -60,6 +62,7 @@ function needsNormalization(el: Record<string, unknown>): boolean {
     const canon = canonicalKey(key);
     if (CSS_PATCH_SPELLINGS.has(canon)) return true;
     if (STRING_LENGTH_AXES.has(canon) && typeof value === "string") return true;
+    if (hasTokenRef(value) || hasVarCallInValue(value)) return true;
   }
   const children = el.children;
   return Array.isArray(children) && children.some((child) => isObj(child) && needsNormalization(child));
@@ -162,14 +165,14 @@ function applyOne(doc: DesignDocument, raw: unknown): { doc: DesignDocument; out
         if (el.id !== targetId) return el;
         const prepared = preparePatch(el, props);
         if (!prepared.css) {
-          const merged = mergeProps(el as unknown as Record<string, unknown>, props) as unknown as DesignElement;
-          return scalePatchedPath(el, merged, props);
+          return scalePatchedPath(el, prepared.element as unknown as DesignElement, props);
         }
         return scalePatchedPath(
           el,
           normalizePatchedElement(prepared.element, parentLayout, vars, {
             tokens: doc.tokens,
             modes: doc,
+            parentBox: parentBoxOf(parent, parentLayout),
             onRepair: (repair) => tokenRepairs.push(repair)
           }),
           props
@@ -211,6 +214,7 @@ function applyOne(doc: DesignDocument, raw: unknown): { doc: DesignDocument; out
       const replacement = normalizePatchedElement({ ...element, id: targetId }, parentLayout, vars, {
         tokens: doc.tokens,
         modes: doc,
+        parentBox: parentBoxOf(parent, parentLayout),
         onRepair: (repair) => tokenRepairs.push(repair)
       });
       if (tokenRepairs.length > 0) return fail(tokenRepairs[0].message, targetId);
@@ -276,26 +280,34 @@ function applyOne(doc: DesignDocument, raw: unknown): { doc: DesignDocument; out
         return fail(`"${parentId}" is a ${parent.type}; only a frame / component can take children`, parentId);
       }
       const vars = collectVariables(doc.variables);
-      const resolvedEl = resolveValueTokens({ ...element, id }, vars).value as Record<string, unknown>;
-      // Tokens are lowered BEFORE placement: a `$ref` in `padding` or `gap` is a
-      // number once it is resolved, and placing a box against a literal "$x" is
-      // how the element ends up at the wrong coordinate.
+      const baseEl = { ...element, id };
+      // Tokens are lowered BEFORE placement: a `$ref` or `var(--name)` in
+      // `padding` or `gap` is a number once it is resolved, and placing a box
+      // against a literal "$x" is how the element ends up at the wrong coordinate.
       const tokenRepairs: NormalizationRepair[] = [];
-      const withTokens = applyTokenShorthandsToElement(resolvedEl, doc.tokens, doc, "/insert", tokenRepairs);
+      const withTokens = applyTokenShorthandsToElement(baseEl, doc.tokens, doc, "/insert", tokenRepairs, vars);
       if (tokenRepairs.length > 0) return fail(tokenRepairs[0].message, id);
-      const rawPlaced = placeElement(els, withTokens as unknown as DesignElement, raw.position, parentId);
+      const resolved = resolveValueTokens(withTokens, vars, createTokenVarResolver(doc.tokens, doc));
+      if (resolved.unresolved.length > 0) {
+        return fail(`"${resolved.unresolved[0].text}": no custom property (define it in "variables" or add a fallback)`, id);
+      }
+      const resolvedEl = resolved.value as Record<string, unknown>;
+      const rawPlaced = placeElement(els, resolvedEl as unknown as DesignElement, raw.position, parentId);
       if (!rawPlaced) return fail(`insert: no container with id "${parentId}"`, parentId);
       const parentLayout = parent ? (layoutOf(parent) ?? null) : null;
       const hasCss = needsNormalization(rawPlaced as unknown as Record<string, unknown>);
       // An element that named a token is normalized even when it spells no CSS
       // key: the shapes this pass writes (`fills`, `tokenBindings`) still have to
       // go through the reader that gives them sizing and a type.
-      const placed = hasCss || withTokens !== resolvedEl
+      const placed = hasCss || withTokens !== baseEl || resolved.value !== withTokens
         ? normalizePatchedElement(rawPlaced as unknown as Record<string, unknown>, parentLayout, vars, {
             tokens: doc.tokens,
-            modes: doc
+            modes: doc,
+            parentBox: parentBoxOf(parent, parentLayout),
+            onRepair: (repair) => tokenRepairs.push(repair)
           })
         : rawPlaced;
+      if (tokenRepairs.length > 0) return fail(tokenRepairs[0].message, id);
       const withChild = parentId
         ? commit(mapElements(els, (el) => (el.id === parentId && isContainer(el) ? { ...el, children: [...(el.children ?? []), placed] } as DesignElement : el)))
         : commit([...els, placed]);

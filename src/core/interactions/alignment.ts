@@ -1,7 +1,7 @@
 import { Rect } from "../geometry/bounds";
 import { ContainerElement, DesignElement } from "../dsl/types";
 import { elementAABB, translateElement } from "./line-ops";
-import { relayoutDocumentTree, gridColumnCount, resolvePadding } from "../compile";
+import { relayoutDocumentTree, gridColumnCount, resolveContentInsets } from "../compile";
 import { findParentById, findElementById, mapElements, isContainer } from "../geometry/tree-ops";
 import { layoutOf } from "../dsl/layout-flat";
 
@@ -200,7 +200,7 @@ function arrowSlotDelta(parent: ContainerElement, direction: ArrowDirection): nu
   // Same derivation `applyGridLayout` uses, so the stride matches the grid the
   // user is actually looking at: `columnsMode: "auto"` derives the count from the
   // width and ignores `columns` entirely.
-  const [, pr, , pl] = resolvePadding(layout.padding);
+  const [, pr, , pl] = resolveContentInsets(parent, layout.padding);
   const columns = gridColumnCount(layout, Math.max(0, parent.width - pl - pr));
   const derivedRows = Math.max(1, Math.ceil((parent.children ?? []).length / columns));
   const span = mainIsRow ? columns : Math.max(layout.rows ?? 1, derivedRows);

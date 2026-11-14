@@ -94,15 +94,28 @@ describe("CSS `border` shorthand", () => {
     });
   });
 
-  it("reads all four side shorthands", () => {
+  it("splits all four side shorthands by color and merges uniform colors into sides", () => {
+    const el = normalizeRect({
+      "border-top": "1px solid #111111",
+      "border-right": "2px solid #222222",
+      "border-bottom": "3px solid #333333",
+      "border-left": "4px solid #444444"
+    });
+    expect(el.strokes).toMatchObject([
+      { side: "top", width: 1, color: "#111111", align: "inside" },
+      { side: "right", width: 2, color: "#222222", align: "inside" },
+      { side: "bottom", width: 3, color: "#333333", align: "inside" },
+      { side: "left", width: 4, color: "#444444", align: "inside" }
+    ]);
+
     expect(
       strokeOf({
         "border-top": "1px solid #111111",
-        "border-right": "2px solid #222222",
-        "border-bottom": "3px solid #333333",
-        "border-left": "4px solid #444444"
+        "border-right": "2px solid #111111",
+        "border-bottom": "3px solid #111111",
+        "border-left": "4px solid #111111"
       })
-    ).toMatchObject({ sides: { top: 1, right: 2, bottom: 3, left: 4 } });
+    ).toMatchObject({ side: "custom", sides: { top: 1, right: 2, bottom: 3, left: 4 } });
   });
 
   it("does not let `border: none` delete an explicit stroke stack", () => {
@@ -182,9 +195,9 @@ describe("a line style the dash vocabulary cannot hold", () => {
       activePageId: "p1"
     } as unknown as DesignDocument).repairs;
 
-  it("draws `dotted` as dashed and names what it could not keep", () => {
-    expect(strokeOf({ border: "2px dotted #333" })).toMatchObject({ width: 2, style: "dashed" });
-    expect(repairsFor({ border: "2px dotted #333" }).some((r) => /"dotted".*drawn as dashed/.test(r.message))).toBe(true);
+  it("keeps `dotted` natively with no downgrade repair", () => {
+    expect(strokeOf({ border: "2px dotted #333" })).toMatchObject({ width: 2, style: "dotted", align: "inside" });
+    expect(repairsFor({ border: "2px dotted #333" }).filter((r) => r.kind === "stroke")).toEqual([]);
   });
 
   it("reports `double` the same way", () => {

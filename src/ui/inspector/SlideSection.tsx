@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from "preact/hooks";
 import { DesignDocument, DesignElement, SlideSpec, SlideTransition } from "../../core/dsl/types";
 import { getActivePage } from "../../core/dsl/document-ops";
-import { isContainer } from "../../core/geometry/tree-ops";
+import { isSlideHost } from "../../core/dsl/slide";
 import { matchSlides } from "../../core/presentation/morph";
 import { presentationFrames, nextSlideOf } from "../../core/presentation/frames";
 import { resolveSlide } from "../../core/presentation/slide";
@@ -104,8 +104,8 @@ const arrow = (d: string) => (
  *
  * It sits at the TOP of the panel because it describes the whole slide: the
  * decision is made before the pixels are, and Figma puts its prototype panel
- * above Design for the same reason. Only a top-level frame, component,
- * componentSet or html carries it — anything else is not a slide.
+ * above Design for the same reason. Only a top-level slide host — container,
+ * html embed or component instance — carries it; anything else is not a slide.
  */
 export function SlideSection({
   primarySelected,
@@ -120,15 +120,13 @@ export function SlideSection({
 }: SlideSectionProps) {
   const pageElements = getActivePage(doc).children ?? [];
 
-  // Top-level, not "any container": a nested frame is not a slide, and the
+  // Top-level, not "any slide host": a nested frame is not a slide, and the
   // canvas draws the pairing lines by the same rule, so the two agree about
-  // what a slide is. `html` is named beside `isContainer` rather than folded
-  // into it because `isContainer` is also what decides whether a node has
-  // `children` — an html embed has none, and widening it would make every
-  // container walk look for a child list that is not there.
+  // what a slide is. `isContainer` is not this test — it also decides whether
+  // a node has `children`, and an embed or instance has none stored.
   const host =
     primarySelected &&
-    (isContainer(primarySelected) || primarySelected.type === "html") &&
+    isSlideHost(primarySelected) &&
     pageElements.some((el) => el.id === primarySelected.id)
       ? primarySelected
       : null;

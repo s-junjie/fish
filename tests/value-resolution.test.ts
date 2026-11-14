@@ -109,10 +109,23 @@ describe("P1.4 — non-px length forms", () => {
     expect(only(out).sizing.minWidth).toBe(80);
   });
 
-  it("leaves a percentage for the bound reader to report, rather than guessing", () => {
-    const out = normalizeDesignDocument(frameDoc({ sizing: { minWidth: "50%" } }) as any);
+  it("leaves a viewport unit for the bound reader to report, rather than guessing", () => {
+    const out = normalizeDesignDocument(frameDoc({ sizing: { minWidth: "50vw" } }) as any);
     const hit = out.repairs.find((r) => r.path.endsWith("/sizing/minWidth"));
-    expect(hit?.message).toContain("%");
+    expect(hit?.message).toContain("vw");
+  });
+
+  it("accepts percentage and mixed calc() bounds without repair", () => {
+    const out = normalizeDesignDocument(
+      frameDoc({
+        sizing: { minWidth: "50%", maxWidth: "calc(100% - 16px)" }
+      }) as any
+    );
+    expect(out.repairs.find((r) => r.path.includes("/sizing/"))).toBeUndefined();
+    expect(only(out).sizing).toMatchObject({
+      minWidthExpr: "50%",
+      maxWidthExpr: "calc(100% - 16px)"
+    });
   });
 
   it("does NOT rewrite a length-looking string that is really text content", () => {
@@ -212,5 +225,68 @@ describe("P1.4 — a % or em length is reported by the field that holds it", () 
     const hit = out.repairs.find((r) => r.path.endsWith("/margin"));
     expect(hit?.message).toContain("50%");
     expect(only(out).margin).toBeUndefined();
+  });
+
+  it("resolves var() inside calc() and unbindable props from doc.tokens[] respecting node numberMode", () => {
+    const tokens = [
+      { id: "tok_space", name: "space/md", type: "number", value: 16, category: "spacing", modes: { compact: 8 } },
+      { id: "tok_ink", name: "color/ink", type: "color", value: "#111111" }
+    ];
+    const out = normalizeDesignDocument({
+      version: "0.1",
+      pages: [
+        {
+          id: "p1",
+          name: "P",
+          children: [
+            {
+              id: "f",
+              type: "frame",
+              display: "flex",
+              width: 320,
+              height: 200,
+              children: [
+                {
+                  id: "c1",
+                  type: "rect",
+                  width: "calc(100% - var(--space-md))",
+                  margin: "var(--space-md)"
+                },
+                {
+                  id: "c2",
+                  type: "rect",
+                  numberMode: "compact",
+                  width: "calc(100% - var(--space-md))",
+                  margin: "var(--space-md)"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      activePageId: "p1",
+      tokens,
+      numberModes: [{ id: "default", name: "Default" }, { id: "compact", name: "Compact" }],
+      activeNumberMode: "default"
+    } as any);
+    expect(out.repairs.filter((r) => r.kind === "token")).toEqual([]);
+    const [c1, c2] = only(out).children;
+    expect(c1.width).toBe(304);
+    expect(c1.margin).toBe(16);
+    expect(c2.width).toBe(312);
+    expect(c2.margin).toBe(8);
+  });
+
+  it("gives doc.variables precedence over doc.tokens[] inside calc() expressions", () => {
+    const out = normalizeDesignDocument(
+      frameDoc(
+        { children: [{ id: "c", type: "rect", width: "calc(100% - var(--space-md))" }] },
+        {
+          variables: { "--space-md": "24px" },
+          tokens: [{ id: "tok_space", name: "space/md", type: "number", value: 16, category: "spacing" }]
+        }
+      ) as any
+    );
+    expect(only(out).children[0].width).toBe(296);
   });
 });

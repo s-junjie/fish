@@ -81,6 +81,7 @@ export interface InstanceBox {
   fillsActive: boolean;
   strokes: Stroke[];
   borderRadius?: CornerRadius;
+  borderRadiusY?: CornerRadius;
   cornerSmoothing?: number;
   overflow?: Overflow;
   overflowX?: Overflow;
@@ -160,6 +161,12 @@ export function resolveInstanceBox(
         : scaledBox
           ? scaleCornerRadius(master.borderRadius, k)
           : master.borderRadius,
+    borderRadiusY:
+      inst.borderRadius !== undefined
+        ? inst.sizing?.borderRadiusY
+        : scaledBox
+          ? scaleCornerRadius(master.sizing?.borderRadiusY, k)
+          : master.sizing?.borderRadiusY,
     cornerSmoothing:
       (inst as { cornerSmoothing?: number }).cornerSmoothing !== undefined
         ? (inst as { cornerSmoothing?: number }).cornerSmoothing

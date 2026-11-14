@@ -3,10 +3,13 @@ import { flattenLayout } from "../../layout-flat";
 import { asBoolean, isPlainObject, normalizeOverflow, normalizeScrollOffset } from "../shared";
 import { normalizeFillStack } from "../paint";
 import { normalizeLayoutGuides } from "../layout-guides";
-import { cornerRadiusInput, normalizeCornerRadius, normalizeStrokes } from "../stroke";
+import { applyNormalizedBorderRadius, normalizeStrokes } from "../stroke";
 import { normalizeCornerControls, type ElementBranch } from "./shared";
 
-export const normalizeContainer: ElementBranch = ({ el, base, path, repairs, type, ownLayout, normalizeChild, box }) => {
+export const normalizeContainer: ElementBranch = ({ el, base, sizing, path, repairs, type, ownLayout, normalizeChild, box }) => {
+  const strokes = normalizeStrokes(el, path, repairs);
+  if (strokes) base.strokes = strokes;
+
   const rawChildren = Array.isArray(el.children) ? el.children : [];
   const children: DesignElement[] = [];
   rawChildren.forEach((child, childIndex) => {
@@ -20,9 +23,6 @@ export const normalizeContainer: ElementBranch = ({ el, base, path, repairs, typ
   const fills = normalizeFillStack(el, path, repairs);
   if (fills && fills.length > 0) base.fills = fills;
 
-  const strokes = normalizeStrokes(el, path, repairs);
-  if (strokes) base.strokes = strokes;
-
   // Absent means visible: a frame may be a purely structural wrapper, and a
   // default that hides overflowing children is the more destructive guess. A
   // box that MEANS to clip says so, which is what makes `grep overflow` honest.
@@ -32,8 +32,7 @@ export const normalizeContainer: ElementBranch = ({ el, base, path, repairs, typ
   const sy = normalizeScrollOffset(el.scrollY ?? el.scrollTop ?? el["scroll-y"] ?? el["scroll-top"]);
   if (sy !== undefined && sy > 0) base.scrollY = sy;
 
-  const radius = normalizeCornerRadius(cornerRadiusInput(el), path, repairs, box);
-  if (radius !== undefined) base.borderRadius = radius;
+  applyNormalizedBorderRadius(el, base, sizing, path, repairs, box);
   // Smoothing rides along with the radius; a componentSet is a group of
   // definitions and paints nothing, so it has no corners to smooth.
   if (type !== "componentSet") normalizeCornerControls(el, base, true);

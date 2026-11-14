@@ -29,6 +29,7 @@
  */
 
 import { canonicalKey, isPlainObject } from "./shared";
+import { evalConstantPx, simplifyLengthExpr } from "../length-expr";
 
 /** CSS's default root font size; the dialect has no field to change it. */
 const ROOT_FONT_SIZE = 16;
@@ -92,7 +93,14 @@ const TRACK_LIST_KEYS = new Set(["grid-template-columns", "grid-template-rows"])
 
 export type Variables = Record<string, string | number>;
 
-const normalizeVarName = (name: string): string => {
+export interface VarModeContext {
+  theme?: string;
+  numberMode?: string;
+}
+
+export type TokenVarFallback = (name: string, modes?: VarModeContext) => string | number | undefined;
+
+export const normalizeVarName = (name: string): string => {
   const trimmed = name.trim();
   return trimmed.startsWith("--") ? trimmed.slice(2) : trimmed;
 };
@@ -108,7 +116,7 @@ export function collectVariables(raw: unknown): Variables {
 }
 
 /** The first top-level comma of `inner`, or `undefined` when there is none. */
-function splitTopComma(inner: string): { name: string; fallback?: string } {
+export function splitTopComma(inner: string): { name: string; fallback?: string } {
   let depth = 0;
   for (let i = 0; i < inner.length; i++) {
     const ch = inner[i];
@@ -127,15 +135,28 @@ function splitTopComma(inner: string): { name: string; fallback?: string } {
  * inlined bitmap. `toLowerCase()` used to run unconditionally, which copied
  * 39.6 MB of base64 twice per normalize and cost 23 ms of the 49 ms.
  */
-function hasVarCall(input: string): boolean {
+export function hasVarCall(input: string): boolean {
   if (!input.includes("(")) return false;
   return input.toLowerCase().includes("var(");
+}
+
+/** Deep check for `var(...)` calls anywhere inside a raw JSON value. */
+export function hasVarCallInValue(value: unknown): boolean {
+  if (typeof value === "string") return hasVarCall(value);
+  if (Array.isArray(value)) return value.some(hasVarCallInValue);
+  if (isPlainObject(value)) return Object.values(value).some(hasVarCallInValue);
+  return false;
 }
 
 /** One substitution sweep: every outer `var(...)` whose name resolves (or has a
  * fallback) is replaced. An unresolved `var(...)` with no fallback is left in
  * place, so a later sweep cannot loop on it and the caller can report it. */
-function substituteOnce(input: string, vars: Variables): string {
+function substituteOnce(
+  input: string,
+  vars: Variables,
+  tokenFallback?: TokenVarFallback,
+  modes?: VarModeContext
+): string {
   const lower = input.toLowerCase();
   let result = "";
   let cursor = 0;
@@ -159,11 +180,14 @@ function substituteOnce(input: string, vars: Variables): string {
       return result;
     }
     const { name, fallback } = splitTopComma(input.slice(open, j));
-    const value = vars[normalizeVarName(name)];
+    const key = normalizeVarName(name);
+    const value = Object.prototype.hasOwnProperty.call(vars, key)
+      ? vars[key]
+      : tokenFallback?.(key, modes);
     if (value !== undefined) {
       result += String(value);
     } else if (fallback !== undefined && fallback.trim() !== "") {
-      result += substituteOnce(fallback.trim(), vars);
+      result += substituteOnce(fallback.trim(), vars, tokenFallback, modes);
     } else {
       result += input.slice(idx, j + 1);
     }
@@ -171,11 +195,16 @@ function substituteOnce(input: string, vars: Variables): string {
   }
 }
 
-function resolveVars(input: string, vars: Variables): string {
+function resolveVars(
+  input: string,
+  vars: Variables,
+  tokenFallback?: TokenVarFallback,
+  modes?: VarModeContext
+): string {
   if (!hasVarCall(input)) return input;
   let out = input;
   for (let i = 0; i < 10; i++) {
-    const next = substituteOnce(out, vars);
+    const next = substituteOnce(out, vars, tokenFallback, modes);
     if (next === out) return out;
     out = next;
   }
@@ -183,162 +212,36 @@ function resolveVars(input: string, vars: Variables): string {
 }
 
 // ---------------------------------------------------------------------------
-// a small px/bare calculator for constant calc() / min() / max() / clamp()
+// a small px/bare/% calculator for constant calc() / min() / max() / clamp()
 // ---------------------------------------------------------------------------
-
-/** A length: `px: true` means the number is px, `false` means it is unitless. */
-interface Len {
-  px: boolean;
-  v: number;
-}
-
-type Token = { t: "num"; len: Len } | { t: "op"; v: string } | { t: "(" } | { t: ")" } | { t: "," } | { t: "fn"; name: string };
-
-const FUNCTIONS = new Set(["calc", "min", "max", "clamp"]);
-
-function tokenize(input: string, root: number): Token[] | undefined {
-  const tokens: Token[] = [];
-  let i = 0;
-  while (i < input.length) {
-    const ch = input[i];
-    if (/\s/.test(ch)) { i++; continue; }
-    if (ch === "(" || ch === ")" || ch === ",") { tokens.push({ t: ch }); i++; continue; }
-    if (ch === "+" || ch === "-" || ch === "*" || ch === "/") { tokens.push({ t: "op", v: ch }); i++; continue; }
-    const num = /^\d*\.?\d+/.exec(input.slice(i));
-    if (num) {
-      let j = i + num[0].length;
-      const unit = /^(px|rem)/.exec(input.slice(j))?.[1];
-      const isRem = unit === "rem";
-      const isPx = unit === "px" || isRem;
-      const v = Number(num[0]) * (isRem ? root : 1);
-      tokens.push({ t: "num", len: { px: isPx, v } });
-      i = j + (unit ? unit.length : 0);
-      continue;
-    }
-    const name = /^[a-z]+/i.exec(input.slice(i));
-    if (name && FUNCTIONS.has(name[0].toLowerCase())) {
-      tokens.push({ t: "fn", name: name[0].toLowerCase() });
-      i += name[0].length;
-      continue;
-    }
-    return undefined;
-  }
-  return tokens;
-}
-
-function evaluate(input: string, root: number): Len | undefined {
-  const tokens = tokenize(input, root);
-  if (!tokens) return undefined;
-  let i = 0;
-  const peek = (): Token | undefined => tokens[i];
-
-  const addSub = (): Len | null => {
-    let left = mulDiv();
-    if (!left) return null;
-    for (;;) {
-      const t = peek();
-      if (t?.t !== "op" || (t.v !== "+" && t.v !== "-")) break;
-      i++;
-      const right = mulDiv();
-      if (!right || left.px !== right.px) return null;
-      left = { px: left.px, v: t.v === "+" ? left.v + right.v : left.v - right.v };
-    }
-    return left;
-  };
-
-  const mulDiv = (): Len | null => {
-    let left = factor();
-    if (!left) return null;
-    for (;;) {
-      const t = peek();
-      if (t?.t !== "op" || (t.v !== "*" && t.v !== "/")) break;
-      i++;
-      const right = factor();
-      if (!right) return null;
-      if (t.v === "*") {
-        if (left.px && right.px) return null;
-        left = { px: left.px || right.px, v: left.v * right.v };
-      } else {
-        if (right.px || !right.v) return null;
-        left = { px: left.px, v: left.v / right.v };
-      }
-    }
-    return left;
-  };
-
-  const factor = (): Len | null => {
-    const t = peek();
-    if (!t) return null;
-    if (t.t === "op" && (t.v === "+" || t.v === "-")) {
-      i++;
-      const inner = factor();
-      return inner ? { px: inner.px, v: t.v === "-" ? -inner.v : inner.v } : null;
-    }
-    if (t.t === "num") {
-      i++;
-      return t.len;
-    }
-    if (t.t === "(") {
-      i++;
-      const inner = addSub();
-      if (!inner || peek()?.t !== ")") return null;
-      i++;
-      return inner;
-    }
-    if (t.t === "fn") {
-      i++;
-      if (peek()?.t !== "(") return null;
-      i++;
-      const args: Len[] = [];
-      for (;;) {
-        const arg = addSub();
-        if (!arg) return null;
-        args.push(arg);
-        if (peek()?.t === ",") {
-          i++;
-          continue;
-        }
-        break;
-      }
-      if (peek()?.t !== ")" || !args.every((a) => a.px === args[0].px)) return null;
-      i++;
-      const vals = args.map((a) => a.v);
-      if (t.name === "calc") return args.length === 1 ? args[0] : null;
-      if (t.name === "min") return args.length ? { px: args[0].px, v: Math.min(...vals) } : null;
-      if (t.name === "max") return args.length ? { px: args[0].px, v: Math.max(...vals) } : null;
-      if (t.name === "clamp" && args.length === 3) {
-        return { px: args[0].px, v: Math.min(vals[2], Math.max(vals[0], vals[1])) };
-      }
-      return null;
-    }
-    return null;
-  };
-
-  const value = addSub();
-  return i === tokens.length ? value ?? undefined : undefined;
-}
 
 /** A resolved length as a canonical px string, or `undefined` when unreadable. */
 function toPx(expr: string, root: number): number | undefined {
-  const len = evaluate(expr.trim(), root);
-  return len?.v;
+  return evalConstantPx(expr.trim(), root);
 }
 
 /**
- * Folds a length string to px when it is a length this pass understands: a
- * single `<n>` / `<n>px` / `<n>rem` / constant `calc`-family expression, or a
- * whitespace shorthand (`"1rem 2rem"`) whose every token is one. Anything else
- * (`"50%"`, `"2em"`, a colour) is returned unchanged.
+ * Folds a length string when it is a length or CSS math expression this pass
+ * understands: constant `px`/`rem`/bare sums fold to `<n>px`, while `%` and
+ * `%`-bearing `calc`/`min`/`max`/`clamp` expressions fold their constant/rem
+ * sub-terms (`calc(100% - 2rem)` → `calc(100% - 32px)`). Unsupported units
+ * (`2em`, `90vw`) and colours are returned unchanged.
  */
-function rewriteLengthString(input: string, root: number): string {
-  const whole = toPx(input, root);
+function rewriteLengthToken(token: string, root: number): string | undefined {
+  const whole = toPx(token, root);
   if (whole !== undefined) return `${whole}px`;
+  return simplifyLengthExpr(token, root);
+}
+
+function rewriteLengthString(input: string, root: number): string {
+  const whole = rewriteLengthToken(input, root);
+  if (whole !== undefined) return whole;
 
   const parts = splitTopLevel(input.trim());
   if (parts.length < 2) return input;
-  const nums = parts.map((p) => toPx(p, root));
-  if (nums.some((n) => n === undefined)) return input;
-  return nums.map((n) => `${n}px`).join(" ");
+  const rewritten = parts.map((p) => (p === "/" ? "/" : rewriteLengthToken(p, root)));
+  if (rewritten.some((p) => p === undefined)) return input;
+  return rewritten.join(" ");
 }
 
 /** Split on top-level commas, so `minmax(8px, 4px)` stays one argument. */
@@ -419,10 +322,12 @@ function walk(
   vars: Variables,
   path: string,
   unresolved: UnresolvedVar[],
-  forceLength = false
+  forceLength = false,
+  tokenFallback?: TokenVarFallback,
+  modes?: VarModeContext
 ): unknown {
   if (typeof value === "string") {
-    let out = resolveVars(value, vars);
+    let out = resolveVars(value, vars, tokenFallback, modes);
     if (hasVarCall(out)) unresolved.push({ path, text: value });
     if (key !== undefined && TRACK_LIST_KEYS.has(canonicalKey(key))) {
       out = rewriteTrackList(out, ROOT_FONT_SIZE);
@@ -431,8 +336,19 @@ function walk(
     }
     return out;
   }
-  if (Array.isArray(value)) return value.map((entry, index) => walk(entry, key, vars, `${path}/${index}`, unresolved, forceLength));
+  if (Array.isArray(value)) {
+    return value.map((entry, index) =>
+      walk(entry, key, vars, `${path}/${index}`, unresolved, forceLength, tokenFallback, modes)
+    );
+  }
   if (isPlainObject(value)) {
+    const nextTheme = typeof value.themeMode === "string" && value.themeMode ? value.themeMode : modes?.theme;
+    const nextNumberMode =
+      typeof value.numberMode === "string" && value.numberMode ? value.numberMode : modes?.numberMode;
+    const childModes =
+      nextTheme !== modes?.theme || nextNumberMode !== modes?.numberMode
+        ? { theme: nextTheme, numberMode: nextNumberMode }
+        : modes;
     // A side of a box shape is a length even though its own key (`top`, `left`,
     // `topLeft`) is not in `LENGTH_KEYS` — otherwise `padding: { top: "2rem" }`
     // reached the reader un-folded and the reader's own `?? 0` zeroed the side.
@@ -448,7 +364,7 @@ function walk(
         out[k] = v;
         continue;
       }
-      out[k] = walk(v, k, vars, `${path}/${k}`, unresolved, forceChildren);
+      out[k] = walk(v, k, vars, `${path}/${k}`, unresolved, forceChildren, tokenFallback, childModes);
     }
     return out;
   }
@@ -456,12 +372,17 @@ function walk(
 }
 
 /**
- * Returns a copy of `input` with every `var()` against `vars` and every
- * understood length token folded, plus the paths of any `var()` that could not
- * be resolved (so the caller can say so rather than ship a broken value).
+ * Returns a copy of `input` with every `var()` against `vars` (falling back
+ * to `tokenFallback` when provided) and every understood length token folded,
+ * plus the paths of any `var()` that could not be resolved (so the caller can
+ * say so rather than ship a broken value).
  */
-export function resolveValueTokens(input: unknown, vars: Variables): ResolvedValues {
+export function resolveValueTokens(
+  input: unknown,
+  vars: Variables,
+  tokenFallback?: TokenVarFallback
+): ResolvedValues {
   const unresolved: UnresolvedVar[] = [];
-  const value = walk(input, undefined, vars, "", unresolved);
+  const value = walk(input, undefined, vars, "", unresolved, false, tokenFallback);
   return { value, unresolved };
 }

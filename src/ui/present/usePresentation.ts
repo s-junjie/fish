@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { DesignDocument, Page, SlideSpec } from "../../core/dsl/types";
+import { isSlideHost } from "../../core/dsl/slide";
 import { getActivePage } from "../../core/dsl/document-ops";
 import { PresentationFrame, presentationFrames, presentablePages, findPresentationSlideIndex } from "../../core/presentation/frames";
 import { ResolvedSlide, createSlideClock, resolveStep } from "../../core/presentation/slide";
@@ -44,7 +45,7 @@ export interface PresentHost {
 /** The slide spec of a frame, or nothing for the synthetic page slide. */
 function specOf(frame: PresentationFrame | null): SlideSpec | undefined {
   if (!frame || frame.elements.length !== 1) return undefined;
-  return (frame.elements[0] as { slide?: SlideSpec }).slide;
+  return isSlideHost(frame.elements[0]) ? frame.elements[0].slide : undefined;
 }
 
 /**

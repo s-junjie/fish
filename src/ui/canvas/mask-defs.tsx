@@ -163,7 +163,8 @@ function instanceBoxPath(el: DesignElement, box: InstanceBox | null): string | n
     width: box.width,
     height: box.height,
     borderRadius: box.borderRadius,
-    cornerSmoothing: box.cornerSmoothing
+    cornerSmoothing: box.cornerSmoothing,
+    sizing: box.borderRadiusY !== undefined ? { borderRadiusY: box.borderRadiusY } : undefined
   } as RectElement);
 }
 

@@ -1,9 +1,9 @@
 import { asBoolean } from "../shared";
-import { cornerRadiusInput, normalizeCornerRadius } from "../stroke";
+import { applyNormalizedBorderRadius } from "../stroke";
 import { isFrameableUrl } from "../../html-source";
 import type { ElementBranch } from "./shared";
 
-export const normalizeVideo: ElementBranch = ({ el, base, path, repairs, box }) => {
+export const normalizeVideo: ElementBranch = ({ el, base, sizing, path, repairs, box }) => {
   const assetId = el.assetId ?? el.asset;
   if (typeof assetId === "string" && assetId.trim()) {
     base.assetId = assetId.trim();
@@ -27,11 +27,10 @@ export const normalizeVideo: ElementBranch = ({ el, base, path, repairs, box }) 
     base.posterAssetId = poster.trim();
   }
 
-  const radius = normalizeCornerRadius(cornerRadiusInput(el), path, repairs, box);
-  if (radius !== undefined) base.borderRadius = radius;
+  applyNormalizedBorderRadius(el, base, sizing, path, repairs, box);
 };
 
-export const normalizeHtml: ElementBranch = ({ el, base, path, repairs, box }) => {
+export const normalizeHtml: ElementBranch = ({ el, base, sizing, path, repairs, box }) => {
   // The two sources stay two fields rather than one, because the renderer
   // needs a different iframe attribute for each and guessing from the string
   // ("does it look like a URL?") would send a document whose first line
@@ -66,8 +65,7 @@ export const normalizeHtml: ElementBranch = ({ el, base, path, repairs, box }) =
     });
   }
 
-  const radius = normalizeCornerRadius(cornerRadiusInput(el), path, repairs, box);
-  if (radius !== undefined) base.borderRadius = radius;
+  applyNormalizedBorderRadius(el, base, sizing, path, repairs, box);
 
   const poster = el.posterAssetId;
   if (typeof poster === "string" && poster.trim()) {

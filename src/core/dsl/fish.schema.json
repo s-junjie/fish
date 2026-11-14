@@ -131,7 +131,7 @@
     },
     "tokens": {
       "type": "array",
-      "description": "The value table: a token is one value (a colour or a number), a style is a set of declarations. `tokenId` and `tokenBindings` name an entry here; `fillStyleId` and its siblings name a doc.styles[] entry. An id lives in exactly one of the two tables, and a reference that crosses them is an error.",
+      "description": "The value table: a token is one value (a colour or a number), a style is a set of declarations. `tokenId` and `tokenBindings` name an entry here (and `$name` or `var(--name)` shorthands bind/resolve against them); `fillStyleId` and its siblings name a doc.styles[] entry. An id lives in exactly one of the two tables, and a reference that crosses them is an error.",
       "items": {
         "$ref": "#/definitions/DesignToken"
       }
@@ -142,7 +142,7 @@
     },
     "variables": {
       "type": "object",
-      "description": "CSS custom properties. Keys may be written with or without the leading `--`; resolved into every var() in the document at load time. A var() with no definition here (and no fallback) is reported.",
+      "description": "CSS custom properties. Keys may be written with or without the leading `--`; resolved into every var() in the document at load time and take precedence over `tokens[]`. A var() with no definition here or in `tokens[]` (and no fallback) is reported.",
       "additionalProperties": {
         "type": [
           "string",
@@ -755,7 +755,8 @@
           "type": "string",
           "enum": [
             "solid",
-            "dashed"
+            "dashed",
+            "dotted"
           ]
         },
         "align": {
@@ -949,7 +950,8 @@
         },
         "blur": {
           "type": "number",
-          "minimum": 0
+          "minimum": 0,
+          "description": "Blur radius in px (double CSS Gaussian sigma: radius 16 corresponds to CSS blur(8px) / stdDeviation=8)."
         },
         "color": {
           "type": "string"
@@ -1184,6 +1186,10 @@
             },
             {
               "type": "string",
+              "pattern": "^(?:0|\\d+(?:\\.\\d+)?px)$"
+            },
+            {
+              "type": "string",
               "pattern": "^\\s*\\d+(\\.\\d+)?(px)?\\s+\\d+(\\.\\d+)?(px)?\\s*$"
             }
           ]
@@ -1201,6 +1207,9 @@
               },
               "minItems": 4,
               "maxItems": 4
+            },
+            {
+              "type": "string"
             }
           ]
         },
@@ -1310,13 +1319,29 @@
           }
         },
         "columnGap": {
-          "type": "number",
-          "minimum": 0,
+          "oneOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:0|\\d+(?:\\.\\d+)?px)$"
+            }
+          ],
           "description": "Per-axis gap overriding `gap` \u2014 CSS `column-gap`, in both modes. In a flex row this is the main-axis gap; in a column it is the gap between wrapped lines."
         },
         "rowGap": {
-          "type": "number",
-          "minimum": 0,
+          "oneOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:0|\\d+(?:\\.\\d+)?px)$"
+            }
+          ],
           "description": "Per-axis gap overriding `gap` \u2014 CSS `row-gap`, in both modes. In a flex column this is the main-axis gap; in a row it is the gap between wrapped lines."
         },
         "cellAlign": {
@@ -1375,24 +1400,70 @@
           ]
         },
         "minWidth": {
-          "description": "Floor for the WIDTH the layout pass writes \u2014 CSS `min-width`. Nothing to say about a size a user typed, which is already the answer; it bites when the size is derived (fill, stretch, hug).",
+          "description": "Floor for the element's WIDTH (CSS `min-width`) \u2014 clamps both layout-derived (`fill`, `stretch`, `fit-content`) and `fixed` / free sizes.",
           "type": "number",
           "minimum": 0
         },
         "maxWidth": {
-          "description": "Ceiling for the WIDTH the layout pass writes \u2014 CSS `max-width`. A `fill` child in a frame that is dragged wider stops here, which is the \"content block, centred, with a limited line width\" idiom.",
+          "description": "Ceiling for the element's WIDTH (CSS `max-width`) \u2014 clamps both layout-derived (`fill`, `stretch`, `fit-content`) and `fixed` / free sizes.",
           "type": "number",
           "minimum": 0
         },
         "minHeight": {
-          "description": "Floor for the HEIGHT the layout pass writes \u2014 CSS `min-height`.",
+          "description": "Floor for the element's HEIGHT (CSS `min-height`) \u2014 clamps both layout-derived and `fixed` / free sizes.",
           "type": "number",
           "minimum": 0
         },
         "maxHeight": {
-          "description": "Ceiling for the HEIGHT the layout pass writes \u2014 CSS `max-height`.",
+          "description": "Ceiling for the element's HEIGHT (CSS `max-height`) \u2014 clamps both layout-derived and `fixed` / free sizes.",
           "type": "number",
           "minimum": 0
+        },
+        "widthExpr": {
+          "description": "Dynamic percentage or math width expression (`\"50%\"`, `\"calc(100% - 32px)\"`, `\"min(90%, 400px)\"`) evaluated against the parent container content box during layout.",
+          "type": "string"
+        },
+        "heightExpr": {
+          "description": "Dynamic percentage or math height expression (`\"50%\"`, `\"calc(100% - 32px)\"`) evaluated against the parent container content box during layout.",
+          "type": "string"
+        },
+        "minWidthExpr": {
+          "description": "Dynamic percentage or math `min-width` expression evaluated against the parent content width.",
+          "type": "string"
+        },
+        "maxWidthExpr": {
+          "description": "Dynamic percentage or math `max-width` expression evaluated against the parent content width.",
+          "type": "string"
+        },
+        "minHeightExpr": {
+          "description": "Dynamic percentage or math `min-height` expression evaluated against the parent content height.",
+          "type": "string"
+        },
+        "maxHeightExpr": {
+          "description": "Dynamic percentage or math `max-height` expression evaluated against the parent content height.",
+          "type": "string"
+        },
+        "borderRadiusY": {
+          "description": "Vertical corner radius axis for elliptical corners (`border-radius: rx / ry`), in px.",
+          "oneOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "minimum": 0
+              },
+              "minItems": 4,
+              "maxItems": 4
+            }
+          ]
+        },
+        "borderRadiusExpr": {
+          "description": "Dynamic `border-radius` expression containing `%` or math (`\"50%\"`, `\"50% / 25%\"`, `\"calc(10% + 4px)\"`), resolved against the element's own box on relayout.",
+          "type": "string"
         }
       }
     },
@@ -1812,6 +1883,7 @@
         },
         "paints": {
           "type": "array",
+          "description": "Ordered paint stack, BOTTOM LAYER FIRST: index 0 paints first and sits underneath.",
           "items": {
             "$ref": "#/definitions/Paint"
           }
@@ -1821,13 +1893,14 @@
         },
         "effects": {
           "type": "array",
-          "description": "An EFFECT style's stack. A text style carries TYPE only: an effects array there is dropped on load.",
+          "description": "An EFFECT style's stack, BOTTOM LAYER FIRST. A text style carries TYPE only: an effects array there is dropped on load.",
           "items": {
             "$ref": "#/definitions/Effect"
           }
         },
         "strokes": {
           "type": "array",
+          "description": "Ordered stroke stack, BOTTOM LAYER FIRST.",
           "items": {
             "$ref": "#/definitions/Stroke"
           }
@@ -1878,18 +1951,38 @@
           "type": "string"
         },
         "x": {
-          "type": "number",
-          "description": "Local to the parent container's origin (canvas coordinates for a top-level element). Defaults to 0."
-        },
-        "y": {
-          "type": "number",
-          "description": "Local to the parent container's origin (canvas coordinates for a top-level element). Defaults to 0."
-        },
-        "width": {
-          "description": "Pixel box width. A sizing MODE keyword here is accepted as input and folded into `sizing.width` on load; canonical documents carry the mode in `sizing`.",
           "oneOf": [
             {
               "type": "number"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:0|-?\\d+(?:\\.\\d+)?px)$"
+            }
+          ],
+          "description": "Local to the parent container's origin (canvas coordinates for a top-level element). Defaults to 0."
+        },
+        "y": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:0|-?\\d+(?:\\.\\d+)?px)$"
+            }
+          ],
+          "description": "Local to the parent container's origin (canvas coordinates for a top-level element). Defaults to 0."
+        },
+        "width": {
+          "description": "Box width (`320`, `\"320px\"`, `\"50%\"`, `\"calc(100% - 32px)\"`, `\"auto\"`). A sizing MODE keyword here is accepted as input and folded into `sizing.width` on load; dynamic `%` / math expressions resolve against the parent content width on layout, `\"auto\"` maps to `fill` when stretched or `fit-content` otherwise, and canonical documents carry the mode/expression in `sizing`.",
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "pattern": "^\\s*(?:0|-?\\d+(?:\\.\\d+)?(?:px|%|rem)|(?:calc|min|max|clamp)\\(.+\\)|auto)\\s*$"
             },
             {
               "type": "string",
@@ -1903,10 +1996,14 @@
           ]
         },
         "height": {
-          "description": "Pixel box height. A sizing MODE keyword here is accepted as input and folded into `sizing.height` on load; canonical documents carry the mode in `sizing`.",
+          "description": "Box height (`240`, `\"240px\"`, `\"50%\"`, `\"calc(100% - 32px)\"`, `\"auto\"`). A sizing MODE keyword here is accepted as input and folded into `sizing.height` on load; dynamic `%` / math expressions resolve against the parent content height on layout, `\"auto\"` maps to `fill` when stretched or `fit-content` otherwise, and canonical documents carry the mode/expression in `sizing`.",
           "oneOf": [
             {
               "type": "number"
+            },
+            {
+              "type": "string",
+              "pattern": "^\\s*(?:0|-?\\d+(?:\\.\\d+)?(?:px|%|rem)|(?:calc|min|max|clamp)\\(.+\\)|auto)\\s*$"
             },
             {
               "type": "string",
@@ -1919,12 +2016,21 @@
           ]
         },
         "perspective": {
-          "type": "number"
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:0|-?\\d+(?:\\.\\d+)?px)$"
+            }
+          ]
         },
         "opacity": {
           "type": "number",
           "minimum": 0,
-          "maximum": 1
+          "maximum": 1,
+          "description": "0..1 element opacity (CSS percentages like \"50%\" are converted to 0.5 on load)."
         },
         "locked": {
           "type": "boolean"
@@ -1963,7 +2069,7 @@
           ]
         },
         "margin": {
-          "description": "Space this child reserves around itself inside its layout parent \u2014 CSS `margin`. One number for all four sides, or [top, right, bottom, left]. SIGNED, unlike `padding`: a negative margin is how a child is pulled back over its neighbour. Unlike `gap`, which is one number for the whole container and sits between items, a margin belongs to one child and sits around it.",
+          "description": "Space this child reserves around itself inside its layout parent \u2014 CSS `margin`. One number, `[top, right, bottom, left]`, or a CSS 1-4 value shorthand string (`\"4px 8px\"`). SIGNED, unlike `padding`: a negative margin is how a child is pulled back over its neighbour. Unlike `gap`, which is one number for the whole container and sits between items, a margin belongs to one child and sits around it.",
           "oneOf": [
             {
               "type": "number"
@@ -1975,31 +2081,11 @@
               },
               "minItems": 4,
               "maxItems": 4
+            },
+            {
+              "type": "string"
             }
           ]
-        },
-        "grid-area": {
-          "description": "This child's track placement inside a grid parent \u2014 CSS grid-column / grid-row. `column` and `row` are 1-BASED, matching the grid line numbers CSS uses, so a value read off `grid-column: 2 / 4` is written the same way: { column: 2, columnSpan: 2 }. An absent axis is auto-placed and flow fills the rest around it; the two axes are independent, so `{ columnSpan: 2 }` alone spans two tracks and is still flowed into place. Read only where a grid parent is placing the child.",
-          "type": "object",
-          "properties": {
-            "column": {
-              "type": "number",
-              "minimum": 1
-            },
-            "row": {
-              "type": "number",
-              "minimum": 1
-            },
-            "columnSpan": {
-              "type": "number",
-              "minimum": 1
-            },
-            "rowSpan": {
-              "type": "number",
-              "minimum": 1
-            }
-          },
-          "additionalProperties": false
         },
         "fillEnabled": {
           "type": "boolean",
@@ -2011,7 +2097,7 @@
         },
         "slide": {
           "$ref": "#/definitions/SlideSpec",
-          "description": "How this frame LEAVES when the deck advances from it. Read on a top-level frame, component or componentSet only; on any other element it is dropped with a repair. Omit for a cut."
+          "description": "How this slide LEAVES when the deck advances from it. Read on a top-level frame, component, componentSet, html embed or instance only; on any other element it is dropped with a repair. Omit for a cut."
         },
         "fills": {
           "type": "array",
@@ -2041,6 +2127,7 @@
         },
         "effects": {
           "type": "array",
+          "description": "Ordered effect stack, BOTTOM LAYER FIRST: index 0 sits underneath and the last entry is front-most. CSS `boxShadow` / `textShadow` strings are top-first and reversed on load.",
           "items": {
             "$ref": "#/definitions/Effect"
           }
@@ -2129,11 +2216,9 @@
           "type": "string",
           "enum": [
             "flex",
-            "grid",
-            "block",
-            "none"
+            "grid"
           ],
-          "description": "Sets the auto-layout mode (CSS `display`), beyond which the flat layout keys below are read. `block`/`none` mean no auto-layout. The flat CSS layout surface is the stored vocabulary; every key below is read only when `display` names a layout (`flex`/`grid`)."
+          "description": "Sets the auto-layout mode (CSS `display`). Omit `display` for free canvas placement (explicit child x/y). Do NOT write `block` expecting CSS vertical block flow or `none` expecting CSS hiding (`visible: false`) \u2014 both keep free placement and report in `fish check`. Every flat layout key below is read only when `display` is `flex` or `grid`."
         },
         "flex-direction": {
           "$ref": "#/definitions/AutoLayout/properties/direction",
@@ -2165,7 +2250,7 @@
         },
         "padding": {
           "$ref": "#/definitions/AutoLayout/properties/padding",
-          "description": "Space inside the container \u2014 CSS `padding`. One number or [top, right, bottom, left]."
+          "description": "Space inside the container \u2014 CSS `padding`. One number, `[top, right, bottom, left]`, or CSS 1-4 value shorthand string (`\"8px 16px\"`)."
         },
         "grid-template-columns": {
           "description": "Grid columns \u2014 CSS `grid-template-columns`. A NUMBER is the equal-division count; an ARRAY is explicit tracks, in the same spellings as `columnSizes`.",
@@ -2420,7 +2505,7 @@
         },
         "gap": {
           "description": "Ellipse only: angular gap split across both ends of the sweep, so stacked arcs keep a visible seam, 0-180 degrees. On a layout container (with `display`), the uniform gap between items \u2014 CSS `gap`: a number, a `[row, column]` pair, or a CSS two-value string.",
-          "oneOf": [
+          "anyOf": [
             {
               "type": "number",
               "minimum": 0,
@@ -2592,10 +2677,13 @@
           "description": "CSS corner longhand; folded into the four-corner `borderRadius` shape. `borderBottomLeftRadius` is the camel spelling."
         },
         "border-radius": {
-          "description": "CSS `border-radius`: a number, a px length, or the CSS 1-4 value side shorthand. A four-number tuple is top-left, top-right, bottom-right, bottom-left.",
+          "description": "CSS `border-radius`: a number, a px/`%`/`calc()` length, a 1-4 value CSS shorthand string (`\"8px 16px\"`), an elliptical slash pair (`\"10px / 20px\"`, `\"50% / 25%\"`), or a 4-number tuple [top-left, top-right, bottom-right, bottom-left].",
           "oneOf": [
             {
               "type": "number"
+            },
+            {
+              "type": "string"
             },
             {
               "type": "array",
@@ -2646,7 +2734,7 @@
               "type": "string"
             }
           ],
-          "description": "A clamped bound on `sizing.minWidth`, CSS spelling; a px length. `minWidth` is the camel spelling."
+          "description": "A clamped bound on `sizing.minWidth`, CSS spelling; a px length, percentage (`\"50%\"`), or CSS math expression (`\"min(50%, 300px)\"`). `minWidth` is the camel spelling."
         },
         "max-width": {
           "oneOf": [
@@ -2657,7 +2745,7 @@
               "type": "string"
             }
           ],
-          "description": "A clamped bound on `sizing.maxWidth`, CSS spelling; a px length. `maxWidth` is the camel spelling."
+          "description": "A clamped bound on `sizing.maxWidth`, CSS spelling; a px length, percentage (`\"80%\"`), or CSS math expression (`\"calc(100% - 32px)\"`). `maxWidth` is the camel spelling."
         },
         "min-height": {
           "oneOf": [
@@ -2668,7 +2756,7 @@
               "type": "string"
             }
           ],
-          "description": "A clamped bound on `sizing.minHeight`, CSS spelling; a px length. `minHeight` is the camel spelling."
+          "description": "A clamped bound on `sizing.minHeight`, CSS spelling; a px length, percentage, or CSS math expression. `minHeight` is the camel spelling."
         },
         "max-height": {
           "oneOf": [
@@ -2679,7 +2767,7 @@
               "type": "string"
             }
           ],
-          "description": "A clamped bound on `sizing.maxHeight`, CSS spelling; a px length. `maxHeight` is the camel spelling."
+          "description": "A clamped bound on `sizing.maxHeight`, CSS spelling; a px length, percentage, or CSS math expression. `maxHeight` is the camel spelling."
         },
         "rotate": {
           "oneOf": [
@@ -2764,11 +2852,11 @@
         },
         "grid-column": {
           "type": "string",
-          "description": "CSS grid placement on this child \u2014 a line range like `\"2 / span 2\"` \u2014 folded into `grid-area`. `gridColumn` / `gridRow` are the camel spellings."
+          "description": "CSS grid column placement on this child \u2014 a line range like `\"2 / span 2\"` or `\"span 2\"` (`gridColumn` is the camel spelling; `grid-area` objects/shorthands serialize into `grid-column` / `grid-row`)."
         },
         "grid-row": {
           "type": "string",
-          "description": "CSS grid placement on this child \u2014 a line range like `\"2 / span 2\"` \u2014 folded into `grid-area`. `gridColumn` / `gridRow` are the camel spellings."
+          "description": "CSS grid row placement on this child \u2014 a line range like `\"1 / span 2\"` or `\"2\"` (`gridRow` is the camel spelling; `grid-area` objects/shorthands serialize into `grid-column` / `grid-row`)."
         },
         "scroll-x": {
           "oneOf": [
@@ -2799,7 +2887,7 @@
             "fixed",
             "sticky"
           ],
-          "description": "CSS `scroll-behavior` for programmatic scrolling inside the container."
+          "description": "How this child behaves inside a scrollable parent container (`overflow: \"auto\" | \"hidden\"`): `\"scroll\"` moves with scroll (default), `\"fixed\"` pins to the container viewport, and `\"sticky\"` scrolls until reaching the edge (like CSS `position: fixed / sticky`, NOT CSS smooth-scroll behavior)."
         },
         "overflow-x": {
           "type": "string",
@@ -2839,8 +2927,16 @@
           "type": "string"
         },
         "font-size": {
-          "type": "number",
-          "minimum": 1
+          "oneOf": [
+            {
+              "type": "number",
+              "minimum": 1
+            },
+            {
+              "type": "string",
+              "pattern": "^\\d+(\\.\\d+)?px$"
+            }
+          ]
         },
         "font-weight": {
           "oneOf": [
@@ -2888,6 +2984,12 @@
             },
             {
               "type": "string",
+              "enum": [
+                "0"
+              ]
+            },
+            {
+              "type": "string",
               "pattern": "^-?\\d+(\\.\\d+)?px$"
             },
             {
@@ -2914,14 +3016,22 @@
           ]
         },
         "text-decoration": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "enum": [
-              "underline",
-              "line-through"
-            ]
-          }
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^(?:none|(?:underline|line-through)(?:\\s+(?:underline|line-through))*)$"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "underline",
+                  "line-through"
+                ]
+              }
+            }
+          ]
         },
         "text-transform": {
           "type": "string",

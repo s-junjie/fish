@@ -23,7 +23,7 @@ import {
   tryColorTokenValue,
   tryNumberTokenValue
 } from "../dsl/token-value";
-import { CORNER_SLOTS, numberTokenPropValue } from "./number-token-ops";
+import { CORNER_SLOTS, PADDING_SLOTS, numberTokenPropValue, parsePaddingTuple } from "./number-token-ops";
 import { topPaint } from "../dsl/paint-stack";
 import { materializeStopTokens, withGradientEndpoints } from "../dsl/gradient-stops";
 import { composeColorAlpha, parseColorAlpha } from "../geometry/color-utils";
@@ -516,12 +516,20 @@ export function syncDualStorage(
         const v = tryNumberTokenValue(tok, effectiveNumberMode, tokensById);
         if (v === undefined) continue;
         const cornerSlot = CORNER_SLOTS[prop];
+        const padSlot = PADDING_SLOTS[prop];
         if (cornerSlot !== undefined) {
           const currentRadii = parseCornerRadii(updatedEl.borderRadius);
           const nextRadii = [...currentRadii] as [number, number, number, number];
           if (nextRadii[cornerSlot] !== v) {
             nextRadii[cornerSlot] = v;
             updatedEl.borderRadius = nextRadii;
+            numBindingsChanged = true;
+          }
+        } else if (padSlot !== undefined) {
+          const nextPad = parsePaddingTuple(updatedEl.padding);
+          if (nextPad[padSlot] !== v) {
+            nextPad[padSlot] = v;
+            updatedEl.padding = nextPad;
             numBindingsChanged = true;
           }
         } else if (prop === "borderRadius" || prop === "padding") {

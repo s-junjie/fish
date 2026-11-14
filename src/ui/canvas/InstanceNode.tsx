@@ -4,7 +4,7 @@ import { paintLayerIndex } from "../../core/dsl/paint-stack";
 import { isNeutralColorFilter } from "../../core/dsl/color-filter";
 import { cssBlurFilter } from "../../core/css-encode";
 import { rectToPathData } from "../../core/compile";
-import { cornerRadiiOf } from "../../core/geometry/shape-path";
+import { cornerRadiiXYOf } from "../../core/geometry/shape-path";
 import { resolveStrokeWeights, strokeDashAttrs } from "../../core/geometry/stroke-utils";
 import { resolveInstanceChildren } from "../../core/interactions/instance-resolve";
 import { activeInstanceFills, InstanceBox } from "../../core/interactions/instance-inherit";
@@ -92,7 +92,8 @@ export function InstanceNode({
     width: box.width,
     height: box.height,
     borderRadius: box.borderRadius,
-    cornerSmoothing: box.cornerSmoothing
+    cornerSmoothing: box.cornerSmoothing,
+    sizing: box.borderRadiusY !== undefined ? { borderRadiusY: box.borderRadiusY } : undefined
   } as RectElement);
 
   // `resolveInstanceBox` already folds the master's effects in, so this is the
@@ -164,7 +165,15 @@ export function InstanceNode({
               pointerEvents: "none",
               backdropFilter: backdropFilterCss,
               WebkitBackdropFilter: backdropFilterCss,
-              ...backdropShapeStyle(el, box.width, box.height, boxLocalD, box.borderRadius, box.cornerSmoothing)
+              ...backdropShapeStyle(
+                el,
+                box.width,
+                box.height,
+                boxLocalD,
+                box.borderRadius,
+                box.cornerSmoothing,
+                box.borderRadiusY
+              )
             }}
           />
         </foreignObject>
@@ -225,12 +234,19 @@ export function InstanceNode({
           const strokeOpacity = resolvedPaint ? baseStrokeOpacity * resolvedPaint.opacity : baseStrokeOpacity;
           const strokeBlendStyle = resolvedPaint?.blendMode ? { mixBlendMode: resolvedPaint.blendMode as any } : undefined;
           if (!weights.isUniform) {
+            const [radii, radiiY] = cornerRadiiXYOf(
+              box.borderRadius,
+              box.borderRadiusY,
+              box.width,
+              box.height
+            );
             return renderNonUniformStroke(
               weights,
               {
                 width: box.width,
                 height: box.height,
-                radii: cornerRadiiOf(box.borderRadius, box.width, box.height)
+                radii,
+                ...(radiiY ? { radiiY } : {})
               },
               strokeColor,
               align,

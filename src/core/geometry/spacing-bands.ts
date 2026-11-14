@@ -4,7 +4,7 @@ import { elementAABB } from "./element-bounds";
 import { transformBoundsToAABB, Rect } from "./bounds";
 import type { Matrix2D } from "./matrix";
 import { detectSmartSelection, groupFlexLines } from "./smart-selection";
-import { resolvePadding } from "../layout/box";
+import { resolveContentInsets } from "../layout/box";
 import { inFlowChildren } from "../layout/auto-layout";
 import { gridColumnTracks, gridPlacements } from "../layout/grid-layout";
 
@@ -246,7 +246,7 @@ function gridGapBands(
   const layout = layoutOf(frame)!;
   const flow = inFlowChildren(frame.children ?? []);
   if (flow.length < 2) return [];
-  const [, pr, , pl] = resolvePadding(layout.padding);
+  const [, pr, , pl] = resolveContentInsets(frame, layout.padding);
   const contentW = Math.max(0, frame.width - pl - pr);
   const columns = gridColumnTracks(layout, contentW).sizes.length;
   const placements = gridPlacements(layout, flow.map((c) => c["grid-area"]), columns);

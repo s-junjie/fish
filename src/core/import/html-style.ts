@@ -160,12 +160,7 @@ export function borderWidthsOf(cs: CSSStyleDeclaration): BorderWidths {
 }
 
 /**
- * The one line style a drawn border uses, which is all `Stroke.style` holds.
- *
- * A dashed hairline is how every empty state, drop target and "add" affordance
- * is drawn, and it was arriving solid: `style` was written from nothing at all.
- * `dotted` has no DSL spelling and is named rather than silently upgraded, for
- * the same reason an unmappable radius is.
+ * The line style a drawn border uses (`"solid" | "dashed" | "dotted"`).
  */
 function borderStyleOf(cs: CSSStyleDeclaration, widths: number[], sink: UnmappedSink): Stroke["style"] {
   const styles = SIDES.map((side) => sideValue(cs, side, "style"));
@@ -174,11 +169,11 @@ function borderStyleOf(cs: CSSStyleDeclaration, widths: number[], sink: Unmapped
   if (new Set(used).size > 1) sink("border-style", used.join(" "));
   const first = used[0] ?? "solid";
   if (first === "dashed") return "dashed";
+  if (first === "dotted") return "dotted";
   /* The 3D words are how a UA stylesheet draws a native control's edge, and each
      of them paints one colour along the border — what a solid stroke draws. They
      are folded rather than named so every unstyled `<input>` and `<button>` does
-     not put a row in the report; `dotted` and `double` are genuinely a different
-     line and are said instead. */
+     not put a row in the report; `double` is genuinely a double line and is named. */
   if (first === "inset" || first === "outset" || first === "groove" || first === "ridge") return "solid";
   if (first !== "solid") sink("border-style", first);
   return "solid";

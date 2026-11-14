@@ -1,136 +1,75 @@
 /**
- * `$token` shorthands: an author (or an agent) writes the token's name where a
- * value belongs, and normalize turns it into the stored pair the renderer reads
- * — the reference AND the value, exactly as the inspector's bind command writes
- * them.
+ * `$token` and `var(--name)` shorthands: an author (or an agent) writes the
+ * token's name where a value belongs, and normalize turns it into the stored
+ * pair the renderer reads — the reference AND the value, exactly as the
+ * inspector's bind command writes them.
  *
- * Why this pass exists at all: an id is minted (`createId("tok")` → `tok_<rep>_…
- * _1`), so a hand-written document cannot name a token by id, and an imported
- * one names it `color/surface` — a spelling no `tokenId` field accepts. The two
- * tables a document already publishes (`tokenId`, `tokenBindings`) are therefore
- * unusable by the one author who cannot click: an agent. `$color-surface` is the
- * shortest thing that can only mean one thing.
- *
- * Why it runs HERE (over the raw document, before any element is normalized)
- * rather than inside `normalizeElement`: only the document has `tokens`, and
- * without the table this pass cannot answer the three questions that make the
- * feature honest — which token did you mean, is it the right TYPE for this slot,
- * and what is it worth in the current mode. Element-level normalize has none of
- * them, and its only possible answer is a placeholder, which for a typo is an
- * invisible layer with no repair.
- *
- * One syntax, on purpose. `var(--x)` is already the document's own variables
- * (`resolve-values.ts` folds it before this runs, and `dsl.md` publishes it as
- * "authoring-time substitution only"), so borrowing it would give one spelling
- * two meanings decided by which table happens to hold the name.
+ * Why this pass runs BEFORE `resolveValueTokens` over the raw document:
+ * - Only the document carries `tokens[]` and mode maps, which decide which token
+ *   a name refers to, whether its type matches the slot, and its active value.
+ * - Running before `resolveValueTokens` lets whole-value `var(--name)` in a
+ *   bindable slot bind live (`tokenId` / `tokenBindings`), while explicit
+ *   `doc.variables` win first and compound `calc(... var(--name))` or
+ *   unbindable slots fall back to `createTokenVarResolver`.
  */
 
-import type { ColorToken, DesignToken, NumberToken } from "../types";
-import { normalizeTokens } from "./tokens";
-import { tryColorTokenValue, numberModeOf, tryNumberTokenValue, themeOf } from "../token-value";
-import { bindNumberToken, CORNER_SLOTS, writeNumberValue } from "../token-bindings";
+import { numberModeOf, themeOf } from "../token-value";
+import {
+  bindNumberToken,
+  CORNER_SLOTS,
+  numberTokenPropValue,
+  PADDING_SLOTS,
+  withoutNumberBinding,
+  writeNumberValue
+} from "../token-bindings";
+import { expandFourSides } from "./auto-layout";
 import { cornerRadiusInput, parseBorderShorthand, parseRadiusString } from "./stroke";
+import type { Variables } from "./resolve-values";
 import { parseBoxShadows } from "../../import/css-values";
 import { canonicalKey, isPlainObject, type NormalizationRepair } from "./shared";
+import {
+  buildTokenRefTable,
+  colorOf,
+  createTokenVarResolver,
+  finishColorSlot,
+  finishNumberSlot,
+  lookupToken,
+  numberOf,
+  parseTokenRef,
+  reportSlotError,
+  resolveSlotRef,
+  resolveTokenRef,
+  type ShorthandModes,
+  type TokenRefTable,
+  type TokenSlotContext
+} from "./token-var-bridge";
 
-/** `$x` — one prefix, no function call. `/` stays legal so a real name works. */
-const TOKEN_REF = /^\$([A-Za-z0-9._/-]+)$/;
+export {
+  buildTokenRefTable,
+  createTokenVarResolver,
+  lookupToken,
+  parseTokenRef,
+  resolveTokenRef,
+  type ShorthandModes,
+  type TokenRefTable
+};
 
-export function parseTokenRef(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const match = TOKEN_REF.exec(value.trim());
-  return match ? match[1] : null;
-}
-
-/** `color/surface` → `color-surface`: the shape an author can type. */
-const slugOf = (name: string): string => name.trim().toLowerCase().replace(/[\s/]+/g, "-");
-
-/**
- * The tokens a document declares, indexed three ways.
- *
- * Built through `normalizeTokens` rather than off the raw array so the table
- * holds exactly what the document will hold — a synthesised id, a missing name
- * defaulted to it, an invalid value already dropped. Mirroring those rules here
- * would be a second opinion about which entries exist.
- */
-export interface TokenRefTable {
-  byId: Map<string, DesignToken>;
-  byName: Map<string, DesignToken[]>;
-  bySlug: Map<string, DesignToken[]>;
-  /** Names the raw table declares but normalize dropped — the honest diagnosis. */
-  dropped: Set<string>;
-  empty: boolean;
-}
-
-export function buildTokenRefTable(rawTokens: unknown): TokenRefTable {
-  const tokens = normalizeTokens(rawTokens);
-  const byId = new Map<string, DesignToken>();
-  const byName = new Map<string, DesignToken[]>();
-  const bySlug = new Map<string, DesignToken[]>();
-  const dropped = new Set<string>();
-
-  if (Array.isArray(rawTokens)) {
-    for (const entry of rawTokens) {
-      if (isPlainObject(entry) && typeof entry.name === "string" && entry.name.trim()) {
-        dropped.add(entry.name.trim());
-      }
+/** Splits a CSS spacing string on whitespace outside `(...)` (matching `splitCssTokens`). */
+function splitSpacingTokens(input: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (ch === "(") depth++;
+    else if (ch === ")") depth = Math.max(0, depth - 1);
+    else if (depth === 0 && /\s/.test(ch)) {
+      if (i > start) parts.push(input.slice(start, i));
+      start = i + 1;
     }
   }
-
-  const push = (map: Map<string, DesignToken[]>, key: string, token: DesignToken) => {
-    const list = map.get(key);
-    if (list) list.push(token);
-    else map.set(key, [token]);
-  };
-
-  for (const token of tokens) {
-    byId.set(token.id, token);
-    push(byName, token.name, token);
-    push(bySlug, slugOf(token.name), token);
-    push(bySlug, slugOf(token.id), token);
-    dropped.delete(token.name);
-  }
-
-  return {
-    byId,
-    byName,
-    bySlug,
-    dropped,
-    // "no table to consult" is a document that declares NO tokens — not one
-    // whose only entries were dropped. The second still has to be walked, or a
-    // reference to the dropped entry is left in place with no word said.
-    empty: !Array.isArray(rawTokens) || rawTokens.length === 0
-  };
-}
-
-type Resolution =
-  | { token: DesignToken }
-  | { error: "unknown" | "ambiguous" | "dropped" | "type"; ref: string };
-
-/**
- * Resolve a reference: id first (it is unique by construction), then the exact
- * name, then the slug. A tie is never resolved by guessing — two tokens that
- * slug to the same word are a fact about the document, and picking one would
- * bind a layer to a token the author cannot see it pointing at.
- */
-export function resolveTokenRef(ref: string, table: TokenRefTable): Resolution {
-  const byId = table.byId.get(ref);
-  if (byId) return { token: byId };
-
-  const byName = table.byName.get(ref);
-  if (byName?.length === 1) return { token: byName[0] };
-  if (byName && byName.length > 1) return { error: "ambiguous", ref };
-
-  const slug = slugOf(ref);
-  const bySlug = table.bySlug.get(slug);
-  if (bySlug?.length === 1) return { token: bySlug[0] };
-  if (bySlug && bySlug.length > 1) return { error: "ambiguous", ref };
-
-  // A name the document declares but normalize dropped has a real cause worth
-  // naming: "no such token" would send the author looking for a typo that is
-  // not there.
-  for (const name of table.dropped) if (slugOf(name) === slug) return { error: "dropped", ref };
-  return { error: "unknown", ref };
+  if (start < input.length) parts.push(input.slice(start));
+  return parts;
 }
 
 // ---------------------------------------------------------------------------
@@ -162,6 +101,8 @@ const NUMBER_SLOTS: Readonly<Record<string, string>> = {
   "row-gap": "row-gap",
   "column-gap": "column-gap",
   padding: "padding",
+  width: "width",
+  height: "height",
   "border-radius": "borderRadius",
   radius: "borderRadius",
   "corner-radius": "borderRadius",
@@ -179,10 +120,22 @@ const NUMBER_SLOTS: Readonly<Record<string, string>> = {
 /** Type slots: read only on a text layer, which is decided by the element type. */
 const TYPE_SLOTS: ReadonlySet<string> = new Set(["fontSize", "lineHeight", "letterSpacing"]);
 
+/** Padding object side keys mapped to the stored 4-tuple binding names. */
+const PADDING_SIDE_PROPS: Readonly<Record<string, string>> = {
+  top: "paddingTop",
+  t: "paddingTop",
+  right: "paddingRight",
+  r: "paddingRight",
+  bottom: "paddingBottom",
+  b: "paddingBottom",
+  left: "paddingLeft",
+  l: "paddingLeft"
+};
+
+const PADDING_TUPLE_BINDINGS = ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"] as const;
+
 /** Slots that exist in CSS and in this dialect, but not as a token binding. */
 const REFUSED_NUMBER_SLOTS: Readonly<Record<string, string>> = {
-  width: 'a size is the `sizing` axis; write the number or a size mode',
-  height: 'a size is the `sizing` axis; write the number or a size mode',
   "border-top-width": "a per-side stroke weight is an input alias; bind `strokeWidth`",
   "border-right-width": "a per-side stroke weight is an input alias; bind `strokeWidth`",
   "border-bottom-width": "a per-side stroke weight is an input alias; bind `strokeWidth`",
@@ -206,96 +159,30 @@ export const TOKEN_SHORTHAND_BINDINGS: Readonly<Record<string, string>> = NUMBER
 // the walk
 // ---------------------------------------------------------------------------
 
-interface Context {
-  table: TokenRefTable;
-  /** The effective mode at this node: its own override, else the inherited one. */
-  theme: string;
-  numberMode: string;
-}
-
-const colorOf = (token: DesignToken, ctx: Context): string | undefined =>
-  token.type === "color" ? tryColorTokenValue(token as ColorToken, ctx.theme, ctx.table.byId) : undefined;
-
-const numberOf = (token: DesignToken, ctx: Context): number | undefined =>
-  token.type === "number" ? tryNumberTokenValue(token as NumberToken, ctx.numberMode, ctx.table.byId) : undefined;
-
-function reportError(
-  error: "unknown" | "ambiguous" | "dropped" | "type",
-  ref: string,
-  where: string,
-  wants: "colour" | "number",
-  repairs: NormalizationRepair[]
-): void {
-  const message =
-    error === "unknown"
-      ? `"$${ref}" names no token; the declaration was dropped`
-      : error === "ambiguous"
-        ? `"$${ref}" matches more than one token by name; nothing was bound`
-        : error === "dropped"
-          ? `"$${ref}" names a token whose value was dropped; nothing was bound`
-          : `"$${ref}" is not a ${wants} token`;
-  repairs.push({ kind: "token", path: `${where}`, message });
-}
-
-/**
- * A reference field's value (`tokenId`, `tokenBindings[*]`) read as a token.
- *
- * These fields publish an ID, and an id is minted — so the name is accepted too,
- * and a value that resolves to nothing is left exactly as written: the field's
- * contract is still "a reference", and `validate-tokens` already reports one
- * that points nowhere. Rewriting a typo here would delete the only evidence.
- */
-export function lookupToken(value: unknown, table: TokenRefTable): DesignToken | undefined {
-  if (typeof value !== "string") return undefined;
-  const text = value.trim();
-  if (!text) return undefined;
-  const ref = text.startsWith("$") ? parseTokenRef(text) : text;
-  if (!ref) return undefined;
-  const found = resolveTokenRef(ref, table);
-  return "token" in found ? found.token : undefined;
-}
-
-/** A paint, a stroke row or an effect: its own `color`, plus a gradient's stops. */
+/** A paint, a stroke row or an effect: its own `color`, nested `paint`, plus a gradient's stops. */
 function applyToPaint(
   entry: unknown,
-  ctx: Context,
+  ctx: TokenSlotContext,
   path: string,
   repairs: NormalizationRepair[]
 ): unknown {
   if (typeof entry === "string") {
-    const ref = parseTokenRef(entry);
-    if (!ref) return entry;
-    const found = resolveTokenRef(ref, ctx.table);
-    if ("error" in found) {
-      reportError(found.error, ref, path, "colour", repairs);
-      return undefined;
-    }
-    const color = colorOf(found.token, ctx);
-    if (color === undefined) {
-      reportError("type", ref, path, "colour", repairs);
-      return undefined;
-    }
-    return { type: "solid", color, tokenId: found.token.id };
+    const resolved = resolveSlotRef(entry, ctx.table, ctx.vars);
+    if (!resolved) return entry;
+    const applied = finishColorSlot(resolved, ctx, path, repairs);
+    return applied ? { type: "solid", color: applied.color, tokenId: applied.token.id } : undefined;
   }
   if (!isPlainObject(entry)) return entry;
 
   let out: Record<string, unknown> | null = null;
   const edit = () => (out ??= { ...entry });
 
-  const colorRef = parseTokenRef(entry.color);
-  if (colorRef) {
-    const found = resolveTokenRef(colorRef, ctx.table);
-    if ("error" in found) {
-      reportError(found.error, colorRef, `${path}/color`, "colour", repairs);
-      return undefined;
-    }
-    const color = colorOf(found.token, ctx);
-    if (color === undefined) {
-      reportError("type", colorRef, `${path}/color`, "colour", repairs);
-      return undefined;
-    }
-    edit().color = color;
-    edit().tokenId = found.token.id;
+  const colorResolved = resolveSlotRef(entry.color, ctx.table, ctx.vars);
+  if (colorResolved) {
+    const applied = finishColorSlot(colorResolved, ctx, `${path}/color`, repairs);
+    if (!applied) return undefined;
+    edit().color = applied.color;
+    edit().tokenId = applied.token.id;
   } else {
     // Only a row that stated NO new reference is re-materialised from its own
     // `tokenId`. Doing it unconditionally read the INPUT's id, so a row that
@@ -309,23 +196,20 @@ function applyToPaint(
     }
   }
 
+  if (isPlainObject(entry.paint)) {
+    const rewrittenPaint = applyToPaint(entry.paint, ctx, `${path}/paint`, repairs);
+    if (rewrittenPaint === undefined) return undefined;
+    if (rewrittenPaint !== entry.paint) edit().paint = rewrittenPaint;
+  }
+
   const stops = entry.stops;
-  if (Array.isArray(stops) && stops.some((stop) => isPlainObject(stop) && parseTokenRef(stop.color))) {
+  if (Array.isArray(stops) && stops.some((stop) => isPlainObject(stop) && resolveSlotRef(stop.color, ctx.table, ctx.vars))) {
     edit().stops = stops.map((stop, index) => {
       if (!isPlainObject(stop)) return stop;
-      const ref = parseTokenRef(stop.color);
-      if (!ref) return stop;
-      const found = resolveTokenRef(ref, ctx.table);
-      if ("error" in found) {
-        reportError(found.error, ref, `${path}/stops/${index}`, "colour", repairs);
-        return stop;
-      }
-      const color = colorOf(found.token, ctx);
-      if (color === undefined) {
-        reportError("type", ref, `${path}/stops/${index}`, "colour", repairs);
-        return stop;
-      }
-      return { ...stop, color, tokenId: found.token.id };
+      const resolved = resolveSlotRef(stop.color, ctx.table, ctx.vars);
+      if (!resolved) return stop;
+      const applied = finishColorSlot(resolved, ctx, `${path}/stops/${index}`, repairs);
+      return applied ? { ...stop, color: applied.color, tokenId: applied.token.id } : stop;
     });
   }
 
@@ -335,7 +219,7 @@ function applyToPaint(
 /** One element: colour slots, number slots, existing references, then children. */
 function applyToElement(
   el: Record<string, unknown>,
-  ctx: Context,
+  ctx: TokenSlotContext,
   path: string,
   repairs: NormalizationRepair[]
 ): Record<string, unknown> {
@@ -356,7 +240,7 @@ function applyToElement(
   // `themeMode` is documented as "this container and its subtree" and `mode-ops`
   // walks it that way when a mode is edited, so the value written here has to
   // agree with what that walk would produce.
-  const mode: Context =
+  const mode: TokenSlotContext =
     (typeof el.themeMode === "string" && el.themeMode) || (typeof el.numberMode === "string" && el.numberMode)
       ? {
           ...ctx,
@@ -369,8 +253,8 @@ function applyToElement(
   for (const [key, target] of COLOR_ALIASES) {
     const own = byCanon.get(key);
     if (own === undefined) continue;
-    const ref = parseTokenRef(el[own]);
-    if (!ref) continue;
+    const resolved = resolveSlotRef(el[own], mode.table, mode.vars);
+    if (!resolved) continue;
     if (el.fills !== undefined) {
       repairs.push({
         kind: "token",
@@ -379,21 +263,14 @@ function applyToElement(
       });
       continue;
     }
-    const found = resolveTokenRef(ref, mode.table);
-    if ("error" in found) {
-      reportError(found.error, ref, `${path}/${own}`, "colour", repairs);
-      delete edit()[own];
-      continue;
-    }
-    const color = colorOf(found.token, mode);
-    if (color === undefined) {
-      reportError("type", ref, `${path}/${own}`, "colour", repairs);
+    const applied = finishColorSlot(resolved, mode, `${path}/${own}`, repairs);
+    if (!applied) {
       delete edit()[own];
       continue;
     }
     const draft = edit();
     delete draft[own];
-    (draft as Record<string, unknown>)[target] = [{ type: "solid", color, tokenId: found.token.id }];
+    (draft as Record<string, unknown>)[target] = [{ type: "solid", color: applied.color, tokenId: applied.token.id }];
     break;
   }
 
@@ -402,55 +279,51 @@ function applyToElement(
   // A string `border` is the CSS shorthand, which this pass does not rewrite:
   // merging a colour into it would silently drop the width and style it carries.
   const borderColorKey = byCanon.get("border-color");
-  const borderColorRef = borderColorKey ? parseTokenRef(el[borderColorKey]) : null;
-  if (borderColorKey && borderColorRef) {
-    const found = resolveTokenRef(borderColorRef, mode.table);
-    const color = "token" in found ? colorOf(found.token, mode) : undefined;
+  const borderColorResolved = borderColorKey ? resolveSlotRef(el[borderColorKey], mode.table, mode.vars) : null;
+  if (borderColorKey && borderColorResolved) {
     if (el.border !== undefined) {
       repairs.push({
         kind: "token",
         path: `${path}/${borderColorKey}`,
         message: `"${borderColorKey}" ignored: border is already set (write the token there)`
       });
-    } else if (!("token" in found)) {
-      reportError(found.error, borderColorRef, `${path}/${borderColorKey}`, "colour", repairs);
-      delete edit()[borderColorKey];
-    } else if (color === undefined) {
-      reportError("type", borderColorRef, `${path}/${borderColorKey}`, "colour", repairs);
-      delete edit()[borderColorKey];
     } else {
-      const draft = edit();
-      delete draft[borderColorKey];
-      draft.border = { color, tokenId: found.token.id };
+      const applied = finishColorSlot(borderColorResolved, mode, `${path}/${borderColorKey}`, repairs);
+      if (!applied) {
+        delete edit()[borderColorKey];
+      } else {
+        const draft = edit();
+        delete draft[borderColorKey];
+        draft.border = { color: applied.color, tokenId: applied.token.id };
+      }
     }
   }
 
-  // --- `border` shorthand: the colour lives inside a string ---------------
+  // --- `border` shorthand or structured border object --------------------
   // Split by the parser that already knows `<width> || <style> || <color>`, then
   // lowered onto the structured object `normalizeStroke` reads — so the width and
   // style the author wrote survive, which is the whole reason not to rewrite the
   // string in place.
   if (typeof el.border === "string") {
     const parsed = parseBorderShorthand(el.border);
-    const ref = parsed?.color ? parseTokenRef(parsed.color) : null;
-    if (ref) {
-      const found = resolveTokenRef(ref, mode.table);
-      const color = "token" in found ? colorOf(found.token, mode) : undefined;
-      if (!("token" in found)) {
-        reportError(found.error, ref, `${path}/border`, "colour", repairs);
-        delete edit().border;
-      } else if (color === undefined) {
-        reportError("type", ref, `${path}/border`, "colour", repairs);
+    const resolved = parsed?.color ? resolveSlotRef(parsed.color, mode.table, mode.vars) : null;
+    if (resolved) {
+      const applied = finishColorSlot(resolved, mode, `${path}/border`, repairs);
+      if (!applied) {
         delete edit().border;
       } else {
         edit().border = {
           ...(parsed!.width !== undefined ? { width: parsed!.width } : {}),
           ...(parsed!.style ? { style: parsed!.style } : {}),
-          color,
-          tokenId: found.token.id
+          color: applied.color,
+          tokenId: applied.token.id
         };
       }
     }
+  } else if (isPlainObject(el.border)) {
+    const rewritten = applyToPaint(el.border, mode, `${path}/border`, repairs);
+    if (rewritten === undefined) delete edit().border;
+    else if (rewritten !== el.border) edit().border = rewritten;
   }
 
   // A per-side shorthand shares ONE colour for the whole stroke, so a token
@@ -507,14 +380,14 @@ function applyToElement(
   for (const [canonical, own] of byCanon) {
     const binding = NUMBER_SLOTS[canonical];
     const refused = REFUSED_NUMBER_SLOTS[canonical];
-    const ref = parseTokenRef(el[own]);
-    if (!ref || (binding === undefined && refused === undefined)) continue;
+    const resolved = resolveSlotRef(el[own], mode.table, mode.vars);
+    if (!resolved || (binding === undefined && refused === undefined)) continue;
 
     if (refused !== undefined) {
       repairs.push({
         kind: "token",
         path: `${path}/${own}`,
-        message: `"$${ref}" in "${own}" is not supported: ${refused}`
+        message: `${resolved.label} in "${own}" is not supported: ${refused}`
       });
       delete edit()[own];
       continue;
@@ -529,15 +402,8 @@ function applyToElement(
       continue;
     }
 
-    const found = resolveTokenRef(ref, mode.table);
-    if (!("token" in found)) {
-      reportError(found.error, ref, `${path}/${own}`, "number", repairs);
-      delete edit()[own];
-      continue;
-    }
-    const value = numberOf(found.token, mode);
-    if (value === undefined) {
-      reportError("type", ref, `${path}/${own}`, "number", repairs);
+    const applied = finishNumberSlot(resolved, mode, `${path}/${own}`, repairs);
+    if (!applied) {
       delete edit()[own];
       continue;
     }
@@ -545,15 +411,96 @@ function applyToElement(
     // `writeNumberValue` moves the VALUE; `bindNumberToken` also records the
     // binding and clears the spelling it supersedes. Both come from the DSL so
     // an author's `$radius-card` lands on the same shape the inspector writes.
-    let next = bindNumberToken(out, binding, found.token.id, value);
+    let next = bindNumberToken(out, binding, applied.token.id, applied.value);
     // A stroke weight with no stroke row yet: `bindNumberToken` moves the rows it
     // finds and writes nothing when there are none, so the scalar the stroke
     // reader falls back to is written here.
     if (binding === "strokeWidth" && !Array.isArray(el.strokes)) {
-      next = { ...next, strokeWidth: value };
+      next = { ...next, strokeWidth: applied.value };
     }
     out = next;
     if (own !== binding) delete (out as Record<string, unknown>)[own];
+  }
+
+  // --- padding per-side object / array / multi-value shorthand ----------
+  if (isPlainObject(out.padding)) {
+    const rawPad = out.padding as Record<string, unknown>;
+    const nextPad: Record<string, unknown> = { ...rawPad };
+    let padChanged = false;
+    const addedBindings: Record<string, string> = {};
+    for (const [sideKey, sideVal] of Object.entries(rawPad)) {
+      const sideProp = PADDING_SIDE_PROPS[sideKey];
+      if (!sideProp) continue;
+      const resolved = resolveSlotRef(sideVal, mode.table, mode.vars);
+      if (!resolved) continue;
+      padChanged = true;
+      const applied = finishNumberSlot(resolved, mode, `${path}/padding/${sideKey}`, repairs);
+      if (!applied) {
+        delete nextPad[sideKey];
+      } else {
+        nextPad[sideKey] = applied.value;
+        addedBindings[sideProp] = applied.token.id;
+      }
+    }
+    if (padChanged) {
+      const draft = edit();
+      if (Object.keys(rawPad).length > 0 && Object.keys(nextPad).length === 0) {
+        delete draft.padding;
+      } else {
+        draft.padding = nextPad;
+      }
+      if (Object.keys(addedBindings).length > 0) {
+        const cleared = withoutNumberBinding(draft.tokenBindings as Record<string, string> | undefined, "padding") ?? {};
+        draft.tokenBindings = { ...cleared, ...addedBindings };
+      }
+    }
+  } else if (Array.isArray(out.padding) || typeof out.padding === "string") {
+    const rawItems = Array.isArray(out.padding)
+      ? out.padding
+      : splitSpacingTokens(out.padding.trim());
+    const multi = Array.isArray(out.padding) ? rawItems.length >= 1 && rawItems.length <= 4 : rawItems.length >= 2 && rawItems.length <= 4;
+    if (multi && rawItems.some((item) => resolveSlotRef(item, mode.table, mode.vars) !== null)) {
+      const draft = edit();
+      if (rawItems.length === 1) {
+        const resolved = resolveSlotRef(rawItems[0], mode.table, mode.vars)!;
+        const applied = finishNumberSlot(resolved, mode, `${path}/padding`, repairs);
+        if (!applied) {
+          delete draft.padding;
+        } else {
+          out = bindNumberToken(out, "padding", applied.token.id, applied.value);
+          edit().padding = [applied.value, applied.value, applied.value, applied.value];
+        }
+      } else {
+        const sides = expandFourSides(rawItems);
+        const nextSides: unknown[] = [...sides];
+        const sideBindings: Record<string, string> = {};
+        let failed = false;
+        for (let i = 0; i < 4; i++) {
+          const resolved = resolveSlotRef(sides[i], mode.table, mode.vars);
+          if (!resolved) continue;
+          const applied = finishNumberSlot(resolved, mode, `${path}/padding`, repairs);
+          if (!applied) {
+            failed = true;
+            break;
+          }
+          nextSides[i] = applied.value;
+          sideBindings[PADDING_TUPLE_BINDINGS[i]] = applied.token.id;
+        }
+        if (failed) {
+          delete draft.padding;
+        } else {
+          draft.padding = nextSides;
+          const cleared = withoutNumberBinding(draft.tokenBindings as Record<string, string> | undefined, "padding") ?? {};
+          draft.tokenBindings = { ...cleared, ...sideBindings };
+        }
+      }
+    }
+  }
+
+  // --- rich text spans[].style -------------------------------------------
+  if (Array.isArray(out.spans)) {
+    const nextSpans = applyToSpans(out.spans, mode, path, repairs);
+    if (nextSpans !== out.spans) edit().spans = nextSpans;
   }
 
   // --- existing references, by name --------------------------------------
@@ -571,7 +518,7 @@ function applyToElement(
       if (!token) continue;
       const value = numberOf(token, mode);
       if (value === undefined) {
-        reportError("type", String(bound), `${path}/tokenBindings/${prop}`, "number", repairs);
+        reportSlotError("type", String(bound), `${path}/tokenBindings/${prop}`, "number", repairs);
         continue;
       }
       // The recorded binding is a POINTER: rewriting it here is what makes a
@@ -594,7 +541,13 @@ function applyToElement(
               : undefined;
         if (radius !== undefined) draft.borderRadius = radius;
       }
-      out = writeNumberValue(out, prop, value);
+      const deferPaddingShape =
+        PADDING_SLOTS[prop] !== undefined &&
+        isPlainObject(out.padding) &&
+        Object.values(out.padding).some((v) => typeof v !== "number");
+      if (!deferPaddingShape) {
+        out = writeNumberValue(out, prop, value);
+      }
       if (prop === "strokeWidth" && !Array.isArray(out.strokes)) {
         out = { ...out, strokeWidth: value };
       }
@@ -623,12 +576,111 @@ function applyToElement(
   return out;
 }
 
-/** The parts of a document a rewrite needs: the table and the modes in scope. */
-export interface ShorthandModes {
-  activeTheme?: unknown;
-  activeNumberMode?: unknown;
-  modes?: unknown;
-  numberModes?: unknown;
+/** Resolves `$token` / `var(--name)` inside `spans[].style` against active element modes (spans hold no persistent `tokenId`). */
+function applyToSpans(
+  spans: unknown[],
+  mode: TokenSlotContext,
+  path: string,
+  repairs: NormalizationRepair[]
+): unknown[] {
+  let changed = false;
+  const nextSpans = spans.map((span, index) => {
+    if (!isPlainObject(span) || !isPlainObject(span.style)) return span;
+    const rawStyle = span.style as Record<string, unknown>;
+    let nextStyle: Record<string, unknown> | null = null;
+    const editStyle = () => (nextStyle ??= { ...rawStyle });
+
+    for (const [styleKey, styleVal] of Object.entries(rawStyle)) {
+      const canon = canonicalKey(styleKey);
+      const isColor = canon === "color" || canon === "fill";
+      const isNum = canon === "font-size" || canon === "size" || canon === "letter-spacing";
+      if (!isColor && !isNum) continue;
+      const resolved = resolveSlotRef(styleVal, mode.table, mode.vars);
+      if (!resolved) continue;
+      const itemPath = `${path}/spans/${index}/style/${styleKey}`;
+      if (isColor) {
+        const applied = finishColorSlot(resolved, mode, itemPath, repairs);
+        if (!applied) delete editStyle()[styleKey];
+        else editStyle()[styleKey] = applied.color;
+      } else {
+        const applied = finishNumberSlot(resolved, mode, itemPath, repairs);
+        if (!applied) delete editStyle()[styleKey];
+        else editStyle()[styleKey] = applied.value;
+      }
+    }
+
+    if (!nextStyle) return span;
+    changed = true;
+    if (Object.keys(nextStyle).length === 0) {
+      const { style: _empty, ...rest } = span;
+      return rest;
+    }
+    return { ...span, style: nextStyle };
+  });
+  return changed ? nextSpans : spans;
+}
+
+/** Resolves paint stacks and typography bindings inside a `doc.styles[]` entry. */
+function applyToStyleEntry(
+  entry: Record<string, unknown>,
+  base: TokenSlotContext,
+  path: string,
+  repairs: NormalizationRepair[]
+): Record<string, unknown> {
+  let out = entry;
+  const edit = () => (out === entry ? (out = { ...entry }) : out);
+
+  for (const stack of ["paints", "fills", "strokes", "effects"] as const) {
+    const arr = entry[stack];
+    if (!Array.isArray(arr)) continue;
+    let stackChanged = false;
+    const next: unknown[] = [];
+    arr.forEach((item, index) => {
+      const rewritten = applyToPaint(item, base, `${path}/${stack}/${index}`, repairs);
+      if (rewritten === undefined) {
+        stackChanged = true;
+        return;
+      }
+      if (rewritten !== item) stackChanged = true;
+      next.push(rewritten);
+    });
+    if (stackChanged) edit()[stack] = next;
+  }
+
+  const styleType = entry.styleType ?? entry.type;
+  if (styleType === "text" && isPlainObject(entry.style)) {
+    const rawStyle = entry.style as Record<string, unknown>;
+    let nextStyle: Record<string, unknown> | null = null;
+    const editStyle = () => (nextStyle ??= { ...rawStyle });
+    for (const [key, val] of Object.entries(rawStyle)) {
+      const canon = canonicalKey(key);
+      const target = canon === "font-size" || canon === "size"
+        ? "fontSize"
+        : canon === "line-height"
+          ? "lineHeight"
+          : canon === "letter-spacing"
+            ? "letterSpacing"
+            : undefined;
+      if (!target) continue;
+      const resolved = resolveSlotRef(val, base.table, base.vars);
+      if (!resolved) continue;
+      const applied = finishNumberSlot(resolved, base, `${path}/style/${key}`, repairs);
+      if (!applied) {
+        delete editStyle()[key];
+        continue;
+      }
+      const draftStyle = editStyle();
+      if (key !== target) delete draftStyle[key];
+      draftStyle[target] = numberTokenPropValue(target, applied.value);
+      const prevBindings = isPlainObject(draftStyle.tokenBindings)
+        ? (draftStyle.tokenBindings as Record<string, string>)
+        : {};
+      draftStyle.tokenBindings = { ...prevBindings, [target]: applied.token.id };
+    }
+    if (nextStyle) edit().style = nextStyle;
+  }
+
+  return out;
 }
 
 /**
@@ -641,25 +693,27 @@ export function applyTokenShorthandsToElement(
   tokens: unknown,
   modes: ShorthandModes,
   path: string,
-  repairs: NormalizationRepair[]
+  repairs: NormalizationRepair[],
+  vars?: Variables
 ): Record<string, unknown> {
   const table = buildTokenRefTable(tokens);
   if (table.empty) return el;
   const docTheme = themeOf(modes);
   const docNumberMode = numberModeOf(modes);
-  return applyToElement(el, { table, theme: docTheme, numberMode: docNumberMode }, path, repairs);
+  return applyToElement(el, { table, theme: docTheme, numberMode: docNumberMode, vars }, path, repairs);
 }
 
 /**
- * Rewrite every `$token` reference in a raw document.
+ * Rewrite every `$token` and `var(--name)` token reference in a raw document.
  *
- * Returns the document it was given when nothing referred to a token, so a
+ * Returns the document it was given when `doc.tokens` is empty, so a
  * document that does not use the feature pays one array scan per token table and
  * nothing else — no copies, no repairs, byte-identical output.
  */
 export function applyTokenShorthandsToDocument(
   source: Record<string, unknown>,
-  repairs: NormalizationRepair[]
+  repairs: NormalizationRepair[],
+  vars?: Variables
 ): Record<string, unknown> {
   const table = buildTokenRefTable(source.tokens);
   if (table.empty) return source;
@@ -669,10 +723,21 @@ export function applyTokenShorthandsToDocument(
     activeNumberMode: source.activeNumberMode,
     numberModes: source.numberModes
   });
-  const base: Context = { table, theme: docTheme, numberMode: docNumberMode };
+  const base: TokenSlotContext = { table, theme: docTheme, numberMode: docNumberMode, vars };
 
   let out = source;
   const edit = () => (out === source ? (out = { ...source }) : out);
+
+  if (Array.isArray(source.styles)) {
+    let changed = false;
+    const styles = source.styles.map((style, index) => {
+      if (!isPlainObject(style)) return style;
+      const next = applyToStyleEntry(style, base, `/styles/${index}`, repairs);
+      if (next !== style) changed = true;
+      return next;
+    });
+    if (changed) edit().styles = styles;
+  }
 
   if (Array.isArray(source.elements)) {
     let changed = false;

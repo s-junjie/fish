@@ -1,4 +1,4 @@
-import { cornerRadiiOf } from "../../core/geometry/shape-path";
+import { cornerRadiiXYOf } from "../../core/geometry/shape-path";
 import { ResolvedStrokeWeights, StrokeDashAttrs } from "../../core/geometry/stroke-utils";
 
 /** The box a per-side stroke is drawn around, and the shape of its corners. */
@@ -11,6 +11,8 @@ export interface SideStrokeBox {
    * still the common case.
    */
   radii?: [number, number, number, number];
+  /** Vertical corner radii when elliptical (`rx / ry`), in TL / TR / BR / BL order. */
+  radiiY?: [number, number, number, number];
 }
 
 type Align = "inside" | "center" | "outside";
@@ -59,7 +61,7 @@ export function renderNonUniformStroke(
 
   const w = box.width;
   const h = box.height;
-  const [tl, tr, br, bl] = cornerRadiiOf(box.radii, w, h);
+  const [[tlX, trX, brX, blX], [tlY, trY, brY, blY]] = cornerRadiiXYOf(box.radii, box.radiiY, w, h);
 
   // How far the CENTRE of the band sits from the edge: in for inside, out for
   // outside, on it for centre. The whole band moves by this — line and arc
@@ -71,13 +73,13 @@ export function renderNonUniformStroke(
   const offBottom = offset(bottom);
   const offLeft = offset(left);
 
-  /** Does the corner at `r` between two stroked sides carry an arc? */
-  const arcs = (r: number, a: number, b: number): boolean => r > 0 && a > 0 && b > 0;
+  /** Does the corner at `(rx, ry)` between two stroked sides carry an arc? */
+  const arcs = (rx: number, ry: number, a: number, b: number): boolean => rx > 0 && ry > 0 && a > 0 && b > 0;
 
-  const tlArc = arcs(tl, top, left);
-  const trArc = arcs(tr, top, right);
-  const brArc = arcs(br, bottom, right);
-  const blArc = arcs(bl, bottom, left);
+  const tlArc = arcs(tlX, tlY, top, left);
+  const trArc = arcs(trX, trY, top, right);
+  const brArc = arcs(brX, brY, bottom, right);
+  const blArc = arcs(blX, blY, bottom, left);
 
   const pieces: any[] = [];
 
@@ -100,12 +102,21 @@ export function renderNonUniformStroke(
   };
 
   /** One corner arc, on the shape's own centre, at the align offset radius. */
-  const arc = (k: string, cx: number, cy: number, r: number, sweep: 0 | 1, from: [number, number], to: [number, number], weight: number) => {
-    const rr = Math.max(0, r);
+  const arc = (
+    k: string,
+    rx: number,
+    ry: number,
+    sweep: 0 | 1,
+    from: [number, number],
+    to: [number, number],
+    weight: number
+  ) => {
+    const arx = Math.max(0, rx);
+    const ary = Math.max(0, ry);
     pieces.push(
       <path
         key={k}
-        d={`M ${round2(from[0])} ${round2(from[1])} A ${round2(rr)} ${round2(rr)} 0 0 ${sweep} ${round2(to[0])} ${round2(to[1])}`}
+        d={`M ${round2(from[0])} ${round2(from[1])} A ${round2(arx)} ${round2(ary)} 0 0 ${sweep} ${round2(to[0])} ${round2(to[1])}`}
         fill="none"
         stroke={strokeColor}
         strokeWidth={weight}
@@ -114,10 +125,10 @@ export function renderNonUniformStroke(
     );
   };
 
-  if (top > 0) line("t", tlArc ? tl : 0, offTop, trArc ? w - tr : w, offTop, top);
-  if (bottom > 0) line("b", blArc ? bl : 0, h - offBottom, brArc ? w - br : w, h - offBottom, bottom);
-  if (left > 0) line("l", offLeft, tlArc ? tl : 0, offLeft, blArc ? h - bl : h, left);
-  if (right > 0) line("r", w - offRight, trArc ? tr : 0, w - offRight, brArc ? h - br : h, right);
+  if (top > 0) line("t", tlArc ? tlX : 0, offTop, trArc ? w - trX : w, offTop, top);
+  if (bottom > 0) line("b", blArc ? blX : 0, h - offBottom, brArc ? w - brX : w, h - offBottom, bottom);
+  if (left > 0) line("l", offLeft, tlArc ? tlY : 0, offLeft, blArc ? h - blY : h, left);
+  if (right > 0) line("r", w - offRight, trArc ? trY : 0, w - offRight, brArc ? h - brY : h, right);
 
   // The corner band is the wider of its two sides, so its radius AND both
   // endpoints ride that side's offset. An endpoint left on the narrower side's
@@ -130,10 +141,10 @@ export function renderNonUniformStroke(
   const offBR = offset(Math.max(bottom, right));
   const offBL = offset(Math.max(bottom, left));
 
-  if (tlArc) arc("c_tl", tl, tl, tl - offTL, 0, [tl, offTL], [offTL, tl], Math.max(top, left));
-  if (trArc) arc("c_tr", w - tr, tr, tr - offTR, 1, [w - tr, offTR], [w - offTR, tr], Math.max(top, right));
-  if (brArc) arc("c_br", w - br, h - br, br - offBR, 1, [w - offBR, h - br], [w - br, h - offBR], Math.max(bottom, right));
-  if (blArc) arc("c_bl", bl, h - bl, bl - offBL, 0, [offBL, h - bl], [bl, h - offBL], Math.max(bottom, left));
+  if (tlArc) arc("c_tl", tlX - offTL, tlY - offTL, 0, [tlX, offTL], [offTL, tlY], Math.max(top, left));
+  if (trArc) arc("c_tr", trX - offTR, trY - offTR, 1, [w - trX, offTR], [w - offTR, trY], Math.max(top, right));
+  if (brArc) arc("c_br", brX - offBR, brY - offBR, 1, [w - offBR, h - brY], [w - brX, h - offBR], Math.max(bottom, right));
+  if (blArc) arc("c_bl", blX - offBL, blY - offBL, 0, [offBL, h - blY], [blX, h - offBL], Math.max(bottom, left));
 
   if (pieces.length === 0) return null;
 

@@ -1,13 +1,18 @@
 import { AutoLayoutFields, DesignElement, ContainerElement } from "../dsl/types";
 import { layoutOf, isInFlow } from "../dsl/layout-flat";
 import { isContainer } from "../geometry/tree-ops";
-import { ChildSizeResolver, hugsAxis, resolvePadding } from "./box";
+import { ChildSizeResolver, clampAxis, clampFixedBox, hugsAxis, resolveContentInsets } from "./box";
 import { fitComponentSet } from "./component-set";
 import { resolveChildSize } from "./context";
 import { syncTextSizing } from "./text-sizing";
 import { syncInstanceSizing } from "./instance-sizing";
 import { applyFlexLayout } from "./flex-layout";
 import { applyGridLayout, gridCellWidth, gridColumnCount } from "./grid-layout";
+import {
+  syncChildrenBorderRadius,
+  syncContainerDynamicChildren,
+  syncElementBorderRadius
+} from "./dynamic-sizing";
 
 /**
  * Both tree passes return the INPUT array when nothing below them moved, which
@@ -18,15 +23,19 @@ import { applyGridLayout, gridCellWidth, gridColumnCount } from "./grid-layout";
  */
 function measureTreeBottomUp(
   elements: DesignElement[],
-  resolveChild?: ChildSizeResolver
+  resolveChild?: ChildSizeResolver,
+  parentHasLayout = false
 ): DesignElement[] {
   let changed = false;
   const next = elements.map((item) => {
-    if (isContainer(item) && item.children) {
-      const nextChildren = measureTreeBottomUp(item.children, resolveChild);
-      let updated: ContainerElement = nextChildren === item.children ? item : { ...item, children: nextChildren };
-      if (layoutOf(updated as AutoLayoutFields)) {
-        updated = applyAutoLayout(updated, resolveChild);
+    let current = syncElementBorderRadius(clampFixedBox(item, parentHasLayout));
+    if (isContainer(current) && current.children) {
+      const ownLayout = Boolean(layoutOf(current as AutoLayoutFields));
+      const synced = syncContainerDynamicChildren(current, ownLayout);
+      const nextChildren = measureTreeBottomUp(synced.children, resolveChild, ownLayout);
+      let updated: ContainerElement = nextChildren === synced.children ? synced : { ...synced, children: nextChildren };
+      if (ownLayout) {
+        updated = syncElementBorderRadius(applyAutoLayout(updated, resolveChild)) as ContainerElement;
       } else if (updated.type === "componentSet") {
         // Free-form sets fit around their variants on the bottom-up pass so
         // their box sees already-measured variant sizes without lagging a pass.
@@ -35,27 +44,33 @@ function measureTreeBottomUp(
       if (updated !== item) changed = true;
       return updated;
     }
-    return item;
+    if (current !== item) changed = true;
+    return current;
   });
   return changed ? next : elements;
 }
 
 function positionTreeTopDown(
   elements: DesignElement[],
-  resolveChild?: ChildSizeResolver
+  resolveChild?: ChildSizeResolver,
+  parentHasLayout = false
 ): DesignElement[] {
   let changed = false;
   const next = elements.map((item) => {
-    if (isContainer(item) && item.children) {
-      const current = layoutOf(item as AutoLayoutFields) ? applyAutoLayout(item, resolveChild) : item;
-      const nextChildren = positionTreeTopDown(current.children, resolveChild);
-      const updated = current === item && nextChildren === current.children
-        ? item
+    const bounded = syncElementBorderRadius(clampFixedBox(item, parentHasLayout));
+    if (isContainer(bounded) && bounded.children) {
+      const ownLayout = Boolean(layoutOf(bounded as AutoLayoutFields));
+      const synced = syncContainerDynamicChildren(bounded, ownLayout);
+      const current = ownLayout ? applyAutoLayout(synced, resolveChild) : synced;
+      const nextChildren = positionTreeTopDown(current.children, resolveChild, ownLayout);
+      const updated = current === bounded && nextChildren === current.children
+        ? bounded
         : { ...current, children: nextChildren };
       if (updated !== item) changed = true;
       return updated;
     }
-    return item;
+    if (bounded !== item) changed = true;
+    return bounded;
   });
   return changed ? next : elements;
 }
@@ -114,9 +129,9 @@ export function isLaidOut(elements: DesignElement[]): boolean {
 
 
 function hugEmptyContainer<T extends ContainerElement>(frameEl: T): T {
-  const [pt, pr, pb, pl] = resolvePadding(layoutOf(frameEl as AutoLayoutFields)!.padding);
-  const width = hugsAxis(frameEl, "width") ? pl + pr : frameEl.width;
-  const height = hugsAxis(frameEl, "height") ? pt + pb : frameEl.height;
+  const [pt, pr, pb, pl] = resolveContentInsets(frameEl, layoutOf(frameEl as AutoLayoutFields)!.padding);
+  const width = clampAxis(frameEl, "width", hugsAxis(frameEl, "width") ? pl + pr : frameEl.width);
+  const height = clampAxis(frameEl, "height", hugsAxis(frameEl, "height") ? pt + pb : frameEl.height);
   const children = frameEl.children ?? [];
   if (width === frameEl.width && height === frameEl.height && children === frameEl.children) {
     return frameEl;
@@ -155,24 +170,27 @@ export function applyAutoLayout<T extends ContainerElement>(
    */
   resolveChild?: ChildSizeResolver
 ): T {
-  const children = frameEl.children || [];
-  if (!layoutOf(frameEl as AutoLayoutFields)) return frameEl;
-  if (children.length === 0) return hugEmptyContainer(frameEl);
+  const prepared = syncContainerDynamicChildren(frameEl, true);
+  const children = prepared.children || [];
+  if (!layoutOf(prepared as AutoLayoutFields)) return prepared;
+  if (children.length === 0) return hugEmptyContainer(prepared);
 
   // Resolved once, at the boundary, and handed to both layout algorithms: a
   // frame whose children were measured by two different rules would place them
   // against numbers that disagree about the same child.
   const childSize = resolveChildSize(resolveChild);
 
-  const candidates = frameEl.type === "componentSet" && frameEl.collapsed ? children.slice(0, 1) : children;
+  const candidates = prepared.type === "componentSet" && prepared.collapsed ? children.slice(0, 1) : children;
   const flow = inFlowChildren(candidates);
   // Nothing left to arrange — every child opted out or is hidden: hug onto the
   // own padding and leave the children exactly where they are.
-  if (flow.length === 0) return hugEmptyContainer(frameEl);
+  if (flow.length === 0) return hugEmptyContainer(prepared);
 
-  const laidOut = layoutOf(frameEl as AutoLayoutFields)!.mode === "grid"
-    ? applyGridLayout(frameEl as any, flow, childSize)
-    : applyFlexLayout(frameEl as any, flow, childSize);
+  const laidOut = syncChildrenBorderRadius(
+    layoutOf(prepared as AutoLayoutFields)!.mode === "grid"
+      ? applyGridLayout(prepared as any, flow, childSize)
+      : applyFlexLayout(prepared as any, flow, childSize)
+  ) as T;
 
   // Re-interleave rather than concatenate. `children` order is the paint order
   // and is also what the user arranged, so the placed children have to go back
@@ -184,7 +202,7 @@ export function applyAutoLayout<T extends ContainerElement>(
   // while every child happened to stay put — the classic case being a child
   // removed from a hugging frame.
   if (
-    next.every((c, i) => c === children[i]) &&
+    next.every((c, i) => c === (frameEl.children || [])[i]) &&
     laidOut.width === frameEl.width &&
     laidOut.height === frameEl.height
   ) {
@@ -247,7 +265,7 @@ export function sortChildrenByLayoutOrder(frame: ContainerElement): DesignElemen
 function sortFlowChildren(frame: ContainerElement, children: DesignElement[]): DesignElement[] {
   const layout = layoutOf(frame as AutoLayoutFields)!;
   if (layout.mode === "grid" && layout.masonry === true) {
-    const [, pr, , pl] = resolvePadding(layout.padding);
+    const [, pr, , pl] = resolveContentInsets(frame, layout.padding);
     const contentW = Math.max(0, frame.width - pl - pr);
     const colGap = layout.columnGap ?? layout.gap ?? 0;
     const columns = gridColumnCount(layout, contentW);

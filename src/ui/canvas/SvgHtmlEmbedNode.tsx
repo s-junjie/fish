@@ -1,5 +1,5 @@
 import { HtmlEmbedElement } from "../../core/dsl/types";
-import { cornerRadiiOf } from "../../core/geometry/shape-path";
+import { formatCssCornerRadius } from "../../core/geometry/shape-path";
 import { htmlNameFromUrl } from "../../core/interactions/html-embed-loader";
 import { injectSnapshotHelper } from "../../core/interactions/html-embed-snapshot";
 import { t } from "../../i18n";
@@ -48,8 +48,7 @@ export function SvgHtmlEmbedNode({
   ctx,
   onDoubleClick
 }: SvgHtmlEmbedNodeProps) {
-  const [tl, tr, br, bl] = cornerRadiiOf(el.borderRadius, el.width, el.height);
-  const radiusStyle = `${tl}px ${tr}px ${br}px ${bl}px`;
+  const radiusStyle = formatCssCornerRadius(el.borderRadius, el.sizing?.borderRadiusY, el.width, el.height);
 
   /**
    * Two states, and selecting is the trigger.
@@ -148,12 +147,8 @@ export function SvgHtmlEmbedNode({
         </>
       ) : (
         <>
-          <rect
-            x={0}
-            y={0}
-            width={el.width}
-            height={el.height}
-            rx={tl}
+          <path
+            d={shapeLocalD}
             fill={CANVAS_BADGE_SURFACE}
             stroke={CANVAS_BADGE_RIDGE}
             strokeWidth={1}

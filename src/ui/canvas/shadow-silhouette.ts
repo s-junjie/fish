@@ -1,6 +1,6 @@
 import { DesignElement, Paint, RectElement } from "../../core/dsl/types";
 import { clipsContent, type OverflowFields } from "../../core/dsl/overflow";
-import { cornerRadiiOf, ellipseToPathData, rectToPathData } from "../../core/geometry/shape-path";
+import { cornerRadiiXYOf, ellipseToPathData, rectToPathData } from "../../core/geometry/shape-path";
 import { parseFloodColor } from "../../core/geometry/color-utils";
 
 /**
@@ -132,12 +132,34 @@ function inflatedOutline(el: DesignElement, shift: number): string | null {
     const width = box.width + shift * 2;
     const height = box.height + shift * 2;
     if (!(width > 0) || !(height > 0)) return "";
-    const [tl, tr, br, bl] = cornerRadiiOf(box.borderRadius, box.width, box.height);
+    const [[tlX, trX, brX, blX], [tlY, trY, brY, blY]] = cornerRadiiXYOf(
+      box.borderRadius,
+      box.sizing?.borderRadiusY,
+      box.width,
+      box.height
+    );
     return rectToPathData({
       ...box,
       width,
       height,
-      borderRadius: [tl + shift, tr + shift, br + shift, bl + shift]
+      borderRadius: [
+        Math.max(0, tlX + shift),
+        Math.max(0, trX + shift),
+        Math.max(0, brX + shift),
+        Math.max(0, blX + shift)
+      ],
+      sizing:
+        box.sizing?.borderRadiusY !== undefined
+          ? {
+              ...box.sizing,
+              borderRadiusY: [
+                Math.max(0, tlY + shift),
+                Math.max(0, trY + shift),
+                Math.max(0, brY + shift),
+                Math.max(0, blY + shift)
+              ]
+            }
+          : box.sizing
     });
   }
   if (el.type !== "ellipse") return null;

@@ -3,20 +3,19 @@ import { getActivePage } from "../dsl/document-ops";
 import { Rect } from "../geometry/bounds";
 import { contentBounds, elementRotatedAABB } from "../geometry/element-bounds";
 import { readingOrder } from "../geometry/reading-order";
-import { findElementById, isContainer } from "../geometry/tree-ops";
+import { findElementById } from "../geometry/tree-ops";
+import { isSlideHostType } from "../dsl/slide";
 import { resolveInstanceSelection } from "../interactions/instance-resolve";
 
 /**
- * What makes a top-level element a slide.
- *
- * `html` is one because a framed page fills a screen by itself: without this it
- * would not be a slide, and a slide paints only its own root — so an embed
- * sitting beside artboards was not merely un-playable in presentation, it was
- * not painted at all.
+ * What makes a top-level element a slide. An `html` embed and a component
+ * instance fill a screen by themselves, so both belong beside the containers:
+ * a slide paints only its own root, and one that is not a candidate was not
+ * merely un-playable in presentation — it was not painted at all.
  */
 function isSlideCandidate(el: DesignElement): boolean {
   return (
-    (isContainer(el) || el.type === "html") &&
+    isSlideHostType(el.type) &&
     el.visible !== false &&
     (el.width ?? 0) > 0 &&
     (el.height ?? 0) > 0
@@ -35,10 +34,10 @@ export interface PresentationFrame {
 export const PAGE_FRAME_ID = "__page__";
 
 /**
- * The slides of a document: one per top-level container (frame or component) or
- * `html` embed on the active page, in READING ORDER — rows top to bottom, and
- * within a row left to right, the way the canvas is laid out and the way a
- * presenter means them.
+ * The slides of a document: one per top-level slide host (container, `html`
+ * embed or component instance) on the active page, in READING ORDER — rows top
+ * to bottom, and within a row left to right, the way the canvas is laid out and
+ * the way a presenter means them.
  *
  * Not the array order and not the layer panel's. `elements[]` is paint order and
  * the panel is that reversed, so both are a function of when things were added

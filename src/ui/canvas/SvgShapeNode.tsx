@@ -2,7 +2,7 @@ import { JSX } from "preact";
 import { DesignElement, Paint } from "../../core/dsl/types";
 import { isGradientPaint } from "../../core/geometry/gradient-utils";
 import { isNeutralColorFilter } from "../../core/dsl/color-filter";
-import { cornerRadiiOf } from "../../core/geometry/shape-path";
+import { cornerRadiiXYOf } from "../../core/geometry/shape-path";
 import { resolveStrokeWeights, strokeDashAttrs } from "../../core/geometry/stroke-utils";
 import { hexToRgb, parseBlendFlood, parseColorAlpha, rgbToHex } from "../../core/geometry/color-utils";
 import { renderNonUniformStroke } from "./non-uniform-stroke";
@@ -202,9 +202,20 @@ export function renderStrokes(
 
     const weights = isRectangular ? resolveStrokeWeights(s) : null;
     if (weights && !weights.isUniform) {
+      const [radii, radiiY] = cornerRadiiXYOf(
+        (el as any).borderRadius,
+        (el.sizing as any)?.borderRadiusY,
+        el.width,
+        el.height
+      );
       return renderNonUniformStroke(
         weights,
-        { width: el.width, height: el.height, radii: cornerRadiiOf((el as any).borderRadius, el.width, el.height) },
+        {
+          width: el.width,
+          height: el.height,
+          radii,
+          ...(radiiY ? { radiiY } : {})
+        },
         strokeColorAttr,
         strokeAlign as any,
         strokeCapJoin,

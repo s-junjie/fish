@@ -296,6 +296,56 @@ describe("hand-written schema copies stay in step", () => {
         `${key} has a CSS name or must be exempt in css-spelling.ts`
       ).toBe(true);
     }
+    expect(INPUT_ONLY_KEYS.has("grid-area")).toBe(true);
+  });
+
+  it("allows every CSS-spelled written value in DesignElement.properties", () => {
+    const resolveRef = (branch: any): any =>
+      typeof branch?.$ref === "string"
+        ? branch.$ref
+            .replace(/^#\//, "")
+            .split("/")
+            .reduce((acc: any, seg: string) => acc?.[seg], schema)
+        : branch;
+
+    const matchesSchema = (val: unknown, node: any): boolean => {
+      const s = resolveRef(node);
+      if (!s) return false;
+      if (Array.isArray(s.oneOf)) return s.oneOf.filter((b: any) => matchesSchema(val, b)).length === 1;
+      if (Array.isArray(s.anyOf)) return s.anyOf.some((b: any) => matchesSchema(val, b));
+      if (Array.isArray(s.enum)) return s.enum.includes(val);
+      if (s.type === "number") return typeof val === "number";
+      if (s.type === "string") {
+        if (typeof val !== "string") return false;
+        return typeof s.pattern === "string" ? new RegExp(s.pattern).test(val) : true;
+      }
+      if (s.type === "array") return Array.isArray(val);
+      return false;
+    };
+
+    const props = schema.definitions.DesignElement.properties as Record<string, any>;
+    const samples: Record<string, unknown[]> = {
+      x: [0, "0", "12.5px", "-4px"],
+      y: [0, "0", "12.5px", "-4px"],
+      width: [100, "0", "100px", "fixed", "fit-content", "max-content", "fill"],
+      height: [100, "0", "100px", "fixed", "fit-content", "fill"],
+      perspective: [800, "0", "900px"],
+      gap: [12, "0", "12px", "8px 16px"],
+      "row-gap": [8, "0", "8px"],
+      "column-gap": [8, "0", "8px"],
+      padding: [12, "0", "8px 16px"],
+      margin: [8, "0", "-4px 8px"],
+      "border-radius": [8, "0", "8px 16px"],
+      "font-size": [16, "16px"],
+      "letter-spacing": [0, "0", "-0.5px", "0.05em"],
+      "text-decoration": ["underline", "underline line-through", ["underline"]]
+    };
+
+    for (const [key, values] of Object.entries(samples)) {
+      for (const value of values) {
+        expect(matchesSchema(value, props[key]), `${key} should validate ${JSON.stringify(value)}`).toBe(true);
+      }
+    }
   });
 
   // The element-level `fit` enum sat at three values while `FIT_ALIASES`

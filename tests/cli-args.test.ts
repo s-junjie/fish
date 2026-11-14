@@ -200,7 +200,7 @@ describe("the built kit answers the same way", () => {
       ["tokens", "DesignDocument"],
       ["transition", "SlideSpec"],
       ["category", "DesignToken"],
-      ["columnSpan", "DesignElement.grid-area"],
+      ["preserveAspectRatio", "DesignElement.constraints"],
       ["presentBackground", "DesignDocument.canvas"],
       ["paint", "Stroke"]
     ] as const) {
@@ -223,6 +223,12 @@ describe("the built kit answers the same way", () => {
     const focalReport = JSON.parse(focal.out);
     expect(focalReport.absorbed).toBe(true);
     expect(focalReport.matches.map((m: { definition: string }) => m.definition)).toContain("Paint");
+
+    const gridArea = runCli(["schema", "grid-area", "--json"]);
+    expect(gridArea.code).toBe(0);
+    const gridAreaReport = JSON.parse(gridArea.out);
+    expect(gridAreaReport.absorbed).toBe(true);
+    expect(gridAreaReport.published).toBeNull();
 
     const fontSize = runCli(["schema", "fontSize", "--json"]);
     expect(fontSize.code).toBe(0);

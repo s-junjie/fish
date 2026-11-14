@@ -1,6 +1,8 @@
-import { AutoLayout, DesignElement, FrameElement } from "../dsl/types";
+import { AutoLayout, AutoLayoutFields, DesignElement, FrameElement } from "../dsl/types";
+import { isInFlow, layoutOf } from "../dsl/layout-flat";
 import { SizingAxis, resolveAxis } from "../geometry/resolve-axis";
 import { envelopeOf, isLineElement, turnMixOf, type Envelope } from "../geometry/element-bounds";
+import { resolveStrokeWeights } from "../geometry/stroke-utils";
 
 /** Below this a child's own size no longer moves the extent it covers at all, so
  * a share cannot be turned into a size and it keeps the one it was measured at. */
@@ -42,6 +44,37 @@ export function resolvePadding(padding: AutoLayout["padding"]): [number, number,
   if (typeof padding === "number") return [padding, padding, padding, padding];
   if (Array.isArray(padding) && padding.length === 4) return padding as [number, number, number, number];
   return [0, 0, 0, 0];
+}
+
+/** Widths on `[top, right, bottom, left]` occupied inside the border-box by enabled `inside` strokes. */
+export function resolveInsideBorder(
+  el: Pick<DesignElement, "strokes"> | null | undefined
+): [number, number, number, number] {
+  const strokes = el?.strokes;
+  if (!strokes || strokes.length === 0) return [0, 0, 0, 0];
+  let top = 0;
+  let right = 0;
+  let bottom = 0;
+  let left = 0;
+  for (const s of strokes) {
+    if (s.enabled === false || s.align !== "inside") continue;
+    const w = resolveStrokeWeights(s);
+    if (w.top > top) top = w.top;
+    if (w.right > right) right = w.right;
+    if (w.bottom > bottom) bottom = w.bottom;
+    if (w.left > left) left = w.left;
+  }
+  return [top, right, bottom, left];
+}
+
+/** Total `[top, right, bottom, left]` inset between a container's border-box and content-box (`padding + inside border`). */
+export function resolveContentInsets(
+  el: Pick<DesignElement, "strokes"> | null | undefined,
+  padding: AutoLayout["padding"]
+): [number, number, number, number] {
+  const [pt, pr, pb, pl] = resolvePadding(padding);
+  const [bt, br, bb, bl] = resolveInsideBorder(el);
+  return [round2(pt + bt), round2(pr + br), round2(pb + bb), round2(pl + bl)];
 }
 
 export interface ResolvedMargin {
@@ -92,17 +125,8 @@ export function isFillAxis(child: DesignElement, parent: FrameElement, axis: Siz
 }
 
 /**
- * A size the layout decided, held inside the element's declared bounds.
- *
- * What goes through here is every size a layout pass WRITES: a `fill` child in a
- * frame being dragged wider, a grid child stretched to a cell, a container that
- * hugs. That is the only place a bound has anything to say, and it is exactly
- * the place an import needs it — a `max-width: 290px` block has to stop at 290
- * when the frame around it grows.
- *
- * An element no pass ever runs on keeps the size it was authored with, which is
- * the same case where `fill` is meaningless and is downgraded for the same
- * reason: with nothing deriving a size there is nothing for a bound to bound.
+ * Hold any box dimension (derived `fill`/`fit-content`, stretched cell, or
+ * fixed/free box) inside the element's declared `min*` / `max*` bounds.
  *
  * The order is CSS 2.1 §10.4's: `max-width` is applied first and `min-width`
  * second, so a pair that contradicts itself — 300 and 40 — settles on 300 in a
@@ -119,6 +143,42 @@ export function clampAxis(el: DesignElement, axis: SizingAxis, value: number): n
   if (typeof max === "number" && Number.isFinite(max)) out = Math.min(max, out);
   if (typeof min === "number" && Number.isFinite(min)) out = Math.max(min, out);
   return out;
+}
+
+/**
+ * Clamp fixed, free-canvas, root, or out-of-flow axes on `el` that no active
+ * auto-layout pass derives (`fit-content`, `max-content`, `fill`, or omitted
+ * in-flow under a layout parent). Keeps line/arrow `dx`/`dy` magnitudes synced.
+ */
+export function clampFixedBox<T extends DesignElement>(el: T, parentHasLayout: boolean): T {
+  const sizing = el.sizing;
+  if (!sizing) return el;
+  if (
+    sizing.minWidth === undefined &&
+    sizing.maxWidth === undefined &&
+    sizing.minHeight === undefined &&
+    sizing.maxHeight === undefined
+  ) {
+    return el;
+  }
+  const hasOwnLayout = Boolean(layoutOf(el as AutoLayoutFields));
+  const inFlowUnderParent = parentHasLayout && isInFlow(el);
+  const clampIfFixed = (axis: SizingAxis, current: number): number => {
+    const mode = sizing[axis];
+    if (hasOwnLayout && (mode === "fit-content" || mode === "max-content")) return current;
+    if (inFlowUnderParent && mode !== "fixed") return current;
+    if (mode === "fill" && parentHasLayout) return current;
+    return round2(clampAxis(el, axis, current));
+  };
+  const nextW = clampIfFixed("width", el.width);
+  const nextH = clampIfFixed("height", el.height);
+  if (nextW === el.width && nextH === el.height) return el;
+  if (isLineElement(el)) {
+    const sx = el.dx >= 0 ? 1 : -1;
+    const sy = el.dy >= 0 ? 1 : -1;
+    return { ...el, width: nextW, height: nextH, dx: sx * nextW, dy: sy * nextH };
+  }
+  return { ...el, width: nextW, height: nextH };
 }
 
 /**

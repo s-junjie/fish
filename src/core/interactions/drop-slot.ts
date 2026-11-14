@@ -1,5 +1,5 @@
 import { ContainerElement, DesignElement } from "../dsl/types";
-import { resolvePadding } from "../layout/box";
+import { resolveContentInsets } from "../layout/box";
 import { layoutOf } from "../dsl/layout-flat";
 
 export interface DropSlot {
@@ -34,7 +34,7 @@ export function computeDropSlot(
   // user is looking. `index` stays a position among the siblings that stay, so a
   // hidden one still holds its slot in the array.
   const placeable = siblings.filter((c) => c.visible !== false);
-  const [pt, pr, pb, pl] = resolvePadding(layout.padding);
+  const [pt, pr, pb, pl] = resolveContentInsets(parent, layout.padding);
   const originX = parentOrigin?.x ?? parent.x;
   const originY = parentOrigin?.y ?? parent.y;
   const contentX = originX + pl;
@@ -125,7 +125,7 @@ export function computeAppendSlot(
   const layout = layoutOf(parent);
   if (!layout) return null;
   const siblings = (parent.children ?? []).filter((c) => !draggedIds.has(c.id));
-  const [pt, pr, pb, pl] = resolvePadding(layout.padding);
+  const [pt, pr, pb, pl] = resolveContentInsets(parent, layout.padding);
   const originX = parentOrigin?.x ?? parent.x;
   const originY = parentOrigin?.y ?? parent.y;
   return {

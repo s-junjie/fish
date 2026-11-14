@@ -1,10 +1,10 @@
 import { OVERRIDABLE_PROPERTIES } from "../../constants";
 import { asBoolean, asNumber, isPlainObject, normalizeOverflow, normalizeScrollOffset } from "../shared";
 import { normalizeFillStack } from "../paint";
-import { cornerRadiusInput, normalizeCornerRadius, normalizeStrokes } from "../stroke";
+import { applyNormalizedBorderRadius, normalizeStrokes } from "../stroke";
 import type { ElementBranch } from "./shared";
 
-export const normalizeInstance: ElementBranch = ({ el, base, path, repairs, box }) => {
+export const normalizeInstance: ElementBranch = ({ el, base, sizing, path, repairs, box }) => {
   base.componentId = typeof el.componentId === "string" ? el.componentId : "";
   if (Array.isArray(el.overrides)) {
     // The shared list, not a copy: this filter is the only thing standing
@@ -54,8 +54,7 @@ export const normalizeInstance: ElementBranch = ({ el, base, path, repairs, box 
   // empty array (harmless on a frame, which inherits nothing), so an instance
   // that came back from a reload would silently re-gain the master's shadow.
   if (Array.isArray(el.effects) && base.effects === undefined) base.effects = [];
-  const instRadius = normalizeCornerRadius(cornerRadiusInput(el), path, repairs, box);
-  if (instRadius !== undefined) base.borderRadius = instRadius;
+  applyNormalizedBorderRadius(el, base, sizing, path, repairs, box);
   // Nothing at all when the master's is inherited — an instance stores only what
   // it OWNS, so an `overflow` here always means the instance overrides it.
   Object.assign(base, normalizeOverflow(el, path, repairs));

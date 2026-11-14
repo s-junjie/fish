@@ -1,6 +1,13 @@
-import type { CornerRadius, Stroke, StrokeSide, StrokeSideWeights } from "../types";
+import type { CornerRadius, ElementSizing, Stroke, StrokeSide, StrokeSideWeights } from "../types";
 import { DEFAULT_DASH } from "../constants";
 import { topLayer } from "../paint-stack";
+import {
+  collapseCorners,
+  cornerRadiusEqual,
+  parseDynamicLength,
+  resolveDynamicBorderRadius,
+  type ResolvedBorderRadiusSpec
+} from "../length-expr";
 import { asNumber, canonicalKey, isPlainObject, lengthUnit, pxLength, NormalizationRepair } from "./shared";
 import { normalizePaint } from "./paint";
 
@@ -12,17 +19,38 @@ const BORDER_STYLES: readonly string[] = [
   "none", "hidden", "dotted", "dashed", "solid", "double", "groove", "ridge", "inset", "outset"
 ];
 
-/** The keywords a dash pattern cannot express, reported instead of flattened. */
+/** The keywords no stroke style can express, reported instead of silently flattened. */
 const DECORATIVE_BORDER_STYLES: readonly string[] = [
-  "dotted", "double", "groove", "ridge", "inset", "outset"
+  "double", "groove", "ridge", "inset", "outset"
 ];
 
 /** The element-level spellings that mean CSS's `border`, in either case. */
 const BORDER_SPELLINGS: ReadonlySet<string> = new Set([
   "border", "border-color", "border-width", "border-style",
   "border-top", "border-right", "border-bottom", "border-left",
-  "border-top-width", "border-right-width", "border-bottom-width", "border-left-width"
+  "border-top-width", "border-right-width", "border-bottom-width", "border-left-width",
+  "border-top-color", "border-right-color", "border-bottom-color", "border-left-color",
+  "border-top-style", "border-right-style", "border-bottom-style", "border-left-style"
 ]);
+
+const SIDE_NAMES = ["top", "right", "bottom", "left"] as const;
+type SideName = (typeof SIDE_NAMES)[number];
+const sideCap = (side: SideName): string => side[0].toUpperCase() + side.slice(1);
+const nonEmptyString = (value: unknown): string | undefined =>
+  typeof value === "string" && value.trim() ? value : undefined;
+
+function normalizeStrokeStyle(
+  styleRaw: string | undefined,
+  onDecorative?: (styleName: string) => void
+): { style: NonNullable<Stroke["style"]>; none: boolean } {
+  const styleName = styleRaw?.trim().toLowerCase();
+  if (!styleName || styleName === "solid") return { style: "solid", none: false };
+  if (styleName === "none" || styleName === "hidden") return { style: "solid", none: true };
+  if (styleName === "dotted") return { style: "dotted", none: false };
+  if (styleName === "dashed") return { style: "dashed", none: false };
+  if (DECORATIVE_BORDER_STYLES.includes(styleName)) onDecorative?.(styleName);
+  return { style: "dashed", none: false };
+}
 
 /**
  * Whether a stroke sits inside a closed box. `line` / `arrow` are open segments
@@ -231,6 +259,183 @@ const firstUnit = (value: unknown, depth = 0): string | undefined => {
   return undefined;
 };
 
+interface CornerExprToken {
+  expr: string;
+  hasPercent: boolean;
+  constantPx?: number;
+}
+
+function parseSingleCornerValue(value: unknown, reportAsEmpty = false): CornerExprToken | undefined {
+  if (value === undefined && reportAsEmpty) return { expr: "0", hasPercent: false, constantPx: 0 };
+  if (typeof value === "number") {
+    if (!Number.isFinite(value) || value < 0) return undefined;
+    const v = Math.round(value * 100) / 100;
+    return { expr: v === 0 ? "0" : `${v}px`, hasPercent: false, constantPx: v };
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    const dyn = parseDynamicLength(trimmed);
+    if (dyn) {
+      if (!dyn.hasPercent && dyn.constantPx !== undefined) {
+        return {
+          expr: dyn.constantPx === 0 ? "0" : `${dyn.constantPx}px`,
+          hasPercent: false,
+          constantPx: dyn.constantPx
+        };
+      }
+      if (dyn.expr) return { expr: dyn.expr, hasPercent: true };
+    }
+    const px = pxLength(trimmed);
+    if (px !== undefined && px >= 0) {
+      const v = Math.round(px * 100) / 100;
+      return { expr: v === 0 ? "0" : `${v}px`, hasPercent: false, constantPx: v };
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Full CSS `border-radius` resolver: supports `rx / ry` elliptical corners,
+ * dynamic `%` (horizontal against `width`, vertical against `height`) &
+ * mixed-unit `calc()`/`min()`/`max()`/`clamp()`, 4-tuples, and corner objects.
+ */
+export function normalizeBorderRadiusSpec(
+  raw: unknown,
+  path?: string,
+  repairs?: NormalizationRepair[],
+  box?: { width: number; height: number }
+): ResolvedBorderRadiusSpec | undefined {
+  const reportCorners = (value: unknown): void => {
+    if (!path || !repairs) return;
+    const unit = firstUnit(value);
+    repairs.push({
+      kind: "element",
+      path: `${path}/borderRadius`,
+      message: `${JSON.stringify(value)} is not a corner length (${
+        box ? "px, or a % of the box" : "px"
+      }${unit ? `; it carries "${unit}"` : ""})`
+    });
+  };
+
+  if (typeof raw === "number" && Number.isFinite(raw) && raw >= 0) return { radius: raw };
+  if (typeof raw === "string" && raw.trim()) {
+    const trimmed = raw.trim();
+    const resolved = box
+      ? resolveDynamicBorderRadius(trimmed, box)
+      : trimmed.includes("%")
+        ? undefined
+        : resolveDynamicBorderRadius(trimmed, { width: 0, height: 0 });
+    if (resolved !== undefined) return resolved;
+    if (path && repairs) {
+      repairs.push({
+        kind: "element",
+        path: `${path}/borderRadius`,
+        message: `borderRadius ${JSON.stringify(raw)} is not a valid CSS length (px number${box ? " or %" : ""}); dropped`
+      });
+    }
+    return undefined;
+  }
+
+  const evalCornerTokens = (tokens: readonly [CornerExprToken, CornerExprToken, CornerExprToken, CornerExprToken]): ResolvedBorderRadiusSpec | undefined => {
+    const hasPercent = tokens.some((t) => t.hasPercent);
+    if (hasPercent && !box) return undefined;
+    const targetBox = box ?? { width: 0, height: 0 };
+    const exprStr = tokens.every((t) => t.expr === tokens[0].expr)
+      ? tokens[0].expr
+      : tokens.map((t) => t.expr).join(" ");
+    if (!hasPercent) {
+      const nums = tokens.map((t) => Math.max(0, t.constantPx ?? 0)) as [number, number, number, number];
+      return { radius: collapseCorners(nums) };
+    }
+    const evalCorner = (tok: CornerExprToken, w: number, h: number): [number, number] => {
+      if (!tok.hasPercent && tok.constantPx !== undefined) {
+        const v = Math.max(0, tok.constantPx);
+        return [v, v];
+      }
+      const xRes = resolveDynamicBorderRadius(tok.expr, { width: w, height: h });
+      if (!xRes) return [0, 0];
+      const rx = Array.isArray(xRes.radius) ? xRes.radius[0] : xRes.radius;
+      const ry = xRes.radiusY !== undefined ? (Array.isArray(xRes.radiusY) ? xRes.radiusY[0] : xRes.radiusY) : rx;
+      return [rx, ry];
+    };
+    const pairs = tokens.map((t) => evalCorner(t, targetBox.width, targetBox.height));
+    const rx = collapseCorners([pairs[0][0], pairs[1][0], pairs[2][0], pairs[3][0]]);
+    const ry = collapseCorners([pairs[0][1], pairs[1][1], pairs[2][1], pairs[3][1]]);
+    return {
+      radius: rx,
+      ...(cornerRadiusEqual(rx, ry) ? {} : { radiusY: ry }),
+      expr: exprStr
+    };
+  };
+
+  if (Array.isArray(raw) && raw.length === 4) {
+    const tokens = raw.map((r) => parseSingleCornerValue(r));
+    if (tokens.some((t) => !t)) {
+      reportCorners(raw);
+      return undefined;
+    }
+    const spec = evalCornerTokens(tokens as [CornerExprToken, CornerExprToken, CornerExprToken, CornerExprToken]);
+    if (!spec) reportCorners(raw);
+    return spec;
+  }
+
+  if (isPlainObject(raw)) {
+    if (raw.all !== undefined) {
+      const all = parseSingleCornerValue(raw.all);
+      if (!all) {
+        reportCorners(raw.all);
+        return undefined;
+      }
+      const spec = evalCornerTokens([all, all, all, all]);
+      if (!spec) reportCorners(raw.all);
+      return spec;
+    }
+    const entries = [
+      raw.topLeft ?? raw.tl,
+      raw.topRight ?? raw.tr,
+      raw.bottomRight ?? raw.br,
+      raw.bottomLeft ?? raw.bl
+    ];
+    const parsed = entries.map((v) => parseSingleCornerValue(v, true));
+    if (parsed.some((t) => !t)) {
+      reportCorners(raw);
+      return undefined;
+    }
+    const spec = evalCornerTokens(parsed as [CornerExprToken, CornerExprToken, CornerExprToken, CornerExprToken]);
+    if (!spec) reportCorners(raw);
+    return spec;
+  }
+
+  if (raw !== undefined) {
+    const present = isPlainObject(raw) ? Object.keys(raw).length : 1;
+    if (present > 0 && path && repairs) {
+      repairs.push({
+        kind: "element",
+        path: `${path}/borderRadius`,
+        message: `borderRadius ${JSON.stringify(raw)} is not a number, a 4-value array, an object or a CSS string; dropped`
+      });
+    }
+  }
+  return undefined;
+}
+
+/** Applies normalized corner radius + elliptical/dynamic metadata onto `base` and `sizing`. */
+export function applyNormalizedBorderRadius(
+  el: Record<string, unknown>,
+  base: Record<string, unknown>,
+  sizing: ElementSizing,
+  path: string,
+  repairs: NormalizationRepair[],
+  box: { width: number; height: number }
+): void {
+  const spec = normalizeBorderRadiusSpec(cornerRadiusInput(el), path, repairs, box);
+  if (!spec) return;
+  base.borderRadius = spec.radius;
+  if (spec.radiusY !== undefined) sizing.borderRadiusY = spec.radiusY;
+  if (spec.expr !== undefined) sizing.borderRadiusExpr = spec.expr;
+}
+
 export function normalizeCornerRadius(
   raw: unknown,
   path?: string,
@@ -337,19 +542,20 @@ export function normalizeStroke(
   // row is unaffected: the stack outranks the element-level shorthand.
   if (borderShorthand?.none && raw === undefined) return undefined;
 
-  // CSS's per-side shorthands (`border-top: "1px solid #E2E8F0"`). The model
-  // holds one colour and one style for the whole stroke, so those parts are
-  // shared; the WIDTH belongs to the side it names, and `none` removes just it.
-  const sideShorthand = (side: string) => {
-    const value = el[`border-${side}`];
+  // CSS's per-side shorthands (`border-top: "1px solid #E2E8F0"`).
+  const sideShorthand = (side: SideName) => {
+    const value = el[`border-${side}`] ?? el[`border${sideCap(side)}`];
     return typeof value === "string" ? parseBorderShorthand(value) : undefined;
   };
   const topBorder = sideShorthand("top");
   const rightBorder = sideShorthand("right");
   const bottomBorder = sideShorthand("bottom");
   const leftBorder = sideShorthand("left");
-  const sideColor = [topBorder, rightBorder, bottomBorder, leftBorder]
-    .map((side) => (typeof side?.color === "string" ? side.color : undefined))
+  const sideColor = SIDE_NAMES
+    .map((side, i) => {
+      const sh = [topBorder, rightBorder, bottomBorder, leftBorder][i];
+      return nonEmptyString(el[`border${sideCap(side)}Color`] ?? el[`border-${side}-color`]) ?? nonEmptyString(sh?.color);
+    })
     .find((value): value is string => Boolean(value));
 
   const color =
@@ -437,8 +643,12 @@ export function normalizeStroke(
 
   // `none` on ONE side is a width, not a style: sharing it would remove the
   // other three borders too.
-  const sideStyle = [topBorder, rightBorder, bottomBorder, leftBorder]
-    .map((side) => (side && !side.none && typeof side.style === "string" ? side.style : undefined))
+  const sideStyle = SIDE_NAMES
+    .map((side, i) => {
+      const sh = [topBorder, rightBorder, bottomBorder, leftBorder][i];
+      const shStyle = sh && !sh.none && typeof sh.style === "string" ? sh.style : undefined;
+      return nonEmptyString(el[`border${sideCap(side)}Style`] ?? el[`border-${side}-style`]) ?? shStyle;
+    })
     .find((value): value is string => Boolean(value));
   const authoredStyle =
     (borderObj && typeof borderObj.style === "string" ? borderObj.style : undefined) ||
@@ -456,18 +666,15 @@ export function normalizeStroke(
   const styleRaw =
     (direct && typeof direct.style === "string" ? direct.style : undefined) || authoredStyle;
 
-  const styleName = styleRaw?.trim().toLowerCase();
-  const style = styleName && styleName !== "solid" ? "dashed" : "solid";
-  // One dash pattern is the whole vocabulary, so these keywords become `dashed`.
-  // They used to do it in silence: the author asked for dots and got a border
-  // that merely looked different, with nothing in the report to say so.
-  if (styleName && DECORATIVE_BORDER_STYLES.includes(styleName) && path && repairs) {
-    repairs.push({
-      kind: "stroke",
-      path: `${path}/border-style`,
-      message: `border-style "${styleName}" has no DSL spelling; drawn as dashed`
-    });
-  }
+  const { style } = normalizeStrokeStyle(styleRaw, (decorative) => {
+    if (path && repairs) {
+      repairs.push({
+        kind: "stroke",
+        path: `${path}/border-style`,
+        message: `border-style "${decorative}" has no DSL spelling; drawn as dashed`
+      });
+    }
+  });
   const declaredAlign = direct && typeof direct.align === "string" && ["inside", "center", "outside"].includes(direct.align)
     ? (direct.align as "inside" | "center" | "outside")
     : undefined;
@@ -554,6 +761,204 @@ export function normalizeStroke(
   return res;
 }
 
+function normalizeElementBorders(
+  el: Record<string, unknown>,
+  path?: string,
+  repairs?: NormalizationRepair[]
+): Stroke[] | undefined {
+  const border = el.border;
+  const borderShorthand = typeof border === "string" ? parseBorderShorthand(border) : undefined;
+  const borderObj = isPlainObject(border) ? border : borderShorthand;
+  const borderTokenId =
+    isPlainObject(border) && typeof border.tokenId === "string" && border.tokenId.trim()
+      ? border.tokenId.trim()
+      : undefined;
+
+  const baseColor =
+    nonEmptyString(borderObj?.color) ??
+    nonEmptyString(el.borderColor) ??
+    nonEmptyString(el["border-color"]);
+  const baseStyleRaw =
+    nonEmptyString(borderObj?.style) ??
+    nonEmptyString(el.borderStyle) ??
+    nonEmptyString(el["border-style"]);
+  const baseStyleLower = baseStyleRaw?.trim().toLowerCase();
+  const baseNone = Boolean(borderShorthand?.none || baseStyleLower === "none" || baseStyleLower === "hidden");
+
+  const widthRaw = (borderObj ? borderObj.width : undefined) ?? el.borderWidth ?? el["border-width"] ?? el.strokeWidth;
+  const baseWidth = pxLength(widthRaw);
+
+  const rawSides =
+    (isPlainObject(el.strokeSides) ? (el.strokeSides as Record<string, unknown>) : undefined) ||
+    (isPlainObject(el.borderSides) ? (el.borderSides as Record<string, unknown>) : undefined);
+
+  // Fast-check whether any side carries a CSS per-side color or style override;
+  // when none do, `normalizeStroke` preserves every single-stroke edge case.
+  let anySideColorOrStyle = false;
+  const parsedSideData = SIDE_NAMES.map((side) => {
+    const cap = sideCap(side);
+    const shVal = el[`border-${side}`] ?? el[`border${cap}`];
+    const sh = typeof shVal === "string" ? parseBorderShorthand(shVal) : undefined;
+    const shObj = isPlainObject(shVal) ? shVal : sh;
+    const shTokenId =
+      isPlainObject(shVal) && typeof shVal.tokenId === "string" && shVal.tokenId.trim()
+        ? shVal.tokenId.trim()
+        : undefined;
+    const sideColor = nonEmptyString(el[`border${cap}Color`] ?? el[`border-${side}-color`]) ?? nonEmptyString(shObj?.color);
+    const sideStyle = nonEmptyString(el[`border${cap}Style`] ?? el[`border-${side}-style`]) ?? (sh?.none ? "none" : nonEmptyString(shObj?.style));
+    if (sideColor !== undefined || sideStyle !== undefined) anySideColorOrStyle = true;
+    const longWidth =
+      rawSides?.[side] ??
+      rawSides?.[side[0]] ??
+      el[`stroke${cap}Weight`] ??
+      el[`border${cap}Width`] ??
+      el[`border-${side}-width`];
+    return { side, cap, sh, shObj, shTokenId, sideColor, sideStyle, longWidth };
+  });
+
+  if (!anySideColorOrStyle) {
+    const fromElement = normalizeStroke(undefined, el, path, repairs);
+    return fromElement ? [fromElement] : undefined;
+  }
+
+  if (widthRaw !== undefined && baseWidth === undefined && path && repairs) {
+    const unit = lengthUnit(widthRaw);
+    repairs.push({
+      kind: "stroke",
+      path: `${path}/strokeWidth`,
+      message: `stroke width ${JSON.stringify(widthRaw)} is not a px length${unit ? ` (it carries "${unit}")` : ""}; dropped`
+    });
+  }
+
+  const hasBaseBorder = Boolean(baseColor || (baseStyleRaw && !baseNone) || borderObj || baseWidth !== undefined);
+  const reportedDecorative = new Set<string>();
+  const reportDecorative = (decorative: string) => {
+    if (reportedDecorative.has(decorative)) return;
+    reportedDecorative.add(decorative);
+    if (path && repairs) {
+      repairs.push({
+        kind: "stroke",
+        path: `${path}/border-style`,
+        message: `border-style "${decorative}" has no DSL spelling; drawn as dashed`
+      });
+    }
+  };
+
+  interface ResolvedSide {
+    side: SideName;
+    width: number;
+    color: string;
+    style: NonNullable<Stroke["style"]>;
+    none: boolean;
+    tokenId?: string;
+    authoredSideWeight: boolean;
+  }
+
+  const resolved: ResolvedSide[] = parsedSideData.map(({ side, sh, shObj, shTokenId, sideColor, sideStyle, longWidth }) => {
+    let parsedLongWidth: number | undefined;
+    if (longWidth !== undefined) {
+      parsedLongWidth = pxLength(longWidth);
+      if (parsedLongWidth === undefined && path && repairs) {
+        const unit = lengthUnit(longWidth);
+        repairs.push({
+          kind: "stroke",
+          path: `${path}/border-${side}-width`,
+          message: `border-${side}-width ${JSON.stringify(longWidth)} is not a px length${
+            unit ? ` (it carries "${unit}")` : ""
+          }; dropped`
+        });
+      }
+    }
+    const shWidth = sh?.none ? 0 : isPlainObject(shObj) ? pxLength(shObj.width) : sh?.width;
+    const explicitSideW = sh?.none ? 0 : (parsedLongWidth ?? shWidth);
+    const effectiveStyleRaw = sideStyle ?? (baseNone ? "none" : baseStyleRaw);
+    const parsedStyle = normalizeStrokeStyle(effectiveStyleRaw, reportDecorative);
+    const effWidth = parsedStyle.none
+      ? 0
+      : explicitSideW !== undefined
+        ? Math.max(0, explicitSideW)
+        : baseWidth !== undefined
+          ? Math.max(0, baseWidth)
+          : hasBaseBorder || sideStyle !== undefined || sideColor !== undefined
+            ? 1
+            : 0;
+    const color = sideColor ?? baseColor ?? "#000000";
+    const tokenId = shTokenId ?? (!sideColor ? borderTokenId : undefined);
+    return {
+      side,
+      width: effWidth,
+      color,
+      style: parsedStyle.style,
+      none: parsedStyle.none,
+      tokenId,
+      authoredSideWeight: explicitSideW !== undefined
+    };
+  });
+
+  const active = resolved.filter((r) => !r.none && r.width > 0);
+  if (active.length === 0) return undefined;
+
+  const align = sitsInsideBox(el.type) ? ("inside" as const) : undefined;
+  const groupOrder: { color: string; style: NonNullable<Stroke["style"]>; tokenId?: string; sides: ResolvedSide[] }[] = [];
+  for (const item of active) {
+    const existing = groupOrder.find(
+      (g) => g.color === item.color && g.style === item.style && g.tokenId === item.tokenId
+    );
+    if (existing) existing.sides.push(item);
+    else groupOrder.push({ color: item.color, style: item.style, tokenId: item.tokenId, sides: [item] });
+  }
+
+  const makeStroke = (
+    color: string,
+    style: NonNullable<Stroke["style"]>,
+    width: number,
+    tokenId: string | undefined,
+    extra: Partial<Stroke>
+  ): Stroke => {
+    const stroke: Stroke = {
+      color,
+      width,
+      style,
+      ...(align ? { align } : {}),
+      ...(tokenId ? { tokenId } : {}),
+      ...extra
+    };
+    if (style === "dashed") stroke.dashArray = [...DEFAULT_DASH];
+    return stroke;
+  };
+
+  if (groupOrder.length === 1) {
+    const g = groupOrder[0];
+    const [topR, rightR, bottomR, leftR] = resolved;
+    const allActive = active.length === 4;
+    const sameWidth = resolved.every((r) => r.width === topR.width);
+    const anyAuthoredWeights = resolved.some((r) => r.authoredSideWeight) || rawSides !== undefined;
+    if (allActive && sameWidth && !anyAuthoredWeights) {
+      return [makeStroke(g.color, g.style, topR.width, g.tokenId, {})];
+    }
+    const maxW = Math.max(topR.width, rightR.width, bottomR.width, leftR.width);
+    return [
+      makeStroke(g.color, g.style, maxW, g.tokenId, {
+        side: "custom",
+        sides: { top: topR.width, right: rightR.width, bottom: bottomR.width, left: leftR.width }
+      })
+    ];
+  }
+
+  return groupOrder.map((g) => {
+    const widthBySide = { top: 0, right: 0, bottom: 0, left: 0 };
+    for (const s of g.sides) widthBySide[s.side] = s.width;
+    const maxW = Math.max(widthBySide.top, widthBySide.right, widthBySide.bottom, widthBySide.left);
+    if (g.sides.length === 1) {
+      return makeStroke(g.color, g.style, maxW, g.tokenId, { side: g.sides[0].side });
+    }
+    return makeStroke(g.color, g.style, maxW, g.tokenId, {
+      side: "custom",
+      sides: widthBySide
+    });
+  });
+}
+
 /**
  * The element's stroke stack, bottom layer first — the only stroke spelling the
  * dialect has. It used to also hand back a singular `stroke` carrying the top of
@@ -576,13 +981,5 @@ export function normalizeStrokes(
     });
     return list.length > 0 ? list : undefined;
   }
-  // No stack, but the element-level spellings still author one: `border-width`,
-  // `border-top-width`, `border-color`. A document that says only those would
-  // otherwise lose its stroke entirely, and it is a common way to write one.
-  // An explicit EMPTY stack is "no stroke" and is never backfilled from these.
-  // Reported at `path`, not `path/stroke`: these spellings are element-level
-  // (`border-top-width`, `strokeWidth`), and naming a `stroke` field that the
-  // dialect does not have would point a reader at nothing.
-  const fromElement = normalizeStroke(undefined, el, path, repairs);
-  return fromElement ? [fromElement] : undefined;
+  return normalizeElementBorders(el, path, repairs);
 }

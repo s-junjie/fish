@@ -27,11 +27,18 @@ function docWithElement(extra: Record<string, unknown>) {
 const repairsFor = (extra: Record<string, unknown>) => normalizeDesignDocument(docWithElement(extra)).repairs;
 
 describe("P0 — silent coercions now report", () => {
-  it("sizing bound with a non-px unit reports the unit instead of reading it as px", () => {
-    const repairs = repairsFor({ sizing: { maxWidth: "90%" } });
+  it("sizing bound with a non-px/non-% unit reports the unit instead of reading it as px", () => {
+    const repairs = repairsFor({ sizing: { maxWidth: "90vw" } });
     const hit = repairs.find((r) => r.path.includes("maxWidth"));
     expect(hit).toBeDefined();
-    expect(hit?.message).toContain("%");
+    expect(hit?.message).toContain("vw");
+  });
+
+  it("sizing bound with % resolves dynamically without repair", () => {
+    const out = normalizeDesignDocument(docWithElement({ sizing: { maxWidth: "90%" } }));
+    const hit = out.repairs.find((r) => r.path.includes("maxWidth"));
+    expect(hit).toBeUndefined();
+    expect((out.document.pages[0].children[0] as any).sizing?.maxWidthExpr).toBe("90%");
   });
 
   it("a plain px bound is still accepted with no repair", () => {

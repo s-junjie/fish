@@ -8,7 +8,9 @@ import { getActivePage } from "../src/core/dsl/document-ops";
 import { applyOps } from "../src/core/ops/apply-ops";
 import { checkVerdict } from "../src/core/check-verdict";
 import { TOKEN_SHORTHAND_BINDINGS, TOKEN_SHORTHAND_KEYS, parseTokenRef } from "../src/core/dsl/normalize/token-shorthand";
-import { bindNumberTokenToElement } from "../src/core/interactions/number-token-ops";
+import { bindNumberTokenToElement, unbindNumberTokenFromElement } from "../src/core/interactions/number-token-ops";
+import { syncDualStorage } from "../src/core/interactions/style-sync";
+import { layoutOf } from "../src/core/dsl/layout-flat";
 import type { DesignElement } from "../src/core/dsl/types";
 
 /**
@@ -399,7 +401,7 @@ describe("the failures are loud", () => {
   });
 
   it("refuses the slots that have no reader", () => {
-    const { tokenRepairs } = only([frame({ width: "$space/md", "border-top-width": "$stroke/thin" })]);
+    const { tokenRepairs } = only([frame({ "border-top-width": "$stroke/thin", "border-left-width": "$stroke/thin" })]);
     expect(tokenRepairs.length).toBe(2);
     expect(tokenRepairs.every((repair) => repair.message.includes("not supported"))).toBe(true);
   });
@@ -509,13 +511,360 @@ describe("the op verbs lower the same way a file load does", () => {
   });
 });
 
+describe("P1-7: var() token bridge, sizing, padding sides, and spans", () => {
+  const modeTokens = [
+    { id: "tok_bg", name: "color/bg", type: "color", value: "#FFFFFF", modes: { dark: "#121212" } },
+    { id: "tok_border", name: "color/border", type: "color", value: "#E2E8F0", modes: { dark: "#334155" } },
+    { id: "tok_pad", name: "space/md", type: "number", value: 16, category: "spacing", modes: { compact: 8 } },
+    { id: "tok_gap", name: "space/sm", type: "number", value: 8, category: "spacing", modes: { compact: 4 } },
+    { id: "tok_w", name: "size/card", type: "number", value: 320, category: "sizing", modes: { compact: 260 } },
+    { id: "tok_r", name: "radius/card", type: "number", value: 12, category: "radius", modes: { compact: 6 } },
+    { id: "tok_type", name: "type/body", type: "number", value: 14, category: "typography", modes: { compact: 12 } }
+  ];
+  const themeModes = [
+    { id: "light", name: "Light" },
+    { id: "dark", name: "Dark" }
+  ];
+  const densityModes = [
+    { id: "default", name: "Default" },
+    { id: "compact", name: "Compact" }
+  ];
+
+  it("bridges var(--name) to live color and number token bindings across slots", () => {
+    const { document, repairs } = normalizeDesignDocument(
+      doc(
+        [
+          frame({
+            id: "card",
+            background: "var(--color-bg)",
+            border: "1px solid var(--color-border)",
+            gap: "var(--space-sm)",
+            width: "var(--size-card)",
+            height: "$space/md",
+            borderRadius: "var(--radius-card)",
+            effects: [{ type: "drop-shadow", offsetX: 0, offsetY: 2, blur: 8, color: "var(--color-border)" }],
+            children: [
+              { id: "txt", type: "text", content: "Hello", fontSize: "var(--type-body)", color: "var(--color-border)" }
+            ]
+          })
+        ],
+        { tokens: modeTokens, modes: themeModes, numberModes: densityModes, activeTheme: "dark", activeNumberMode: "compact" }
+      ) as any
+    );
+
+    expect(repairs.filter((r) => r.kind === "token")).toEqual([]);
+    const card = document.pages![0].children![0] as Record<string, any>;
+    expect(card.fills).toEqual([{ type: "solid", color: "#121212", tokenId: "tok_bg" }]);
+    expect(card.strokes).toEqual([{ color: "#334155", width: 1, style: "solid", align: "inside", tokenId: "tok_border" }]);
+    expect(card.effects[0]).toMatchObject({ color: "#334155", tokenId: "tok_border" });
+    expect(card.width).toBe(260);
+    expect(card.height).toBe(8);
+    expect(card.tokenBindings).toEqual({
+      gap: "tok_gap",
+      width: "tok_w",
+      height: "tok_pad",
+      borderRadius: "tok_r"
+    });
+    expect(layoutOf(card as any)).toMatchObject({ gap: 4 });
+    expect(card.borderRadius).toBe(6);
+
+    const txt = card.children[0] as Record<string, any>;
+    expect(txt.fills).toEqual([{ type: "solid", color: "#334155", tokenId: "tok_border" }]);
+    expect(txt.style.fontSize).toBe(12);
+    expect(txt.tokenBindings).toEqual({ fontSize: "tok_type" });
+
+    // Switching back to light/default modes via dual storage updates all bound values.
+    const switched = syncDualStorage(
+      card as DesignElement,
+      { tokens: document.tokens ?? [], styles: document.styles ?? [] },
+      "light",
+      "default"
+    ) as Record<string, any>;
+    expect(switched.fills).toEqual([{ type: "solid", color: "#ffffff", tokenId: "tok_bg" }]);
+    expect(switched.strokes[0].color).toBe("#e2e8f0");
+    expect(switched.width).toBe(320);
+    expect(switched.height).toBe(16);
+    expect(switched.borderRadius).toBe(12);
+    expect(layoutOf(switched as any)?.gap).toBe(8);
+  });
+
+  it("lets doc.variables take precedence over tokens[] and unwraps var() fallbacks", () => {
+    const { document, repairs } = normalizeDesignDocument(
+      doc(
+        [
+          frame({
+            id: "a",
+            background: "var(--color-bg)",
+            borderColor: "var(--missing-var, var(--color-border))",
+            gap: "var(--unknown-gap, $space/sm)"
+          })
+        ],
+        { tokens: modeTokens, variables: { "--color-bg": "#ABCDEF" } }
+      ) as any
+    );
+    expect(repairs.filter((r) => r.kind === "token")).toEqual([]);
+    const a = document.pages![0].children![0] as Record<string, any>;
+    // Explicit variable wins over token binding and folds directly into the fill literal.
+    expect(a.fills).toEqual([{ type: "solid", color: "#ABCDEF" }]);
+    // Missing var() with token fallback unwraps recursively to bind the fallback token.
+    expect(a.strokes).toEqual([{ color: "#e2e8f0", width: 1, style: "solid", align: "inside", tokenId: "tok_border" }]);
+    expect(a.tokenBindings).toEqual({ gap: "tok_gap" });
+    expect(layoutOf(a as any)?.gap).toBe(8);
+  });
+
+  it("reports an unresolved var() when neither variables nor tokens define it", () => {
+    const out = normalizeDesignDocument(doc([frame({ background: "var(--does-not-exist)" })], { tokens: modeTokens }) as any);
+    expect(checkVerdict(out.repairs, 0, 0, false)).toMatchObject({ ok: false, failReason: " (repairs)" });
+  });
+
+  it("resolves var(--name) tokens inside doc.styles[]", () => {
+    const out = normalizeDesignDocument({
+      version: "0.1",
+      name: "StylesVar",
+      canvas: { width: 200, height: 200, background: { type: "solid", color: "#FFFFFF" } },
+      pages: [{ id: "p1", name: "P1", children: [{ id: "r", type: "rect", fillStyleId: "st_bg" }] }],
+      tokens: modeTokens,
+      styles: [
+        { id: "st_bg", name: "surface/bg", styleType: "paint", paints: [{ type: "solid", color: "var(--color-bg)" }] },
+        { id: "st_txt", name: "body/type", styleType: "text", style: { fontSize: "var(--type-body)" } }
+      ],
+      modes: themeModes,
+      numberModes: densityModes,
+      activeTheme: "dark",
+      activeNumberMode: "compact"
+    } as any);
+    expect(out.repairs.filter((r) => r.kind === "token")).toEqual([]);
+    expect(out.document.styles![0]).toMatchObject({
+      paints: [{ type: "solid", color: "#121212", tokenId: "tok_bg" }]
+    });
+    expect(out.document.styles![1]).toMatchObject({
+      style: { fontSize: 12, tokenBindings: { fontSize: "tok_type" } }
+    });
+  });
+
+  it("pins width/height sizing to fixed when bound via token and clears on literal patch", () => {
+    const { document } = normalizeDesignDocument(
+      doc([
+        {
+          id: "colParent",
+          type: "frame",
+          display: "flex",
+          flexDirection: "column",
+          width: 400,
+          height: 300,
+          children: [frame({ id: "child", width: "var(--size-card)", height: "$space/md" })]
+        },
+        {
+          id: "rowParent",
+          type: "frame",
+          display: "flex",
+          flexDirection: "row",
+          width: 400,
+          height: 300,
+          children: [{ id: "label", type: "text", content: "Hi", width: "var(--size-card)", height: "$space/md" }]
+        }
+      ], { tokens: modeTokens }) as any
+    );
+    const colParent = document.pages![0].children![0] as Record<string, any>;
+    const child = colParent.children[0] as Record<string, any>;
+    expect(child.width).toBe(320);
+    expect(child.height).toBe(16);
+    expect(child.sizing).toMatchObject({ width: "fixed" });
+    expect(child.tokenBindings).toEqual({ width: "tok_w", height: "tok_pad" });
+
+    const rowParent = document.pages![0].children![1] as Record<string, any>;
+    const label = rowParent.children[0] as Record<string, any>;
+    expect(label.width).toBe(320);
+    expect(label.height).toBe(16);
+    expect(label.sizing).toMatchObject({ width: "fixed", height: "fixed" });
+    expect(label.tokenBindings).toEqual({ width: "tok_w", height: "tok_pad" });
+
+    const patched = applyOps(document, [{ op: "patch", targetId: "child", props: { width: 240 } }]);
+    expect(patched.outcomes[0].ok).toBe(true);
+    const updatedParent = getActivePage(patched.doc).children[0] as Record<string, any>;
+    const updatedChild = updatedParent.children[0] as Record<string, any>;
+    expect(updatedChild.width).toBe(240);
+    expect(updatedChild.tokenBindings).toEqual({ height: "tok_pad" });
+  });
+
+  it("supports per-side object, array, and string padding shorthands with live bindings", () => {
+    const { document, repairs } = normalizeDesignDocument(
+      doc(
+        [
+          frame({
+            id: "obj",
+            padding: { top: "$space/md", right: 12, bottom: "var(--space-sm)", left: 4 }
+          }),
+          frame({
+            id: "short",
+            padding: { t: "$space/sm", b: "$space/md" }
+          }),
+          frame({
+            id: "arr",
+            padding: ["$space/md", "$space/sm"]
+          }),
+          frame({
+            id: "str",
+            padding: "var(--space-md) 1rem var(--space-sm)"
+          }),
+          frame({
+            id: "objMixed",
+            padding: { top: "$space/md", right: "1rem" }
+          })
+        ],
+        { tokens: modeTokens }
+      ) as any
+    );
+    expect(repairs.filter((r) => r.kind === "token")).toEqual([]);
+    const [obj, shortEl, arr, strEl, objMixed] = document.pages![0].children! as Array<Record<string, any>>;
+
+    expect(layoutOf(obj as any)?.padding).toEqual([16, 12, 8, 4]);
+    expect(obj.tokenBindings).toEqual({ paddingTop: "tok_pad", paddingBottom: "tok_gap" });
+
+    expect(layoutOf(shortEl as any)?.padding).toEqual([8, 0, 16, 0]);
+    expect(shortEl.tokenBindings).toEqual({ paddingTop: "tok_gap", paddingBottom: "tok_pad" });
+
+    expect(layoutOf(arr as any)?.padding).toEqual([16, 8, 16, 8]);
+    expect(arr.tokenBindings).toEqual({
+      paddingTop: "tok_pad",
+      paddingRight: "tok_gap",
+      paddingBottom: "tok_pad",
+      paddingLeft: "tok_gap"
+    });
+
+    expect(layoutOf(strEl as any)?.padding).toEqual([16, 16, 8, 16]);
+    expect(strEl.tokenBindings).toEqual({
+      paddingTop: "tok_pad",
+      paddingBottom: "tok_gap"
+    });
+    expect(layoutOf(objMixed as any)?.padding).toEqual([16, 16, 0, 0]);
+    expect(objMixed.tokenBindings).toEqual({ paddingTop: "tok_pad" });
+
+    // Mode switch via dual storage updates only bound padding sides cleanly.
+    const compactObj = syncDualStorage(
+      obj as DesignElement,
+      { tokens: document.tokens ?? [], styles: [] },
+      undefined,
+      "compact"
+    ) as Record<string, any>;
+    expect(layoutOf(compactObj as any)?.padding).toEqual([8, 12, 4, 4]);
+
+    // Round-trip plain JSON preserves side bindings, and unbinding "padding" clears them.
+    const roundTripped = normalizeDesignDocument(documentToPlainObject(document) as any).document.pages![0].children![0];
+    expect(roundTripped.tokenBindings).toEqual({ paddingTop: "tok_pad", paddingBottom: "tok_gap" });
+    const unbound = unbindNumberTokenFromElement(obj as DesignElement, "padding");
+    expect(unbound.tokenBindings).toBeUndefined();
+  });
+
+  it("materialises $token and var(--name) inside spans[].style in element modes without adding span tokenId", () => {
+    const { document, repairs } = normalizeDesignDocument(
+      doc(
+        [
+          {
+            id: "card",
+            type: "frame",
+            themeMode: "dark",
+            numberMode: "compact",
+            children: [
+              {
+                id: "rich",
+                type: "text",
+                spans: [
+                  { text: "A", style: { color: "var(--color-border)", fontSize: "$type/body", letterSpacing: "var(--space-sm)" } },
+                  { text: "B", style: { color: "$color/bg" } }
+                ]
+              }
+            ]
+          }
+        ],
+        { tokens: modeTokens, modes: themeModes, numberModes: densityModes, activeTheme: "light", activeNumberMode: "default" }
+      ) as any
+    );
+    expect(repairs.filter((r) => r.kind === "token")).toEqual([]);
+    const rich = (document.pages![0].children![0] as any).children[0];
+    expect(rich.spans[0].style).toEqual({ color: "#334155", fontSize: 12, letterSpacing: 4 });
+    expect(rich.spans[1].style).toEqual({ color: "#121212" });
+    expect(rich.spans[0].style.tokenId).toBeUndefined();
+  });
+
+  it("applies var() tokens, width/height, and padding sides in patch, insert, and replace ops", () => {
+    const base = normalizeDesignDocument(
+      doc([frame({ id: "root", width: 500, height: 400 })], {
+        tokens: modeTokens,
+        modes: themeModes,
+        numberModes: densityModes,
+        activeTheme: "dark",
+        activeNumberMode: "compact"
+      }) as any
+    ).document;
+
+    const inserted = applyOps(base, [
+      {
+        op: "insert",
+        parentId: "root",
+        element: {
+          id: "kid",
+          type: "frame",
+          display: "flex",
+          width: "var(--size-card)",
+          padding: { top: "$space/md", left: "var(--space-sm)" },
+          background: "var(--color-bg)"
+        }
+      }
+    ]);
+    expect(inserted.outcomes[0].ok).toBe(true);
+    const rootAfterInsert = getActivePage(inserted.doc).children[0] as any;
+    const insertedKid = rootAfterInsert.children[0];
+    expect(layoutOf(insertedKid)?.padding).toEqual([8, 0, 0, 4]);
+    expect(insertedKid.tokenBindings).toEqual({ width: "tok_w", paddingTop: "tok_pad", paddingLeft: "tok_gap" });
+
+    const patched = applyOps(inserted.doc, [
+      {
+        op: "patch",
+        targetId: "kid",
+        props: { padding: { bottom: "$space/md" } }
+      }
+    ]);
+    expect(patched.outcomes[0].ok).toBe(true);
+    const rootEl = getActivePage(patched.doc).children[0] as any;
+    const kid = rootEl.children[0];
+    expect(kid.width).toBe(260);
+    expect(kid.fills).toEqual([{ type: "solid", color: "#121212", tokenId: "tok_bg" }]);
+    expect(layoutOf(kid)?.padding).toEqual([0, 0, 8, 0]);
+    expect(kid.tokenBindings).toEqual({ width: "tok_w", paddingBottom: "tok_pad" });
+
+    const replaced = applyOps(patched.doc, [
+      {
+        op: "replace",
+        targetId: "kid",
+        element: {
+          type: "rect",
+          width: "var(--size-card)",
+          height: "var(--space-md)",
+          background: "$color/border"
+        }
+      }
+    ]);
+    expect(replaced.outcomes[0].ok).toBe(true);
+    const kid2 = (getActivePage(replaced.doc).children[0] as any).children[0];
+    expect(kid2.width).toBe(260);
+    expect(kid2.height).toBe(8);
+    expect(kid2.fills).toEqual([{ type: "solid", color: "#334155", tokenId: "tok_border" }]);
+
+    // Unknown var() without fallback in insert must fail rather than shipping literal var().
+    const badInsert = applyOps(base, [
+      { op: "insert", parentId: "root", element: { id: "bad", type: "rect", margin: "var(--missing)" } }
+    ]);
+    expect(badInsert.outcomes[0].ok).toBe(false);
+  });
+});
+
 describe("the published dialect keeps up", () => {
   const dsl = fs.readFileSync(path.join(root, "agent-kit/references/dsl.md"), "utf-8");
 
   it("documents every property the shorthand can bind", () => {
-    // One-way on purpose: `tokenBindings` also accepts `width`/`height`, which
-    // the shorthand refuses (they fight `sizing`), but a slot the shorthand
-    // BINDS and the kit never names is a slot an author cannot learn.
+    // Every bindable slot in `TOKEN_SHORTHAND_BINDINGS` must be named in `dsl.md`
+    // so an agent authoring by the specification can discover all supported targets.
     const row = dsl
       .split("\n")
       .find((line) => line.trimStart().startsWith("| `tokenBindings: { prop: tokenId }`"));

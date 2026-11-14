@@ -1,6 +1,32 @@
-import { SlideDirection, SlideEasing, SlideSpec, SlideTransition } from "./types";
+import { DesignElement, ElementType, SlideDirection, SlideEasing, SlideSpec, SlideTransition } from "./types";
 import { SLIDE_DIRECTIONS, SLIDE_EASINGS, SLIDE_TRANSITIONS } from "./schema-enums";
 import { asNumber, canonicalKey, isPlainObject } from "./normalize/shared";
+
+/**
+ * The types that may carry `slide` and present as a slide when they sit at the
+ * top level of a page. One list because the normalizer, the deck, the inspector
+ * and the canvas pairing lines all answer "is this a slide" — a second spelling
+ * is how a slide that plays has no transition controls, or a `slide` the loader
+ * silently drops.
+ */
+export const SLIDE_HOST_TYPES = [
+  "frame",
+  "component",
+  "componentSet",
+  "html",
+  "instance"
+] as const satisfies readonly ElementType[];
+
+export type SlideHostType = (typeof SLIDE_HOST_TYPES)[number];
+export type SlideHostElement = Extract<DesignElement, { type: SlideHostType }>;
+
+export function isSlideHostType(type: string): boolean {
+  return (SLIDE_HOST_TYPES as readonly string[]).includes(type);
+}
+
+export function isSlideHost(el: DesignElement): el is SlideHostElement {
+  return isSlideHostType(el.type);
+}
 
 /**
  * `duration_ms` / `durationMs` / `Duration` all land on `durationMs`.

@@ -4,8 +4,9 @@ import { describe, it, expect } from "vitest";
 import { containerSizesAxis, resolveAxis, resolveAxisDetail, withAxisMode } from "../src/core/geometry/resolve-axis";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
 import { applyAutoLayout, resolveDynamicLineHeight, resolveElementSizing, syncTextSizing } from "../src/core/compile";
+import { relayoutDocumentTree } from "../src/core/layout/auto-layout";
 import { syncInstanceSizing } from "../src/core/layout/instance-sizing";
-import { FrameElement, AutoLayout, RectElement, TextElement, InstanceElement } from "../src/core/dsl/types";
+import { AutoLayout, DesignElement, FrameElement, InstanceElement, RectElement, TextElement } from "../src/core/dsl/types";
 
 const rect = (id: string, sizing?: RectElement["sizing"]): RectElement => ({
   id,
@@ -567,5 +568,191 @@ describe("size bounds", () => {
     expect(getActivePage(document).children[0].sizing?.maxWidth).toBe(120);
     expect(getActivePage(document).children[1].sizing?.minHeight).toBeUndefined();
     expect(repairs.some((r) => r.path.endsWith("/sizing/minHeight"))).toBe(true);
+  });
+});
+
+describe("CSS sizing defaults inside auto-layout", () => {
+  const docWith = (elements: unknown[]) => ({
+    version: "0.1",
+    canvas: { width: 800, height: 600, unit: "px", background: { type: "solid", color: "#fff" } },
+    elements
+  });
+
+  it("honors an explicitly authored width or height on in-flow text by pinning fixed", () => {
+    const { document } = normalizeDesignDocument(
+      docWith([
+        {
+          id: "col",
+          type: "frame",
+          display: "flex",
+          "flex-direction": "column",
+          width: 400,
+          children: [
+            { id: "fixed_w", type: "text", width: 120, content: "Explicit width text inside stretch column" },
+            { id: "nowrap_w", type: "text", width: 120, "white-space": "nowrap", content: "Truncated or overflowed label" },
+            { id: "open", type: "text", content: "Auto wrapped text" }
+          ]
+        }
+      ]) as never
+    );
+    const col = getActivePage(document).children[0] as FrameElement;
+    expect(col.children[0].sizing).toEqual({ width: "fixed", height: "fit-content" });
+    expect(col.children[1].sizing).toEqual({ width: "fixed", height: "fit-content" });
+    expect(col.children[2].sizing).toEqual({ width: "fit-content", height: "fit-content" });
+
+    const laid = relayoutDocumentTree([col])[0] as FrameElement;
+    expect(laid.children[0].width).toBe(120);
+    expect(laid.children[1].width).toBe(120);
+  });
+
+  it("fills a parent-stretched definite cross axis for nested auto-layout containers without width", () => {
+    const { document } = normalizeDesignDocument(
+      docWith([
+        {
+          id: "card",
+          type: "frame",
+          display: "flex",
+          "flex-direction": "column",
+          width: 400,
+          padding: 20,
+          children: [
+            {
+              id: "header",
+              type: "frame",
+              display: "flex",
+              "flex-direction": "row",
+              "justify-content": "space-between",
+              children: [
+                { id: "a", type: "rect", width: 40, height: 20 },
+                { id: "b", type: "rect", width: 40, height: 20 }
+              ]
+            },
+            {
+              id: "sidebar",
+              type: "frame",
+              display: "flex",
+              width: 140,
+              children: [{ id: "c", type: "rect", width: 20, height: 20 }]
+            },
+            {
+              id: "badge",
+              type: "frame",
+              display: "flex",
+              position: "absolute",
+              x: 10,
+              y: 10,
+              children: [{ id: "d", type: "rect", width: 20, height: 20 }]
+            }
+          ]
+        },
+        {
+          id: "start_col",
+          type: "frame",
+          display: "flex",
+          "flex-direction": "column",
+          "align-items": "flex-start",
+          width: 400,
+          children: [
+            {
+              id: "inner_start",
+              type: "frame",
+              display: "flex",
+              children: [{ id: "e", type: "rect", width: 50, height: 20 }]
+            }
+          ]
+        },
+        {
+          id: "hug_col",
+          type: "frame",
+          display: "flex",
+          "flex-direction": "column",
+          children: [
+            {
+              id: "inner_hug",
+              type: "frame",
+              display: "flex",
+              children: [{ id: "f", type: "rect", width: 50, height: 20 }]
+            }
+          ]
+        }
+      ]) as never
+    );
+
+    const [card, startCol, hugCol] = getActivePage(document).children as FrameElement[];
+    expect(card.children[0].sizing).toEqual({ width: "fill", height: "fit-content" });
+    expect(card.children[1].sizing).toEqual({ width: "fixed", height: "fit-content" });
+    expect(card.children[2].sizing).toEqual({ width: "fit-content", height: "fit-content" });
+    expect(startCol.children[0].sizing).toEqual({ width: "fit-content", height: "fit-content" });
+    expect(hugCol.children[0].sizing).toEqual({ width: "fit-content", height: "fit-content" });
+
+    const laidCard = relayoutDocumentTree([card])[0] as FrameElement;
+    const header = laidCard.children[0] as FrameElement;
+    expect(header.width).toBe(360);
+    expect(header.children[1].x).toBe(320);
+    expect(laidCard.children[1].width).toBe(140);
+  });
+
+  it("clamps fixed, root, free-placed, and absolute elements against min/max bounds", () => {
+    const { document } = normalizeDesignDocument(
+      docWith([
+        { id: "free", type: "rect", x: 10, y: 20, width: 400, height: 30, "max-width": 200, "min-height": 60 },
+        { id: "conflict", type: "rect", x: 0, y: 0, width: 100, height: 40, minWidth: 300, maxWidth: 40 },
+        {
+          id: "root_flex",
+          type: "frame",
+          display: "flex",
+          "flex-direction": "column",
+          width: 500,
+          "max-width": 220,
+          children: [
+            { id: "abs", type: "rect", position: "absolute", x: 0, y: 0, width: 320, height: 20, "max-width": 120 },
+            { id: "in_flow_text", type: "text", width: 400, "max-width": 150, content: "Long fixed text that must wrap inside max-width" }
+          ]
+        }
+      ]) as never
+    );
+
+    const [freeEl, conflictEl, rootFlex] = getActivePage(document).children as [
+      RectElement,
+      RectElement,
+      FrameElement
+    ];
+    expect(freeEl.width).toBe(200);
+    expect(freeEl.height).toBe(60);
+    expect(conflictEl.width).toBe(300); // CSS 2.1 §10.4: min wins over max
+    expect(rootFlex.width).toBe(220);
+    expect(rootFlex.children[0].width).toBe(120);
+    expect(rootFlex.children[1].width).toBe(150);
+
+    // Direct relayout pass on un-normalized fixed/free/absolute boxes also clamps.
+    const rawTree: DesignElement[] = [
+      {
+        id: "f",
+        type: "frame",
+        x: 0,
+        y: 0,
+        width: 500,
+        height: 200,
+        ...flattenLayout({ mode: "flex", direction: "row" }),
+        sizing: { width: "fixed", maxWidth: 240, height: "fit-content" },
+        children: [
+          {
+            id: "a",
+            type: "rect",
+            position: "absolute",
+            x: 0,
+            y: 0,
+            width: 300,
+            height: 40,
+            sizing: { maxWidth: 100, minHeight: 75 }
+          },
+          { id: "b", type: "rect", x: 0, y: 0, width: 120, height: 50 }
+        ]
+      } as FrameElement
+    ];
+    const laid = relayoutDocumentTree(rawTree)[0] as FrameElement;
+    expect(laid.width).toBe(240);
+    expect(laid.children[0].width).toBe(100);
+    expect(laid.children[0].height).toBe(75);
   });
 });

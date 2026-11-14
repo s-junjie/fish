@@ -16,7 +16,7 @@ import {
 import { isTokenAliasRef } from "../dsl/token-value";
 import { getActivePage } from "../dsl/document-ops";
 import { createId } from "../id";
-import { bindNumberToken, CORNER_SLOTS, numberTokenPropValue } from "../dsl/token-bindings";
+import { bindNumberToken, CORNER_SLOTS, PADDING_SLOTS, numberTokenPropValue, parsePaddingTuple } from "../dsl/token-bindings";
 
 /**
  * The write shape and the two constants live in the DSL: a `$token` shorthand
@@ -24,7 +24,7 @@ import { bindNumberToken, CORNER_SLOTS, numberTokenPropValue } from "../dsl/toke
  * is one function rather than two. Re-exported here because every existing
  * caller (and the sync pass) reads them from this module.
  */
-export { CORNER_SLOTS, numberTokenPropValue };
+export { CORNER_SLOTS, PADDING_SLOTS, numberTokenPropValue, parsePaddingTuple };
 
 export function isNumberToken(token: DesignToken): token is NumberToken {
   return token.type === "number";
@@ -180,6 +180,13 @@ export function unbindNumberTokenFromElement(
     for (const cornerProp of Object.keys(CORNER_SLOTS)) {
       if (cornerProp in nextBindings) {
         delete nextBindings[cornerProp];
+        removed = true;
+      }
+    }
+  } else if (property === "padding") {
+    for (const padProp of Object.keys(PADDING_SLOTS)) {
+      if (padProp in nextBindings) {
+        delete nextBindings[padProp];
         removed = true;
       }
     }

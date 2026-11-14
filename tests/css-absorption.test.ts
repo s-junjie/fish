@@ -61,10 +61,13 @@ describe("P0.5 — flat CSS layout spellings are absorbed", () => {
     expect(drops(out.repairs)).toEqual([]);
   });
 
-  it("accepts display: block as no auto-layout, without refusing it", () => {
+  it("reports display: block as free placement rather than CSS block flow, and suggests flex column", () => {
     const out = normalizeDesignDocument(frameDoc({ display: "block" }));
     expect(layoutOf(only(out.document))).toBeUndefined();
     expect(drops(out.repairs)).toEqual([]);
+    const hit = out.repairs.find((r) => r.path.endsWith("/display"));
+    expect(hit?.kind).toBe("layout");
+    expect(hit?.message).toContain("flex-direction");
   });
 
   it("accepts the CSS spellings of the keys on the element", () => {

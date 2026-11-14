@@ -120,9 +120,10 @@ function parseFlatGridTemplate(
 }
 
 /**
- * `display` values that name FREE PLACEMENT rather than a layout. `block` is the
- * CSS spelling of "no auto-layout" here, and `none` / `off` / `false` are the
- * dialect's own ways of saying the same thing (see `normalizeAutoLayout`).
+ * `display` values that name FREE PLACEMENT rather than a layout.
+ * `block`, `none`, `off`, `disabled`, and `false` mean free placement (see
+ * `readFlatAutoLayout`, which emits explicit repairs for CSS keywords `block`
+ * and `none` whose CSS behavior diverges).
  */
 const NO_LAYOUT_DISPLAYS: ReadonlySet<string> = new Set([
   "block",
@@ -193,6 +194,14 @@ export function readFlatAutoLayout(
       kind: "layout",
       path: `${path}/display`,
       message: `display "none" is free placement, not CSS hiding: the element stays visible. Write "visible: false" to hide it`
+    });
+  } else if (display === "block") {
+    // CSS's `display: block` stacks children vertically; here a free frame places
+    // by explicit x/y, so children authored without coordinates pile at (0, 0).
+    repairs.push({
+      kind: "layout",
+      path: `${path}/display`,
+      message: `display "block" is free canvas placement, not CSS block flow: children keep their x/y instead of stacking. Omit display for free placement, or set display "flex" with "flex-direction": "column" to stack children`
     });
   }
   if (display === undefined || NO_LAYOUT_DISPLAYS.has(display)) {

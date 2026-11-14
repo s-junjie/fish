@@ -644,16 +644,15 @@ export function marginOf(
   return values.every((v) => v === values[0]) ? values[0] : (values as [number, number, number, number]);
 }
 
-/** The container's own padding, widened by its border so children start where CSS puts them. */
+/** The container's own CSS padding (`border-box` inside-border insets are deducted by layout). */
 export function layoutPadding(
-  cs: CSSStyleDeclaration,
-  border: { top: number; right: number; bottom: number; left: number }
+  cs: CSSStyleDeclaration
 ): number | [number, number, number, number] {
   const values = [
-    (px(cs.paddingTop) ?? 0) + border.top,
-    (px(cs.paddingRight) ?? 0) + border.right,
-    (px(cs.paddingBottom) ?? 0) + border.bottom,
-    (px(cs.paddingLeft) ?? 0) + border.left
+    px(cs.paddingTop) ?? 0,
+    px(cs.paddingRight) ?? 0,
+    px(cs.paddingBottom) ?? 0,
+    px(cs.paddingLeft) ?? 0
   ].map((v) => Math.max(0, Math.round(v * 100) / 100));
   if (values.every((v) => v === values[0])) return values[0];
   return values as [number, number, number, number];

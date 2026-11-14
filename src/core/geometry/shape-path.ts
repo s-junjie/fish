@@ -1,4 +1,4 @@
-import { RectElement, EllipseElement, PolygonElement, StarElement } from "../dsl/types";
+import { CornerRadius, RectElement, EllipseElement, PolygonElement, StarElement } from "../dsl/types";
 import { closedOutlineToPathData, OutlinePoint } from "./corner-smoothing";
 
 /** A closed ring of corners, rounded — the shared entry for every generated outline. */
@@ -10,6 +10,73 @@ export function cornerRadiiOf(radius: number | [number, number, number, number] 
   const raw = Array.isArray(radius) ? radius : [radius, radius, radius, radius];
   const max = Math.min(w, h) / 2;
   return raw.map((r) => Math.min(Math.max(0, r ?? 0), max)) as [number, number, number, number];
+}
+
+export function cornerRadiiXYOf(
+  radiusX: CornerRadius | undefined,
+  radiusY: CornerRadius | undefined,
+  w: number,
+  h: number
+): [[number, number, number, number], [number, number, number, number]] {
+  if (radiusY === undefined) {
+    const r = cornerRadiiOf(radiusX, w, h);
+    return [r, r];
+  }
+  const toFour = (r: CornerRadius | undefined): [number, number, number, number] =>
+    Array.isArray(r) ? [r[0] ?? 0, r[1] ?? 0, r[2] ?? 0, r[3] ?? 0] : [r ?? 0, r ?? 0, r ?? 0, r ?? 0];
+  const rx = toFour(radiusX).map((v) => Math.max(0, v)) as [number, number, number, number];
+  const ry = toFour(radiusY).map((v) => Math.max(0, v)) as [number, number, number, number];
+  for (let i = 0; i < 4; i++) {
+    if (rx[i] === 0 || ry[i] === 0) {
+      rx[i] = 0;
+      ry[i] = 0;
+    }
+  }
+  const f = Math.min(
+    1,
+    rx[0] + rx[1] > 0 ? w / (rx[0] + rx[1]) : 1,
+    rx[3] + rx[2] > 0 ? w / (rx[3] + rx[2]) : 1,
+    ry[0] + ry[3] > 0 ? h / (ry[0] + ry[3]) : 1,
+    ry[1] + ry[2] > 0 ? h / (ry[1] + ry[2]) : 1
+  );
+  return [
+    rx.map((v) => v * f) as [number, number, number, number],
+    ry.map((v) => v * f) as [number, number, number, number]
+  ];
+}
+
+/** CSS `border-radius` string (supports `rx / ry` for HTML/SVG foreignObject / backdrop CSS). */
+export function formatCssCornerRadius(
+  radiusX: CornerRadius | undefined,
+  radiusY: CornerRadius | undefined,
+  w: number,
+  h: number
+): string {
+  const [[tlX, trX, brX, blX], [tlY, trY, brY, blY]] = cornerRadiiXYOf(radiusX, radiusY, w, h);
+  if (tlX === tlY && trX === trY && brX === brY && blX === blY) {
+    return `${tlX}px ${trX}px ${brX}px ${blX}px`;
+  }
+  return `${tlX}px ${trX}px ${brX}px ${blX}px / ${tlY}px ${trY}px ${brY}px ${blY}px`;
+}
+
+function ellipticalRectPath(w: number, h: number, rx: [number, number, number, number], ry: [number, number, number, number]): string {
+  const [tlX, trX, brX, blX] = rx;
+  const [tlY, trY, brY, blY] = ry;
+  if (tlX === 0 && trX === 0 && brX === 0 && blX === 0) {
+    return `M 0 0 H ${round2(w)} V ${round2(h)} H 0 Z`;
+  }
+  return (
+    `M ${round2(tlX)} 0 ` +
+    `H ${round2(w - trX)} ` +
+    (trX > 0 && trY > 0 ? `A ${round2(trX)} ${round2(trY)} 0 0 1 ${round2(w)} ${round2(trY)} ` : "") +
+    `V ${round2(h - brY)} ` +
+    (brX > 0 && brY > 0 ? `A ${round2(brX)} ${round2(brY)} 0 0 1 ${round2(w - brX)} ${round2(h)} ` : "") +
+    `H ${round2(blX)} ` +
+    (blX > 0 && blY > 0 ? `A ${round2(blX)} ${round2(blY)} 0 0 1 0 ${round2(h - blY)} ` : "") +
+    `V ${round2(tlY)} ` +
+    (tlX > 0 && tlY > 0 ? `A ${round2(tlX)} ${round2(tlY)} 0 0 1 ${round2(tlX)} 0 ` : "") +
+    `Z`
+  );
 }
 
 export function effectiveCornerSmoothing(
@@ -33,6 +100,11 @@ export function rectToPathData(el: RectElement): string {
   const w = el.width;
   const h = el.height;
   if (!(w > 0) || !(h > 0)) return "";
+  const borderRadiusY = el.sizing?.borderRadiusY;
+  if (borderRadiusY !== undefined) {
+    const [rx, ry] = cornerRadiiXYOf(el.borderRadius, borderRadiusY, w, h);
+    return ellipticalRectPath(w, h, rx, ry);
+  }
   const [tl, tr, br, bl] = cornerRadiiOf(el.borderRadius, w, h);
   if (tl === 0 && tr === 0 && br === 0 && bl === 0) {
     return `M 0 0 H ${round2(w)} V ${round2(h)} H 0 Z`;

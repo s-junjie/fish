@@ -25,15 +25,18 @@ interface StrokeLineControlsProps {
 }
 
 /**
- * What the Solid / Dashed switch reads as.
+ * What the Solid / Dashed / Dotted switch reads as.
  *
- * `dashArray` is the setting and `style` is only its shorthand, so a pattern wins
- * in both directions: `style: "solid"` with a real pattern on it still dashes, and
- * an empty one is solid whatever the style says.
+ * `dashArray` is the setting and `style` is only its shorthand, so a custom
+ * pattern wins in all directions: `style: "solid"` or `"dotted"` with an explicit
+ * pattern still edits/draws as dashed, and an empty one ignores `style: "dashed"`.
  */
 const isDashed = (s: Stroke): boolean =>
   (s.dashArray && s.dashArray.length > 0 && s.dashArray.some((v) => v > 0)) ||
   (s.style === "dashed" && !(s.dashArray && s.dashArray.length > 0));
+
+const isDotted = (s: Stroke): boolean =>
+  s.style === "dotted" && !(s.dashArray && s.dashArray.length > 0);
 
 export function StrokeLineControls({
   stroke,
@@ -43,6 +46,8 @@ export function StrokeLineControls({
   showCapJoin
 }: StrokeLineControlsProps) {
   const dashed = isDashed(stroke);
+  const dotted = isDotted(stroke);
+  const styleValue = dotted ? "dotted" : dashed ? "dashed" : "solid";
   const pattern = stroke.dashArray && stroke.dashArray.length > 0 ? stroke.dashArray : [...DEFAULT_DASH];
   const odd = pattern.length % 2 === 1;
   /** Dash and gap slots pair up; an odd pattern has one unmatched length. */
@@ -60,18 +65,21 @@ export function StrokeLineControls({
         <span className={SUB_LABEL_CLASS}>{t("paint.style")}</span>
         <SegmentedControl<string>
           className="w-full"
-          value={dashed ? "dashed" : "solid"}
+          value={styleValue}
           onChange={(v) =>
             onChange(
               v === "dashed"
                 ? { dashArray: [...DEFAULT_DASH], style: "dashed" }
-                : { dashArray: undefined, dashOffset: undefined, style: "solid" },
+                : v === "dotted"
+                  ? { dashArray: undefined, dashOffset: undefined, style: "dotted" }
+                  : { dashArray: undefined, dashOffset: undefined, style: "solid" },
               true
             )
           }
           items={[
             { value: "solid", label: t("paint.styleSolid"), grow: true },
-            { value: "dashed", label: t("paint.styleDashed"), grow: true }
+            { value: "dashed", label: t("paint.styleDashed"), grow: true },
+            { value: "dotted", label: t("paint.styleDotted"), grow: true }
           ]}
         />
       </div>

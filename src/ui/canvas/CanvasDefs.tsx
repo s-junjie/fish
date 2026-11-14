@@ -465,7 +465,8 @@ export function renderElementDefs(props: ElementDefsProps) {
         width: box ? box.width : el.width,
         height: box ? box.height : el.height,
         borderRadius: box ? box.borderRadius : (el as any).borderRadius,
-        cornerSmoothing: box?.cornerSmoothing ?? (el as any).cornerSmoothing
+        cornerSmoothing: box?.cornerSmoothing ?? (el as any).cornerSmoothing,
+        sizing: box?.borderRadiusY !== undefined ? { borderRadiusY: box.borderRadiusY } : el.sizing
       } as RectElement);
     }
   }
@@ -617,7 +618,8 @@ export function renderElementDefs(props: ElementDefsProps) {
             width: box ? box.width : el.width,
             height: box ? box.height : el.height,
             borderRadius: box ? box.borderRadius : (el as any).borderRadius,
-            cornerSmoothing: box?.cornerSmoothing ?? (el as any).cornerSmoothing
+            cornerSmoothing: box?.cornerSmoothing ?? (el as any).cornerSmoothing,
+            sizing: box?.borderRadiusY !== undefined ? { borderRadiusY: box.borderRadiusY } : el.sizing
           } as RectElement)
         : getShapeLocalPath(el);
     if (pathD) {

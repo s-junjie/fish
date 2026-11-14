@@ -55,18 +55,33 @@ export interface StrokeDashAttrs {
  * which case a co-equal `style: "dashed"` must not reinstate them. A pattern of
  * all zeros is meaningless (the dash would never advance), so it counts as none.
  */
+export function dottedDashPattern(width: number): [number, number] {
+  return [0, Math.round(Math.max(0.5, width) * 2 * 100) / 100];
+}
+
 export function strokeDashAttrs(s: Stroke): StrokeDashAttrs {
-  const pattern =
-    s.dashArray && s.dashArray.length > 0 && s.dashArray.some((v) => v > 0)
-      ? s.dashArray
-      : s.style === "dashed" && !(s.dashArray && s.dashArray.length > 0)
-        ? [...DEFAULT_DASH]
+  const hasAnyDashArray = Boolean(s.dashArray && s.dashArray.length > 0);
+  const hasPositiveDash = hasAnyDashArray && s.dashArray!.some((v) => v > 0);
+  const effectiveWidth =
+    s.width > 0
+      ? s.width
+      : (() => {
+          const rw = resolveStrokeWeights(s);
+          return Math.max(rw.top, rw.right, rw.bottom, rw.left);
+        })();
+  const pattern = hasPositiveDash
+    ? s.dashArray!
+    : !hasAnyDashArray && s.style === "dashed"
+      ? [...DEFAULT_DASH]
+      : !hasAnyDashArray && s.style === "dotted"
+        ? dottedDashPattern(effectiveWidth)
         : null;
+  const linecap = s.cap ?? (!hasAnyDashArray && s.style === "dotted" ? "round" : undefined);
   return {
     ...(pattern ? { strokeDasharray: pattern.join(" ") } : {}),
     ...(pattern && s.dashOffset ? { strokeDashoffset: String(s.dashOffset) } : {}),
     ...(s.miterLimit !== undefined ? { strokeMiterlimit: s.miterLimit } : {}),
-    ...(s.cap ? { strokeLinecap: s.cap } : {}),
+    ...(linecap ? { strokeLinecap: linecap } : {}),
     ...(s.join ? { strokeLinejoin: s.join } : {})
   };
 }

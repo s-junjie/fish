@@ -19,6 +19,7 @@
  */
 
 import { parseCornerRadii } from "../geometry/rounded-box";
+import { normalizePaddingShape } from "./normalize/auto-layout";
 
 export const CORNER_SLOTS: Record<string, number> = {
   topLeftRadius: 0,
@@ -30,6 +31,22 @@ export const CORNER_SLOTS: Record<string, number> = {
   bottomLeftRadius: 3,
   borderBottomLeftRadius: 3
 };
+
+export const PADDING_SLOTS: Record<string, number> = {
+  paddingTop: 0,
+  paddingRight: 1,
+  paddingBottom: 2,
+  paddingLeft: 3
+};
+
+/** Parses stored or shorthand padding into a `[top, right, bottom, left]` px tuple. */
+export function parsePaddingTuple(raw: unknown): [number, number, number, number] {
+  if (typeof raw === "number" && Number.isFinite(raw)) return [raw, raw, raw, raw];
+  const parsed = normalizePaddingShape(raw);
+  if (typeof parsed === "number") return [parsed, parsed, parsed, parsed];
+  if (Array.isArray(parsed)) return [parsed[0], parsed[1], parsed[2], parsed[3]];
+  return [0, 0, 0, 0];
+}
 
 /**
  * A token value spelled the way the DSL stores the bound property.
@@ -52,11 +69,23 @@ export function writeNumberValue(
   const next: Record<string, any> = { ...el };
 
   const cornerSlot = CORNER_SLOTS[property];
+  const paddingSlot = PADDING_SLOTS[property];
   if (cornerSlot !== undefined) {
     const currentRadii = parseCornerRadii(el.borderRadius as never);
     const nextRadii = [...currentRadii] as [number, number, number, number];
     nextRadii[cornerSlot] = value;
     next.borderRadius = nextRadii;
+  } else if (paddingSlot !== undefined) {
+    if (Array.isArray(el.padding) && el.padding.length === 4 && el.padding.some((item) => typeof item !== "number")) {
+      // Preserve non-numeric sibling sides (`"1rem"`, `"calc(...)"`) so downstream normalization resolves them.
+      const nextPad = [...el.padding];
+      nextPad[paddingSlot] = value;
+      next.padding = nextPad;
+    } else {
+      const nextPad = parsePaddingTuple(el.padding);
+      nextPad[paddingSlot] = value;
+      next.padding = nextPad;
+    }
   } else if (property === "borderRadius") {
     if ("borderRadius" in el && Array.isArray(el.borderRadius)) {
       next.borderRadius = [value, value, value, value];
@@ -87,10 +116,11 @@ export function writeNumberValue(
  *
  * A binding names exactly one slot: the four corners are one tuple, so a
  * whole-radius binding replaces them and a corner binding replaces the
- * whole-radius one (and its sibling spelling of the same corner). Shared with
- * the PATCH surface, which writes a literal into the same slot and therefore
- * has to drop the same pointer — leaving it there makes the patch a no-op that
- * reports success, because the next read puts the token's number back.
+ * whole-radius one (and its sibling spelling of the same corner). Padding sides
+ * and whole-box padding follow the same rule. Shared with the PATCH surface,
+ * which writes a literal into the same slot and therefore has to drop the same
+ * pointer — leaving it there makes the patch a no-op that reports success,
+ * because the next read puts the token's number back.
  */
 export function withoutNumberBinding(
   bindings: Record<string, string> | undefined,
@@ -108,6 +138,10 @@ export function withoutNumberBinding(
     }
   } else if (property === "borderRadius") {
     for (const cornerProp of Object.keys(CORNER_SLOTS)) delete next[cornerProp];
+  } else if (PADDING_SLOTS[property] !== undefined) {
+    delete next.padding;
+  } else if (property === "padding") {
+    for (const padProp of Object.keys(PADDING_SLOTS)) delete next[padProp];
   }
 
   return Object.keys(next).length > 0 ? next : undefined;

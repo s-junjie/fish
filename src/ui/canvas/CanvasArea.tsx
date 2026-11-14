@@ -43,6 +43,7 @@ import { matchSlides } from "../../core/presentation/morph";
 import { presentationFrames, nextSlideOf } from "../../core/presentation/frames";
 import { resolveSlide } from "../../core/presentation/slide";
 import { layoutOf } from "../../core/dsl/layout-flat";
+import { isSlideHost } from "../../core/dsl/slide";
 import { CommentsOverlay, type CommentsOverlayProps } from "./CommentsOverlay";
 import { useCanvasFileDrop } from "../hooks/useCanvasFileDrop";
 
@@ -293,7 +294,7 @@ export function CanvasArea({
   // A `const` so the narrowing survives into the memo below: a destructured
   // prop is a mutable binding, and TypeScript drops a narrowing across a
   // closure boundary for one.
-  const morphTarget = primarySelected && isContainer(primarySelected) ? primarySelected : null;
+  const morphTarget = primarySelected && isSlideHost(primarySelected) ? primarySelected : null;
   const morphPairs = useMemo(() => {
     if (!morphTarget) return null;
     if (resolveSlide(morphTarget.slide).transition !== "morph") return null;

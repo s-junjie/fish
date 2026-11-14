@@ -1,6 +1,6 @@
 import type { ContainerElement, DesignDocument, DesignElement, InstanceElement } from "../dsl/types";
 import { resolveOverflow, type OverflowAxes, type OverflowFields } from "../dsl/overflow";
-import { resolvePadding } from "../layout/box";
+import { resolveContentInsets } from "../layout/box";
 import { layoutOf } from "../dsl/layout-flat";
 import { findElementAtPoint } from "./tree-hit";
 import { findParentById } from "./tree-query";
@@ -123,7 +123,10 @@ export function computeContainerScrollBounds(
   // The padding belongs to whatever authored the box: the frame's own, or the
   // master's for an instance, which stores none — and which is read whether or
   // not the caller brought its own children, because it bounds them either way.
-  const padding = resolvePadding((container as any).padding ?? master?.padding);
+  const padding = resolveContentInsets(
+    (container as any).strokes ? container : (master ?? container),
+    (container as any).padding ?? master?.padding
+  );
   // A SCALED instance lays its children out at master × factor, so the padding
   // that bounds them travels with the same factor — right by the x one, bottom
   // by the y one, exactly as `scaleLayout` scales it for the pass itself.

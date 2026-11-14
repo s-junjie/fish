@@ -15,7 +15,7 @@ const inputOnlyWhy = "an input spelling: normalize folds it into another field a
 
 /** Lower-case aliases `css-spelling.test.ts` cannot classify by camelCase. */
 const ABSORBED_ALIASES = [
-  "blend", "radius", "filter", "path", "characters", "text", "href", "asset"
+  "blend", "radius", "filter", "path", "characters", "text", "href", "asset", "grid-area"
 ];
 
 export const INPUT_ONLY_KEYS: ReadonlySet<string> = new Set([

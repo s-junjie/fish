@@ -303,7 +303,7 @@ Rules that matter more than the sequence:
 - [ ] Any element used more than once is a component master + instances, not duplicate frames.
 - [ ] Every `instance.componentId` points at a `component`, not a `frame`.
 - [ ] Mode-dependent colours live on `tokens[].modes`; no style is duplicated per theme.
-- [ ] Fills and strokes are ordered bottom-first.
+- [ ] Fills, strokes, and effects are ordered bottom-first.
 - [ ] Every image fill points at a real `doc.assets[]` entry.
 - [ ] Real photos and icons come from the user's files or an asset source, never hand-drawn paths — and the user was asked for their own material before a source was searched.
 - [ ] Repeated values are tokens; repeated declaration sets are styles.

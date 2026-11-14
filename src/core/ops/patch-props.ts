@@ -4,14 +4,26 @@ import { OVERRIDABLE_PROPERTIES } from "../dsl/constants";
 import { commitInstanceOverrides, type InstanceSelection } from "../interactions/instance-resolve";
 import { findParentById } from "../geometry/tree-ops";
 import { FLAT_LAYOUT_KEYS, layoutOf } from "../dsl/layout-flat";
+import { resolveContentInsets } from "../layout/box";
+import { resolveStrokeWeights } from "../geometry/stroke-utils";
 import { normalizeElement } from "../dsl/normalize/element";
-import { canonicalKey } from "../dsl/normalize/shared";
+import { canonicalKey, pxLength } from "../dsl/normalize/shared";
 import type { NormalizationRepair } from "../dsl/normalize/shared";
-import { applyTokenShorthandsToElement, TOKEN_SHORTHAND_BINDINGS, type ShorthandModes } from "../dsl/normalize/token-shorthand";
+import {
+  applyTokenShorthandsToElement,
+  createTokenVarResolver,
+  TOKEN_SHORTHAND_BINDINGS,
+  type ShorthandModes
+} from "../dsl/normalize/token-shorthand";
 import { withoutNumberBinding } from "../dsl/token-bindings";
 import { FLAT_TEXT_KEYS } from "../dsl/normalize/css-absorb";
 import { CSS_KEY_MAP } from "../dsl/css-spelling";
-import { collectVariables, resolveValueTokens, type Variables } from "../dsl/normalize/resolve-values";
+import {
+  collectVariables,
+  hasVarCallInValue,
+  resolveValueTokens,
+  type Variables
+} from "../dsl/normalize/resolve-values";
 import { isObj, type OpOutcome } from "./op-primitives";
 
 export function mergeProps(
@@ -58,6 +70,14 @@ export const CSS_PATCH_SPELLINGS: ReadonlySet<string> = new Set(
     "border-right-width",
     "border-bottom-width",
     "border-left-width",
+    "border-top-color",
+    "border-right-color",
+    "border-bottom-color",
+    "border-left-color",
+    "border-top-style",
+    "border-right-style",
+    "border-bottom-style",
+    "border-left-style",
     "border-top-left-radius",
     "border-top-right-radius",
     "border-bottom-right-radius",
@@ -132,6 +152,20 @@ const BORDER_SIDE_WIDTH_KEYS = [
   "border-left-width"
 ] as const;
 
+const BORDER_SIDE_COLOR_KEYS = [
+  "border-top-color",
+  "border-right-color",
+  "border-bottom-color",
+  "border-left-color"
+] as const;
+
+const BORDER_SIDE_STYLE_KEYS = [
+  "border-top-style",
+  "border-right-style",
+  "border-bottom-style",
+  "border-left-style"
+] as const;
+
 const CORNER_RADIUS_LONGHANDS = [
   "border-top-left-radius",
   "border-top-right-radius",
@@ -153,6 +187,11 @@ export function hasTokenRef(value: unknown): boolean {
   if (isObj(value)) return Object.values(value).some(hasTokenRef);
   return false;
 }
+
+const hasTokenSyntax = (value: unknown): boolean => hasTokenRef(value) || hasVarCallInValue(value);
+
+const isConcreteSizeValue = (value: unknown): boolean =>
+  typeof value === "number" || pxLength(value) !== undefined || hasTokenSyntax(value);
 
 /**
  * The patch surface speaks the same dialect as the file, while the document the
@@ -181,7 +220,7 @@ export function preparePatch(
     const canon = canonicalKey(key);
     return (
       CSS_PATCH_SPELLINGS.has(canon) ||
-      hasTokenRef(value) ||
+      hasTokenSyntax(value) ||
       (STRING_LENGTH_AXES.has(canon) && typeof value === "string") ||
       // CSS's one percent property: "50%" is a number the clamp must see, so a
       // string opacity routes through the normalizer like any other spelling.
@@ -230,12 +269,26 @@ export function preparePatch(
 
   if (isObj(out.sizing)) {
     const sizing = { ...out.sizing };
+    if (has("width")) {
+      delete sizing.widthExpr;
+      if (!has("sizing") && isConcreteSizeValue(props.width)) delete sizing.width;
+    }
+    if (has("height")) {
+      delete sizing.heightExpr;
+      if (!has("sizing") && isConcreteSizeValue(props.height)) delete sizing.height;
+    }
+    if (has("border-radius", "borderRadius", "radius", "corner-radius", ...CORNER_RADIUS_LONGHANDS)) {
+      delete sizing.borderRadiusY;
+      delete sizing.borderRadiusExpr;
+    }
     for (const [kebab, camel] of SIZING_BOUNDS) {
-      if (!has(kebab)) continue;
+      if (!has(kebab, camel)) continue;
       delete sizing[camel];
       delete sizing[kebab];
+      delete sizing[`${camel}Expr`];
     }
-    out.sizing = sizing;
+    if (Object.keys(sizing).length > 0) out.sizing = sizing;
+    else delete out.sizing;
   }
 
   if (has("border-radius", "borderRadius", "radius", "corner-radius")) delete out.borderRadius;
@@ -243,14 +296,15 @@ export function preparePatch(
 
   // A patch that writes a LITERAL into a slot a number token owns is an explicit
   // new value, and the binding is the pointer that would put the token's number
-  // back when the element is read — so it goes with the old value. A `$ref`
-  // patch is the opposite case: the shorthand pass rebinds that slot, and the
-  // cleanup would drop the binding it is about to write.
+  // back when the element is read — so it goes with the old value. Composite
+  // shorthands (`padding`, `borderRadius`) also supersede all prior side/corner
+  // pointers so a partial `{ top: "$x", left: 8 }` cannot leave stale sides.
   if (isObj(out.tokenBindings)) {
     let bindings = out.tokenBindings as Record<string, string>;
     for (const [key, value] of Object.entries(props)) {
       const prop = TOKEN_SHORTHAND_BINDINGS[canonicalKey(key)];
-      if (prop === undefined || hasTokenRef(value)) continue;
+      if (prop === undefined) continue;
+      if (hasTokenSyntax(value) && prop !== "padding" && prop !== "borderRadius") continue;
       bindings = withoutNumberBinding(bindings, prop) ?? {};
     }
     if (Object.keys(bindings).length > 0) out.tokenBindings = bindings;
@@ -278,35 +332,71 @@ export function preparePatch(
   if ((inkFromTop || inkFromStyle || bgFromTop) && !has("fills")) delete out.fills;
 
   if (!has("strokes")) {
-    if (has("border", "border-top", "border-right", "border-bottom", "border-left")) {
+    const hasSideShorthand = has("border-top", "border-right", "border-bottom", "border-left");
+    const hasSideColorOrStyle = has(...BORDER_SIDE_COLOR_KEYS, ...BORDER_SIDE_STYLE_KEYS);
+    if (has("border") || hasSideShorthand) {
+      delete out.strokes;
+    } else if (hasSideColorOrStyle) {
+      if (Array.isArray(out.strokes) && out.strokes.length > 0) {
+        const seeded: Partial<Record<"top" | "right" | "bottom" | "left", { width: number; color?: string; style: string }>> = {};
+        for (const layer of out.strokes) {
+          if (!isObj(layer)) continue;
+          const w = resolveStrokeWeights(layer as any);
+          for (const side of ["top", "right", "bottom", "left"] as const) {
+            if (w[side] > 0) {
+              seeded[side] = {
+                width: w[side],
+                color: typeof layer.color === "string" ? layer.color : undefined,
+                style: typeof layer.style === "string" ? layer.style : "solid"
+              };
+            }
+          }
+        }
+        for (const side of ["top", "right", "bottom", "left"] as const) {
+          const prev = seeded[side];
+          if (!prev) continue;
+          if (!has("border-width", "stroke-width", `border-${side}-width`)) {
+            out[`border-${side}-width`] = prev.width;
+          }
+          if (prev.color && !has("border-color", `border-${side}-color`)) {
+            out[`border-${side}-color`] = prev.color;
+          }
+          if (!has("border-style", `border-${side}-style`)) {
+            out[`border-${side}-style`] = prev.style;
+          }
+        }
+      }
       delete out.strokes;
     } else if (Array.isArray(out.strokes) && out.strokes.length > 0 && isObj(out.strokes[0])) {
       const rawBorderStyle = props["border-style"] ?? props.borderStyle;
       if (has("border-style") && typeof rawBorderStyle === "string" && rawBorderStyle.trim().toLowerCase() === "none") {
         delete out.strokes;
       } else {
-        const first = { ...(out.strokes[0] as Record<string, unknown>) };
-        if (has("border-color")) {
-          // Three colour sources on a row and the patch names a fourth: the
-          // literal, the paint, and the token the row follows — which
-          // `applyToPaint` re-materialises from `tokenId`, so leaving it made
-          // the new colour disappear between the merge and the reader.
-          delete first.color;
-          delete first.paint;
-          delete first.tokenId;
-        }
-        if (has("border-width", "stroke-width")) {
-          delete first.width;
-          delete first.strokeWidth;
-        }
-        if (has("border-style")) {
-          delete first.style;
-          delete first.dashArray;
-        }
-        if (has(...BORDER_SIDE_WIDTH_KEYS)) {
-          delete first.side;
-        }
-        out.strokes = [first, ...out.strokes.slice(1)];
+        out.strokes = out.strokes.map((layer, index) => {
+          if (!isObj(layer)) return layer;
+          const nextLayer = { ...layer };
+          if (has("border-color")) {
+            // Three colour sources on a row and the patch names a fourth: the
+            // literal, the paint, and the token the row follows — which
+            // `applyToPaint` re-materialises from `tokenId`, so leaving it made
+            // the new colour disappear between the merge and the reader.
+            delete nextLayer.color;
+            delete nextLayer.paint;
+            delete nextLayer.tokenId;
+          }
+          if (has("border-width", "stroke-width")) {
+            delete nextLayer.width;
+            delete nextLayer.strokeWidth;
+          }
+          if (has("border-style")) {
+            delete nextLayer.style;
+            delete nextLayer.dashArray;
+          }
+          if (index === 0 && has(...BORDER_SIDE_WIDTH_KEYS)) {
+            delete nextLayer.side;
+          }
+          return nextLayer;
+        });
       }
     }
   }
@@ -333,6 +423,21 @@ export function preparePatch(
  * modes matter — a colour token resolved in the wrong theme is a layer that
  * changes colour the moment something re-syncs it.
  */
+/** Parent dimensions + content dimensions passed into element normalization for `%` lengths. */
+export function parentBoxOf(
+  parent: DesignElement | null | undefined,
+  parentLayout: AutoLayout | null
+): { width: number; height: number; contentWidth: number; contentHeight: number } | undefined {
+  if (!parent) return undefined;
+  const [pt, pr, pb, pl] = parentLayout ? resolveContentInsets(parent, parentLayout.padding) : [0, 0, 0, 0];
+  return {
+    width: parent.width,
+    height: parent.height,
+    contentWidth: Math.max(0, parent.width - pl - pr),
+    contentHeight: Math.max(0, parent.height - pt - pb)
+  };
+}
+
 export function normalizePatchedElement(
   raw: Record<string, unknown>,
   parentLayout: AutoLayout | null,
@@ -341,19 +446,30 @@ export function normalizePatchedElement(
     tokens?: unknown;
     modes?: ShorthandModes;
     onRepair?: (repair: NormalizationRepair) => void;
+    parentBox?: { width: number; height: number; contentWidth?: number; contentHeight?: number };
   } = {}
 ): DesignElement {
-  const resolved = resolveValueTokens(raw, vars).value as Record<string, unknown>;
   const tokenRepairs: NormalizationRepair[] = [];
   const withTokens =
     options.tokens === undefined
-      ? resolved
-      : applyTokenShorthandsToElement(resolved, options.tokens, options.modes ?? {}, "/patch", tokenRepairs);
+      ? raw
+      : applyTokenShorthandsToElement(raw, options.tokens, options.modes ?? {}, "/patch", tokenRepairs, vars);
+  const tokenResolver =
+    options.tokens === undefined ? undefined : createTokenVarResolver(options.tokens, options.modes ?? {});
+  const { value: resolvedValue, unresolved } = resolveValueTokens(withTokens, vars, tokenResolver);
+  const resolved = resolvedValue as Record<string, unknown>;
   // A patch has no repair channel of its own; the caller turns these into a
   // failed outcome rather than letting a dropped declaration look applied.
   for (const repair of tokenRepairs) options.onRepair?.(repair);
-  const normalized = normalizeElement(withTokens, "/patch", 0, [], "el_", parentLayout, true);
-  return (normalized ?? withTokens) as unknown as DesignElement;
+  for (const hit of unresolved) {
+    options.onRepair?.({
+      kind: "document",
+      path: hit.path || "/patch",
+      message: `"${hit.text}": no custom property (define it in "variables" or add a fallback)`
+    });
+  }
+  const normalized = normalizeElement(resolved, "/patch", 0, [], "el_", parentLayout, true, undefined, undefined, undefined, options.parentBox);
+  return (normalized ?? resolved) as unknown as DesignElement;
 }
 
 /** The stored field a patch key writes, for the override vocabulary. */
@@ -380,7 +496,9 @@ function overridableKeyOf(key: string): string {
     canon === "border-width" ||
     canon === "border-style" ||
     canon === "stroke-width" ||
-    (BORDER_SIDE_WIDTH_KEYS as readonly string[]).includes(canon)
+    (BORDER_SIDE_WIDTH_KEYS as readonly string[]).includes(canon) ||
+    (BORDER_SIDE_COLOR_KEYS as readonly string[]).includes(canon) ||
+    (BORDER_SIDE_STYLE_KEYS as readonly string[]).includes(canon)
   ) {
     return "strokes";
   }
@@ -434,8 +552,12 @@ export function patchDerivedClone(
   const parentLayout = masterParent ? (layoutOf(masterParent) ?? null) : null;
   const vars = collectVariables(doc.variables);
   const merged = prepared.css
-    ? normalizePatchedElement(prepared.element, parentLayout, vars, { tokens: doc.tokens, modes: doc })
-    : (mergeProps({ ...sel.node } as unknown as Record<string, unknown>, props) as unknown as DesignElement);
+    ? normalizePatchedElement(prepared.element, parentLayout, vars, {
+        tokens: doc.tokens,
+        modes: doc,
+        parentBox: parentBoxOf(masterParent, parentLayout)
+      })
+    : (prepared.element as unknown as DesignElement);
   const next = commitInstanceOverrides(doc, [sel], () => merged);
   if (!next) {
     // Silent success here is the failure this file refuses everywhere else: the

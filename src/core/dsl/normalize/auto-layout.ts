@@ -113,11 +113,17 @@ export const CSS_LINE_ALIASES: Record<string, string> = {
 export const cssLineValue = (value: string): string => CSS_LINE_ALIASES[value] ?? value;
 
 /** 1 value = all sides, 2 = vertical/horizontal, 3 = top/horizontal/bottom, 4 = t/r/b/l. */
-export function expandPadding(values: number[]): number | [number, number, number, number] {
-  if (values.length === 1) return values[0];
+export function expandFourSides<T>(values: readonly T[]): [T, T, T, T] {
+  if (values.length === 1) return [values[0], values[0], values[0], values[0]];
   if (values.length === 2) return [values[0], values[1], values[0], values[1]];
   if (values.length === 3) return [values[0], values[1], values[2], values[1]];
   return [values[0], values[1], values[2], values[3]];
+}
+
+/** 1 value = all sides, 2 = vertical/horizontal, 3 = top/horizontal/bottom, 4 = t/r/b/l. */
+export function expandPadding(values: number[]): number | [number, number, number, number] {
+  if (values.length === 1) return values[0];
+  return expandFourSides(values);
 }
 
 /**
@@ -434,7 +440,11 @@ export function normalizeAutoLayout(
   const displayRaw = readLayout(raw, "mode");
   const display = typeof displayRaw === "string" ? canonicalKey(displayRaw).replace(/^inline-/, "") : undefined;
   const modeRaw = display === undefined ? "flex" : display;
-  if (modeRaw === "none" || modeRaw === "off" || modeRaw === "disabled" || modeRaw === "false" || modeRaw === "block") {
+  if (modeRaw === "block") {
+    drop("mode", 'layout.mode "block" is free canvas placement, not CSS block flow (use flex with direction "column" to stack children)');
+    return undefined;
+  }
+  if (modeRaw === "none" || modeRaw === "off" || modeRaw === "disabled" || modeRaw === "false") {
     return undefined;
   }
   // A grid row/column count sizes an array with it (`new Array(rows)` in the

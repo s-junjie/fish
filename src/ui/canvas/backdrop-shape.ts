@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
 import type { CornerRadius, DesignElement } from "../../core/dsl/types";
-import { cornerRadiiOf, effectiveCornerSmoothing } from "../../core/geometry/shape-path";
+import { effectiveCornerSmoothing, formatCssCornerRadius } from "../../core/geometry/shape-path";
 import { isContainer } from "../../core/geometry/tree-ops";
 
 /**
@@ -20,7 +20,8 @@ export function backdropShapeStyle(
   height: number,
   pathD: string,
   borderRadius?: CornerRadius,
-  cornerSmoothing?: number
+  cornerSmoothing?: number,
+  borderRadiusY?: CornerRadius
 ): JSX.CSSProperties {
   const w = Math.max(1, width);
   const h = Math.max(1, height);
@@ -30,10 +31,10 @@ export function backdropShapeStyle(
   }
   if (el.type === "rect" || el.type === "instance" || isContainer(el)) {
     const radius = borderRadius ?? (el as { borderRadius?: CornerRadius }).borderRadius;
+    const radiusY = borderRadiusY ?? (el.sizing?.borderRadiusY as CornerRadius | undefined);
     const smoothing = cornerSmoothing ?? (el as { cornerSmoothing?: number }).cornerSmoothing;
-    if (effectiveCornerSmoothing(smoothing, radius, w, h) <= 0) {
-      const [tl, tr, br, bl] = cornerRadiiOf(radius, w, h);
-      return { borderRadius: `${tl}px ${tr}px ${br}px ${bl}px` };
+    if (radiusY !== undefined || effectiveCornerSmoothing(smoothing, radius, w, h) <= 0) {
+      return { borderRadius: formatCssCornerRadius(radius, radiusY, w, h) };
     }
   }
   const d = pathD || `M0,0 H${w} V${h} H0 Z`;

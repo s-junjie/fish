@@ -1,7 +1,7 @@
 import type { DesignDocument, DesignElement, ContainerElement, Paint, ComponentElement, TextElement, InstanceElement } from "./dsl/types";
 import { adoptTopLevelElements, getActivePage } from "./dsl/document-ops";
 import type { CompileDiagnostic } from "./compile";
-import { relayoutDocumentTree, resolveDynamicLineHeight, resolvePadding, gridColumnCount, gridRowCount } from "./compile";
+import { relayoutDocumentTree, resolveContentInsets, resolveDynamicLineHeight, gridColumnCount, gridRowCount } from "./compile";
 import { flattenElements, isContainer } from "./geometry/tree-ops";
 import { PAINT_TYPES as PAINT_TYPE_LIST } from "./dsl/schema-enums";
 import { layoutOf } from "./dsl/layout-flat";
@@ -69,7 +69,7 @@ function checkGridBox(el: DesignElement, out: CompileDiagnostic[]) {
   // stale 0 the document happened to store.
   if (!(el.width > 0)) return;
 
-  const [, pr, , pl] = resolvePadding(layout.padding);
+  const [, pr, , pl] = resolveContentInsets(el, layout.padding);
   const contentW = Math.max(0, el.width - pl - pr);
   const columns = gridColumnCount(layout, contentW);
   const colGap = layout.columnGap ?? layout.gap ?? 0;

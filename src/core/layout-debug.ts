@@ -3,7 +3,7 @@ import { getActivePage } from "./dsl/document-ops";
 import { elementAABB } from "./geometry/element-bounds";
 import { measureDocument, type MeasuredNode } from "./measure";
 import type { Rect } from "./geometry/bounds";
-import { resolvePadding } from "./layout/box";
+import { resolveContentInsets } from "./layout/box";
 import { layoutOf } from "./dsl/layout-flat";
 import { scrollsAxis, type OverflowFields } from "./dsl/overflow";
 
@@ -93,7 +93,7 @@ function collect(
         // Against the CONTENT box, not the border box: a padded flex container's
         // children are inset by that padding, so comparing them to the full height
         // reports every well-formed card as short by exactly its padding.
-        const [padTop, , padBottom] = resolvePadding(layoutOf(stack)?.padding);
+        const [padTop, , padBottom] = resolveContentInsets(stack, layoutOf(stack)?.padding);
         const contentBoxHeight = local.height - padTop - padBottom;
         const delta = content.height - contentBoxHeight;
         // A container that scrolls its own height is TALLER than its content by

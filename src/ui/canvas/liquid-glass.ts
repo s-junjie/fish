@@ -235,6 +235,7 @@ function analyticShapeOf(
     return { kind: "ellipse" };
   }
   if (el.type === "rect" || el.type === "text" || el.type === "instance" || isContainer(el)) {
+    if ((el.sizing as any)?.borderRadiusY !== undefined) return null;
     const radii = cornerRadiiOf((el as { borderRadius?: CornerRadius }).borderRadius, width, height);
     return { kind: "rect", radii, smoothing };
   }

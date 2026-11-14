@@ -105,15 +105,17 @@ describe("overflow speaks CSS's shorthand and longhands", () => {
   });
 });
 
-describe("display: none is reported, not silently read as free placement", () => {
+describe("display: none and display: block are reported, not silently read as free placement", () => {
   it("keeps the element visible and says hiding is `visible: false`", () => {
     const input = page([frame({ display: "none" })]);
     expect(prop(first(input), "visible")).not.toBe(false);
     expect(repaired(input, "visible: false")).toBe(true);
   });
 
-  it("leaves `block` alone — it names the same thing without a CSS meaning to contradict", () => {
-    expect(repaired(page([frame({ display: "block" })]), "visible: false")).toBe(false);
+  it("reports `block` too and suggests flex column instead of silently overlapping at (0, 0)", () => {
+    const doc = page([frame({ display: "block" })]);
+    expect(repaired(doc, "visible: false")).toBe(false);
+    expect(repaired(doc, "flex-direction")).toBe(true);
   });
 });
 

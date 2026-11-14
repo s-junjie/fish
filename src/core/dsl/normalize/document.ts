@@ -10,7 +10,7 @@ import { normalizeStrokes } from "./stroke";
 import { normalizeLayoutGuides } from "./layout-guides";
 import { normalizeElement } from "./element";
 import { collectVariables, resolveValueTokens } from "./resolve-values";
-import { applyTokenShorthandsToDocument } from "./token-shorthand";
+import { applyTokenShorthandsToDocument, createTokenVarResolver } from "./token-shorthand";
 import { normalizeTokens } from "./tokens";
 
 export function normalizeFontSpecs(raw: unknown): FontSpec[] {
@@ -270,16 +270,15 @@ export function normalizeDesignDocument(input: unknown, context?: NormalizeConte
   const repairs: NormalizationRepair[] = [];
   const sourceInput: Record<string, unknown> = isPlainObject(input) ? input : {};
 
-  // CSS custom properties and the non-px length forms are resolved ONCE, over
-  // the raw document, before any branch reads a value. A `var()`
-  // with no definition is left as written and reported, so a broken token fails
-  // `fish check` rather than shipping a literal `"var(--x)"` into the engine.
+  // Token shorthands (`$x` and CSS `var(--x)` naming `doc.tokens[]`) run first so
+  // multi-mode `tokenId` / `tokenBindings` are written BEFORE `resolveValueTokens`
+  // folds remaining custom properties (`doc.variables` + token fallbacks in math)
+  // and CSS length units (`rem`, constant `calc()`).
   const variables = collectVariables(sourceInput.variables);
-  const { value: resolvedSource, unresolved } = resolveValueTokens(sourceInput, variables);
-  const source: Record<string, unknown> = applyTokenShorthandsToDocument(
-    resolvedSource as Record<string, unknown>,
-    repairs
-  );
+  const withTokens = applyTokenShorthandsToDocument(sourceInput, repairs, variables);
+  const tokenResolver = createTokenVarResolver(withTokens.tokens, withTokens);
+  const { value: resolvedSource, unresolved } = resolveValueTokens(withTokens, variables, tokenResolver);
+  const source = resolvedSource as Record<string, unknown>;
   for (const hit of unresolved) {
     repairs.push({
       kind: "document",

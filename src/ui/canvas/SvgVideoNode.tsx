@@ -1,5 +1,5 @@
 import { VideoElement } from "../../core/dsl/types";
-import { cornerRadiiOf } from "../../core/geometry/shape-path";
+import { formatCssCornerRadius } from "../../core/geometry/shape-path";
 import { isIframeVideoUrl } from "../../core/interactions/video-loader";
 import { CANVAS_BADGE_SURFACE, CANVAS_BADGE_RIDGE } from "./canvas-colors";
 import { NodeRenderContext } from "./NodeRenderContext";
@@ -20,8 +20,7 @@ export function SvgVideoNode({
   onDoubleClick
 }: SvgVideoNodeProps) {
   const uri = resolveAssetUri(el.assetId);
-  const [tl, tr, br, bl] = cornerRadiiOf(el.borderRadius, el.width, el.height);
-  const radiusStyle = `${tl}px ${tr}px ${br}px ${bl}px`;
+  const radiusStyle = formatCssCornerRadius(el.borderRadius, el.sizing?.borderRadiusY, el.width, el.height);
   const isIframe = uri ? isIframeVideoUrl(uri) : false;
   const isPresent = ctx.frameTitles === false;
   const pe = isPresent ? "auto" : "none";
@@ -88,12 +87,8 @@ export function SvgVideoNode({
           </div>
         </foreignObject>
       ) : (
-        <rect
-          x={0}
-          y={0}
-          width={el.width}
-          height={el.height}
-          rx={tl}
+        <path
+          d={shapeLocalD}
           fill={CANVAS_BADGE_SURFACE}
           stroke={CANVAS_BADGE_RIDGE}
           strokeWidth={1}

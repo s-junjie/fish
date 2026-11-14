@@ -1,4 +1,4 @@
-import { relayoutDocumentTree, resolvePadding } from "./compile";
+import { relayoutDocumentTree, resolveContentInsets } from "./compile";
 import { getActivePage } from "./dsl/document-ops";
 import { instanceSizeResolver } from "./interactions/instance-size";
 import { DEFAULT_FLEX_DIRECTION, layoutOf, type FlatAutoLayout } from "./dsl/layout-flat";
@@ -128,7 +128,7 @@ export function geometryReport(doc: DesignDocument): GeometryFinding[] {
 
       if (isLayoutContainer(el)) {
         const layout = layoutOf(any as FlatAutoLayout);
-        const [pt, pr, pb, pl] = resolvePadding(layout?.padding as AutoLayout["padding"]);
+        const [pt, pr, pb, pl] = resolveContentInsets(el, layout?.padding as AutoLayout["padding"]);
         const left = pl;
         const right = w - pr;
         const top = pt;

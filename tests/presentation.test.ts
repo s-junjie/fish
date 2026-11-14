@@ -28,6 +28,19 @@ const frame = (id: string, x: number, y: number, w: number, h: number, extra = {
 const rect = (id: string, x: number, y: number, w: number, h: number, extra = {}): DesignElement =>
   ({ id, type: "rect", name: id, x, y, width: w, height: h, ...extra }) as DesignElement;
 
+const instance = (id: string, x: number, y: number, w: number, h: number, extra = {}): DesignElement =>
+  ({
+    id,
+    type: "instance",
+    name: id,
+    x,
+    y,
+    width: w,
+    height: h,
+    componentId: "master",
+    ...extra
+  }) as DesignElement;
+
 const ids = (d: DesignDocument) => presentationFrames(d).map((f) => f.id);
 
 describe("presentationFrames", () => {
@@ -81,6 +94,28 @@ describe("presentationFrames", () => {
   it("treats a top-level component as a slide", () => {
     const component = { id: "c", type: "component", name: "c", x: 0, y: 0, width: 80, height: 80, children: [] };
     expect(ids(doc([component as DesignElement]))).toEqual(["c"]);
+  });
+
+  it("presents a top-level instance as a slide of its own", () => {
+    const frames = presentationFrames(doc([instance("i1", 0, 0, 400, 300)]));
+    expect(frames.map((f) => f.id)).toEqual(["i1"]);
+    expect(frames[0].elements.map((el) => el.id)).toEqual(["i1"]);
+    expect(frames[0].bounds).toEqual({ x: 0, y: 0, width: 400, height: 300 });
+  });
+
+  it("puts an instance beside artboards in reading order, not in the synthetic page slide", () => {
+    const deck = doc([
+      frame("right", 600, 0, 400, 300),
+      instance("left", 0, 0, 400, 300),
+      frame("below", 0, 400, 400, 300)
+    ]);
+    expect(ids(deck)).toEqual(["left", "right", "below"]);
+    expect(ids(deck)).not.toContain(PAGE_FRAME_ID);
+  });
+
+  it("leaves a hidden or zero-area instance out of the deck", () => {
+    expect(ids(doc([instance("hidden", 0, 0, 100, 100, { visible: false }), frame("a", 300, 0, 100, 100)]))).toEqual(["a"]);
+    expect(ids(doc([instance("flat", 0, 0, 0, 100), frame("a", 300, 0, 100, 100)]))).toEqual(["a"]);
   });
 
   it("does not confuse a nested artboard for a slide", () => {
@@ -337,6 +372,24 @@ describe("findPresentationSlideIndex", () => {
     const deck = doc([frame("f1", 0, 0, 400, 300), frame("f2", 500, 0, 400, 300)]);
     const frames = presentationFrames(deck);
     expect(findPresentationSlideIndex(frames, deck, "unknown_id")).toBe(0);
+  });
+
+  it("starts on an instance slide when the instance or one of its resolved layers is selected", () => {
+    const deck = doc([frame("f1", 0, 0, 400, 300), instance("i2", 500, 0, 400, 300)]);
+    const master = {
+      id: "master",
+      type: "component",
+      name: "MASTER",
+      x: 0,
+      y: 0,
+      width: 400,
+      height: 300,
+      children: [rect("child", 10, 10, 50, 50)]
+    } as DesignElement;
+    deck.pages!.push({ id: "page_2", name: "Page 2", canvas: deck.canvas, children: [master] });
+    const frames = presentationFrames(deck);
+    expect(findPresentationSlideIndex(frames, deck, "i2")).toBe(1);
+    expect(findPresentationSlideIndex(frames, deck, "i2_child")).toBe(1);
   });
 });
 

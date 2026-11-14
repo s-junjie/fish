@@ -109,8 +109,10 @@ export function reconcileSizingAfterReparent(
       type: moved.type,
       ownLayout: undefined,
       parentLayout: nextParent ? layoutOf(nextParent as FlatAutoLayout) ?? null : null,
+      parentSizing: nextParent?.sizing ?? null,
       authoredWidth: undefined,
-      authoredHeight: undefined
+      authoredHeight: undefined,
+      isAbsolute: moved.position === "absolute"
     });
   } else {
     if (sizing.width === "fit-content") delete sizing.width;

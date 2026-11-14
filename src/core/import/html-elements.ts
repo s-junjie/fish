@@ -56,7 +56,7 @@ export function spacingBindingsOf(
   tokens: TokenLookup,
   layout: AutoLayout,
   cs: CSSStyleDeclaration,
-  border: BorderWidths
+  _border: BorderWidths
 ): Record<string, string> | undefined {
   const out: Record<string, string> = {};
   const gap = typeof layout.gap === "number" ? layout.gap : layout.columnGap;
@@ -64,12 +64,10 @@ export function spacingBindingsOf(
     const id = tokens.number(["gap", "column-gap", "row-gap"], gap);
     if (id) out.gap = id;
   }
-  if (border.top === 0 && border.right === 0 && border.bottom === 0 && border.left === 0) {
-    const padding = layoutPadding(cs, border);
-    if (typeof padding === "number" && padding > 0) {
-      const id = tokens.number(["padding", "padding-top"], padding);
-      if (id) out.padding = id;
-    }
+  const padding = layoutPadding(cs);
+  if (typeof padding === "number" && padding > 0) {
+    const id = tokens.number(["padding", "padding-top"], padding);
+    if (id) out.padding = id;
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }
@@ -103,7 +101,7 @@ export function frameElement(
   } as FrameElement;
 
   if (layout) {
-    const padding = layoutPadding(cs, style.border);
+    const padding = layoutPadding(cs);
     Object.assign(frame, flattenLayout(padding === 0 ? layout : { ...layout, padding }));
   }
   return frame;

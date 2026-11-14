@@ -83,7 +83,7 @@ fish/
 
 ### 3.1 DSL & Scene Graph Model
 - **Unified Local Coordinates**: All coordinates are parent-local. Frame children store `(x, y)` relative to parent container origin; `line`/`arrow` store delta endpoints `(dx, dy)`; `path.d` sits in a local `(0, 0, w, h)` box. Transforms compose naturally via SVG `<g transform="translate(el.x, el.y)">`.
-- **Paint Stacks**: `fills[]` and `strokes[]` are ordered bottom-up. All fills render prior to strokes. Image fills (`type: "image"`) are paint-layer primitives rendered as `<pattern>` defs, not separate element nodes.
+- **Paint & Effect Stacks**: `fills[]`, `strokes[]`, and `effects[]` are ordered bottom-up (`index 0` underneath; the Inspector lists them top-first via `stackRows` to match visual order). All fills render prior to strokes. Image fills (`type: "image"`) are paint-layer primitives rendered as `<pattern>` defs, not separate element nodes.
 - **Layer Lock**: `locked: true` is materialized down subtrees. Enforced in the DOM via CSS `pointer-events: none` on `[data-locked]` so browser native hit-testing resolves occluded elements underneath.
 - **Masking**: Emits `<mask id="mask_layer_<elId>">` sampling the raw fill stack. SVG's luminance mask defaults to alpha-mapping through an `feColorMatrix` filter adapter unless explicit luminance mode is set.
 - **Shared Styles**: Elements store style links (`fillStyleId`, `strokeStyleId`, etc.) alongside evaluated local values (`fills`, `strokes`), allowing standalone SVG compilation without style indirection.

@@ -19,9 +19,13 @@ describe("dash pattern normalisation", () => {
     expect(el.strokes![0].dashArray).toEqual([10, 6]);
   });
 
-  it("expands style: dashed into the default pattern", () => {
-    const el = normalize({ width: 2, style: "dashed" });
-    expect(el.strokes![0].dashArray).toEqual([...DEFAULT_DASH]);
+  it("expands style: dashed into the default pattern and keeps style: dotted", () => {
+    const dashed = normalize({ width: 2, style: "dashed" });
+    expect(dashed.strokes![0].dashArray).toEqual([...DEFAULT_DASH]);
+
+    const dotted = normalize({ width: 2, style: "dotted" });
+    expect(dotted.strokes![0].style).toBe("dotted");
+    expect(dotted.strokes![0].dashArray).toBeUndefined();
   });
 
   it("lets an explicit pattern outrank a solid style", () => {
@@ -65,8 +69,16 @@ describe("strokeDashAttrs", () => {
     expect(strokeDashAttrs({ width: 2, dashArray: [10, 6] }).strokeDasharray).toBe("10 6");
   });
 
-  it("falls back to the default pattern for style: dashed", () => {
+  it("falls back to the default pattern for style: dashed and round dots for style: dotted", () => {
     expect(strokeDashAttrs({ width: 2, style: "dashed" }).strokeDasharray).toBe(DEFAULT_DASH.join(" "));
+    expect(strokeDashAttrs({ width: 3, style: "dotted" })).toEqual({
+      strokeDasharray: "0 6",
+      strokeLinecap: "round"
+    });
+    expect(strokeDashAttrs({ width: 3, style: "dotted", cap: "square" })).toEqual({
+      strokeDasharray: "0 6",
+      strokeLinecap: "square"
+    });
   });
 
   it("lets an all-zero pattern switch dashes off entirely", () => {

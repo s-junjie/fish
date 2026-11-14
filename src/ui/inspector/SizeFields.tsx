@@ -1,4 +1,4 @@
-import { DesignElement, DesignDocument, SizeMode } from "../../core/dsl/types";
+import { AutoLayoutFields, DesignElement, DesignDocument, SizeMode } from "../../core/dsl/types";
 import { getActivePage } from "../../core/dsl/document-ops";
 import { isLineElement } from "../../core/geometry/element-bounds";
 import { setLineSize } from "../../core/interactions/line-ops";
@@ -107,7 +107,15 @@ export function SizeFields({
   // control that silently no-ops for part of a selection is worse than no control.
   const boundsEveryMember =
     selectedElements.length > 0 &&
-    selectedElements.every((el) => Boolean(layoutOf(findParentById(getActivePage(docRef.current).children, el.id))));
+    selectedElements.every(
+      (el) =>
+        Boolean(layoutOf(findParentById(getActivePage(docRef.current).children, el.id))) ||
+        Boolean(layoutOf(el as AutoLayoutFields)) ||
+        el.sizing?.minWidth !== undefined ||
+        el.sizing?.maxWidth !== undefined ||
+        el.sizing?.minHeight !== undefined ||
+        el.sizing?.maxHeight !== undefined
+    );
   const sizingHint = t("stack.sizingControlled");
   // The proportion lock rides on the element, so the button reads the selection
   // rather than a session flag — which is what lets a newly drawn shape start
@@ -376,13 +384,8 @@ export function SizeFields({
           )}
       </div>
 
-      {/* Min / Max, both axes — and only where they can do anything. A bound
-          applies to the size a layout pass WRITES, and only an element inside
-          a layout parent has one, so this is the same condition under which
-          `fill` and `hug` resolve to anything at all. They sit under W because
-          they qualify THIS element's own length, which is what the fields above
-          them are; `0` is the absent spelling, so there is no empty state to
-          discover. */}
+      {/* Min / Max bounds apply to derived (`fill`, `hug`, stretched) and fixed
+          sizes; `0` means no bound. */}
       {boundsEveryMember && showBounds && (
         <div className="space-y-1.5" data-inspector-bounds="true">
           {(["min", "max"] as const).map((kind) => (

@@ -27,7 +27,7 @@ export function StrokeBanner({ strokes }: { strokes: Stroke[] }) {
         style={{
           borderWidth: `${Math.min(top?.width || 1, 8)}px`,
           borderColor: color,
-          borderStyle: top?.style === "dashed" ? "dashed" : "solid"
+          borderStyle: top?.style === "dashed" ? "dashed" : top?.style === "dotted" ? "dotted" : "solid"
         }}
       />
     </div>

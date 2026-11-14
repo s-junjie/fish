@@ -554,6 +554,17 @@ export interface ElementSizing {
   maxWidth?: number;
   minHeight?: number;
   maxHeight?: number;
+  /** Dynamic CSS `%` / mixed `calc()` expressions re-evaluated against parent box on layout. */
+  widthExpr?: string;
+  heightExpr?: string;
+  minWidthExpr?: string;
+  maxWidthExpr?: string;
+  minHeightExpr?: string;
+  maxHeightExpr?: string;
+  /** Vertical corner radii when `border-radius` uses elliptical `rx / ry` or non-square `%`. */
+  borderRadiusY?: CornerRadius;
+  /** Dynamic `%` / mixed `calc()` `border-radius` expression synced when the box resizes. */
+  borderRadiusExpr?: string;
 }
 
 export type ElementType =
@@ -602,9 +613,10 @@ export interface SlideSpec {
 }
 
 /**
- * Carried by every type that presents as a slide: the three containers, plus
- * `html` — a framed page is a screenful in its own right, so it is a slide on
- * its own rather than something that has to be wrapped in a frame to be shown.
+ * Carried by every type that presents as a slide: the three containers, `html`
+ * and `instance`. An embed and a component instance are each a screenful in
+ * their own right, so they present on their own rather than having to be
+ * wrapped in a frame to be shown.
  */
 export interface SlideHost {
   slide?: SlideSpec;
@@ -979,7 +991,7 @@ export interface ComponentSetElement extends BaseElement, SlideHost, AutoLayoutF
  * "what does this instance own", two sets of repairs, and a property vocabulary
  * with two meanings in it.
  */
-export interface InstanceElement extends BaseElement {
+export interface InstanceElement extends BaseElement, SlideHost {
   type: "instance";
   componentId: string;
   overrides?: ComponentOverride[];
@@ -1599,9 +1611,9 @@ export interface Stroke {
   color?: string;
   width: number;
   tokenId?: string;
-  /** Shorthand only: an odd-length `dashArray` wins, and `dashed` without one
-   *  falls back to `DEFAULT_DASH`. Kept because it is what imports emit. */
-  style?: "solid" | "dashed";
+  /** Shorthand only: an odd-length `dashArray` wins, while `dashed` or `dotted`
+   *  without one falls back to a style-derived SVG dash pattern. */
+  style?: "solid" | "dashed" | "dotted";
   align?: "inside" | "center" | "outside";
   /** Line cap; default "butt" (SVG default). */
   cap?: "butt" | "round" | "square";

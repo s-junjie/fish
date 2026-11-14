@@ -1,5 +1,6 @@
 import type { TextStyle, TextSpan, AutoLayout, SizeMode, ElementSizing, ColorFilter, LineHeight, LetterSpacing } from "../types";
 import { asNumber, clamp, canonicalKey, isPlainObject, lengthUnit, pxLength, ALIGN_ALIASES, VERTICAL_ALIGN_ALIASES, FONT_WEIGHT_WORDS, SIZE_MODE_ALIASES, ElementType, NormalizationRepair } from "./shared";
+import { parseDynamicLength } from "../length-expr";
 import { canonicalizeStyleKeys } from "./css-absorb";
 import { WIDTH_SIZING_MODES } from "../schema-enums";
 import { DEFAULT_FONT_FAMILY } from "../../font-stack";
@@ -542,6 +543,31 @@ const BOUND_VARIANTS: Record<typeof BOUND_KEYS[number], readonly string[]> = {
   maxHeight: ["maxHeight", "max-height"]
 };
 
+const DYNAMIC_SIZING_KEYS = new Set([
+  "widthExpr",
+  "heightExpr",
+  "minWidthExpr",
+  "maxWidthExpr",
+  "minHeightExpr",
+  "maxHeightExpr",
+  "borderRadiusY",
+  "borderRadiusExpr"
+]);
+
+/** Parses a size bound or dynamic length (`px`, `rem`, `%`, or `calc/min/max/clamp`). */
+export function parseBoundLength(value: unknown): { px?: number; expr?: string } | undefined {
+  const n = pxLength(value);
+  if (n !== undefined && Number.isFinite(n) && n >= 0) {
+    return { px: Math.round(n * 100) / 100 };
+  }
+  const dyn = parseDynamicLength(value);
+  if (!dyn) return undefined;
+  if (!dyn.hasPercent && dyn.constantPx !== undefined) {
+    return { px: Math.round(dyn.constantPx * 100) / 100 };
+  }
+  return dyn.expr ? { expr: dyn.expr } : undefined;
+}
+
 export function normalizeElementSizing(
   rawInput: unknown,
   path: string,
@@ -565,6 +591,16 @@ export function normalizeElementSizing(
   }
 
   const out: ElementSizing = {};
+  const record = out as Record<string, unknown>;
+  for (const key of DYNAMIC_SIZING_KEYS) {
+    const val = raw[key];
+    if (val === undefined) continue;
+    if (key === "borderRadiusY") {
+      if (typeof val === "number" || (Array.isArray(val) && val.length === 4)) record[key] = val;
+    } else if (typeof val === "string" && val.trim()) {
+      record[key] = val.trim();
+    }
+  }
   // `"fixed"` is KEPT, not dropped as the default: an absent axis is `auto`, which
   // a grid cell stretches, so only the written-down value can say "this number is
   // the size" (see `axisIsPinned`).
@@ -581,18 +617,24 @@ export function normalizeElementSizing(
    * element can carry a bound without declaring a mode, since the bound only
    * has to bite when something else derives the size.
    */
-  const bound = (key: string, value: unknown): void => {
-    const unit = lengthUnit(value);
-    const n = pxLength(value);
-    if (n === undefined || !Number.isFinite(n) || n < 0) {
+  const bound = (key: typeof BOUND_KEYS[number], value: unknown): void => {
+    const parsed = parseBoundLength(value);
+    if (!parsed) {
+      const unit = lengthUnit(value);
       repairs.push({
         kind: "sizing",
         path: `${path}/sizing/${key}`,
-        message: `${JSON.stringify(value)} is not a px length${unit && unit !== "px" ? ` (carries "${unit}")` : ""}`
+        message: `${JSON.stringify(value)} is not a px length or % expression${unit && unit !== "px" ? ` (carries "${unit}")` : ""}`
       });
       return;
     }
-    (out as Record<string, unknown>)[key] = Math.round(n * 100) / 100;
+    if (parsed.expr !== undefined) {
+      record[`${key}Expr`] = parsed.expr;
+      delete record[key];
+    } else if (parsed.px !== undefined) {
+      record[key] = parsed.px;
+      delete record[`${key}Expr`];
+    }
   };
   for (const key of BOUND_KEYS) {
     for (const variant of BOUND_VARIANTS[key]) {
@@ -619,7 +661,7 @@ export function normalizeElementSizing(
       });
     }
     for (const key of Object.keys(raw)) {
-      if (key !== "width" && key !== "height" && !isBoundKey(key)) {
+      if (key !== "width" && key !== "height" && !isBoundKey(key) && !DYNAMIC_SIZING_KEYS.has(key)) {
         repairs.push({
           kind: "sizing",
           path: `${path}/sizing/${key}`,

@@ -4,6 +4,8 @@ import { matchSlides } from "../src/core/presentation/morph";
 import { morphSlide, slidePaint, enterShift, leaveShift, CARRIED_FIELDS, NOT_CARRIED } from "../src/core/presentation/animate";
 import { createSlideClock, easeAt, resolveSlide, resolveStep, reverseDirection, DEFAULT_SLIDE_MS } from "../src/core/presentation/slide";
 import { normalizeDesignDocument, CANONICAL_KEYS } from "../src/core/dsl/normalize";
+import { SLIDE_HOST_TYPES } from "../src/core/dsl/slide";
+import { ELEMENT_TYPES } from "../src/core/dsl/schema-enums";
 import { writtenKeyOf } from "../src/core/dsl/written-keys";
 import schema from "../src/core/dsl/fish.schema.json";
 import { LATEST_DOCUMENT_VERSION } from "../src/core/dsl/version";
@@ -911,5 +913,61 @@ describe("slide normalization", () => {
   it("leaves a deck that sets nothing byte-for-byte as it was", () => {
     const { document } = normalizeDesignDocument(docWith([frameElement({})]));
     expect("slide" in (getActivePage(document).children[0] as object)).toBe(false);
+  });
+
+  it("keeps a transition written on a top-level instance", () => {
+    const { document, repairs } = normalizeDesignDocument(
+      docWith([
+        {
+          id: "i",
+          type: "instance",
+          name: "i",
+          x: 0,
+          y: 0,
+          width: 100,
+          height: 100,
+          componentId: "master",
+          slide: { transition: "dissolve" }
+        }
+      ])
+    );
+    expect(repairs.filter((r) => r.path.endsWith("/slide"))).toEqual([]);
+    expect((getActivePage(document).children[0] as { slide?: unknown }).slide).toEqual({ transition: "dissolve" });
+  });
+
+  /**
+   * The host list is the one the normalizer reads, and the union it names is
+   * the schema's own — a type that is neither a host nor reported as one is a
+   * `slide` an author can write and never see. Grading every member of
+   * `ELEMENT_TYPES` is what makes adding a new type a decision instead of a
+   * silent default.
+   */
+  it("splits every element type into a slide host and a non-host", () => {
+    for (const type of SLIDE_HOST_TYPES) {
+      expect(ELEMENT_TYPES, `${type} is not an element type`).toContain(type);
+    }
+    for (const type of ELEMENT_TYPES) {
+      const el: Record<string, unknown> = {
+        id: `el_${type}`,
+        type,
+        name: type,
+        x: 0,
+        y: 0,
+        width: 20,
+        height: 20,
+        slide: { transition: "dissolve" }
+      };
+      if (type === "instance") el.componentId = "master";
+      if (type === "text") {
+        el.content = "x";
+        el.style = { fontSize: 12 };
+      }
+      const { document, repairs } = normalizeDesignDocument(docWith([el]));
+      const stored = getActivePage(document).children[0] as { slide?: unknown } | undefined;
+      const host = (SLIDE_HOST_TYPES as readonly string[]).includes(type);
+      expect(stored, `${type} survives normalization`).toBeTruthy();
+      expect(Boolean(stored?.slide), `${type} keeps its slide`).toBe(host);
+      expect(repairs.some((r) => r.path.endsWith("/slide")), `${type} reports its slide`).toBe(!host);
+    }
   });
 });

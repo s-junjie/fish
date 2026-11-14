@@ -9,8 +9,8 @@ import {
   hugsAxis,
   isFillAxis,
   maxFrom,
+  resolveContentInsets,
   resolveMargin,
-  resolvePadding,
   round2,
   sizeForEnvelope,
   ChildSizeResolver
@@ -51,7 +51,7 @@ function childMainSize(
         // made the height disagree with the width this same pass assigns.
         limit =
           crossMode === "fixed"
-            ? child.width
+            ? clampAxis(child, "width", child.width)
             : crossMode === "max-content"
               ? Infinity
               : crossLimit;
@@ -139,7 +139,7 @@ export function flexCrossAlignReason(frame: FrameElement): FlexCrossAlignReason 
   const rowGap = layout.rowGap ?? layout.gap ?? 0;
   const crossGap = isRow ? rowGap : columnGap;
 
-  const [pt, pr, pb, pl] = resolvePadding(layout.padding);
+  const [pt, pr, pb, pl] = resolveContentInsets(frame, layout.padding);
   const availableCross = isRow
     ? Math.max(0, frame.height - pt - pb)
     : Math.max(0, frame.width - pl - pr);
@@ -197,7 +197,7 @@ export function applyFlexLayout(
   const crossGap = isRow ? rowGap : columnGap;
   const isWrap = layout.wrap === "wrap";
 
-  const [pt, pr, pb, pl] = resolvePadding(layout.padding);
+  const [pt, pr, pb, pl] = resolveContentInsets(frameEl, layout.padding);
 
   const contentStartX = pl;
   const contentStartY = pt;
@@ -287,7 +287,11 @@ export function applyFlexLayout(
     // everything else, so it has to be called on BOTH axes. Reading `box.width`
     // here instead would skip the text measurement and place a `max-content`
     // label at its stored width — the exact bug `childBox` exists to fix.
-    const baseMain = childMainSize(child, frameEl, isRow, mainLimit, crossLimit, resolveChild);
+    const baseMain = clampAxis(
+      child,
+      mainAxis,
+      childMainSize(child, frameEl, isRow, mainLimit, crossLimit, resolveChild)
+    );
     let baseCross = isRow ? box.height : box.width;
     if (child.type === "text") {
       const crossMode = resolveAxis(child, frameEl, crossAxis);
@@ -305,7 +309,7 @@ export function applyFlexLayout(
       // A bound is read HERE rather than at placement, because everything that
       // adds up along an axis — line breaking, free space, a hug extent — has to
       // be adding up the size the child will actually be given.
-      baseMainSize: clampAxis(child, mainAxis, baseMain),
+      baseMainSize: baseMain,
       baseCrossSize: clampAxis(child, crossAxis, baseCross),
       ...marginAxes(child)
     };

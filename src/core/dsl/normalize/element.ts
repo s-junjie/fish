@@ -4,7 +4,7 @@ import { deepEqual } from "../../deep-equal";
 import { MASK_MODES } from "../schema-enums";
 import { normalizeEffects, shadowToEffect, normalizeBoxShadow } from "./effects";
 import { readBlendMode, reportRefusedBlendMode } from "./blend-mode";
-import { normalizeColorFilter, normalizeElementSizing, type SizingAxis } from "./text-sizing";
+import { normalizeColorFilter, normalizeElementSizing, parseBoundLength, type SizingAxis } from "./text-sizing";
 import { normalizeMarginShape, readGridPlacement } from "./auto-layout";
 import { absorbTransform, settleSkew } from "./transform";
 import { absorbWritingMode } from "./writing-mode";
@@ -13,9 +13,11 @@ import { toCssLine } from "../layout-flat";
 import { absorbFlatText, flatSizeMode, flatKeyHint } from "./css-absorb";
 import { parseFilterValue } from "../../import/css-values";
 import { normalizeLink } from "../link";
-import { normalizeSlide } from "../slide";
-import { applySizingDefaults } from "../sizing-defaults";
+import { isSlideHostType, normalizeSlide, SLIDE_HOST_TYPES } from "../slide";
+import { applySizingDefaults, resolveCssAutoMode } from "../sizing-defaults";
+import { evalLengthExpr, parseDynamicLength } from "../length-expr";
 import { ELEMENT_BRANCHES } from "./element-branches";
+import { clampAxis, resolveContentInsets, round2 } from "../../layout/box";
 
 /** The cross-axis overrides a child may state for itself. */
 const ALIGN_SELF_VALUES: ReadonlySet<string> = new Set(["start", "center", "end", "stretch"]);
@@ -88,6 +90,8 @@ export const CANONICAL_KEYS: ReadonlySet<string> = new Set([
   "d", "path", "pathData", "viewBox", "whiteSpace", "fillRule", "border", "borderColor", "borderWidth",
   "border-top", "border-right", "border-bottom", "border-left",
   "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth",
+  "borderTopColor", "borderRightColor", "borderBottomColor", "borderLeftColor",
+  "borderTopStyle", "borderRightStyle", "borderBottomStyle", "borderLeftStyle",
   "borderStyle", "strokeWidth",
   // The stroke-row input spellings: a Figma per-side weight, a `sides` map or a
   // one-side selector folds into the `strokes[]` row it belongs to (`.sides` /
@@ -272,7 +276,9 @@ export function normalizeElement(
   parentLayout: AutoLayout | null,
   preserveUnknown: boolean = false,
   seenIds?: Set<string>,
-  rawComponentBoxes?: RawComponentBoxes
+  rawComponentBoxes?: RawComponentBoxes,
+  parentSizing?: ElementSizing | null,
+  parentBox?: { width: number; height: number; contentWidth?: number; contentHeight?: number }
 ): DesignElement | null {
   if (!isPlainObject(raw)) {
     repairs.push({ kind: "dropped-property", path, message: "element is not an object; dropped" });
@@ -343,15 +349,18 @@ export function normalizeElement(
       : undefined;
   const widthRaw = authoredWidthRaw !== undefined ? authoredWidthRaw : masterBox?.width;
   const heightRaw = authoredHeightRaw !== undefined ? authoredHeightRaw : masterBox?.height;
-  const width = Math.max(0, pxLength(widthRaw) ?? 0);
-  const height = Math.max(0, pxLength(heightRaw) ?? 0);
-  // A non-length `width`/`height` (`"auto"`, `"100%"`) used to be written as `0`
+  const widthDyn = pxLength(widthRaw) === undefined ? parseDynamicLength(widthRaw) : undefined;
+  const heightDyn = pxLength(heightRaw) === undefined ? parseDynamicLength(heightRaw) : undefined;
+  let width = Math.max(0, pxLength(widthRaw) ?? (!widthDyn?.hasPercent ? widthDyn?.constantPx : undefined) ?? 0);
+  let height = Math.max(0, pxLength(heightRaw) ?? (!heightDyn?.hasPercent ? heightDyn?.constantPx : undefined) ?? 0);
+  // A non-length `width`/`height` (`"auto"`, `"100%"`, `"50%"`) used to be written as `0`
   // with no repair: the axis default is a number, so a value CSS would derive was
-  // pinned to zero. A sizing MODE is folded into `sizing` further down, so
-  // only a value that is neither a length nor a mode is reported as coerced here.
+  // pinned to zero. Sizing modes and valid `%`/calc expressions are absorbed
+  // below, so only a value that is neither is reported here.
   for (const [axis, rawValue] of [["width", authoredWidthRaw], ["height", authoredHeightRaw]] as const) {
     if (rawValue === undefined) continue;
-    if (pxLength(rawValue) === undefined && flatSizeMode(rawValue, axis) === undefined) {
+    const dyn = axis === "width" ? widthDyn : heightDyn;
+    if (pxLength(rawValue) === undefined && dyn === undefined && flatSizeMode(rawValue, axis) === undefined) {
       repairs.push({
         kind: "sizing",
         path: `${path}/${axis}`,
@@ -494,19 +503,18 @@ export function normalizeElement(
     });
   }
 
-  // Only a top-level container presents as a slide, so `slide` on anything else
-  // is reported: it looks authored and does nothing, which is worse than a
+  // Only a top-level slide host presents, so `slide` on anything else is
+  // reported: it looks authored and does nothing, which is worse than a
   // dropped key the author never sees.
   if (el.slide !== undefined) {
-    // `html` is here because it is a slide in its own right — see `SlideHost`.
-    if (type === "frame" || type === "component" || type === "componentSet" || type === "html") {
+    if (isSlideHostType(type)) {
       const slide = normalizeSlide(el.slide);
       if (slide) base.slide = slide;
     } else {
       repairs.push({
         kind: "dropped-property",
         path: `${path}/slide`,
-        message: `slide is only read on a top-level frame, component, componentSet or html and was dropped from this ${type}`
+        message: `slide is only read on a top-level ${SLIDE_HOST_TYPES.join(", ")} and was dropped from this ${type}`
       });
     }
   }
@@ -553,18 +561,78 @@ export function normalizeElement(
   // by `readFlatAutoLayout` below, so there is no fold step for them.
   el = absorbFlatText(el, type, path, repairs);
 
+  // `ownLayout` is resolved here and becomes the `parentLayout` of children.
+  const ownLayout = readFlatAutoLayout(el, path, repairs, type);
+  const elRecord = el as Record<string, unknown>;
+
+  // Only "absolute" means out-of-flow. In-flow is absent: "relative", "static",
+  // "flow" from authors thinking in CSS are accepted as "in the flow" (omitted),
+  // without a noisy dropped-property repair. Any unrecognised value is reported.
+  const rawLayoutPosition = typeof el.position === "string" ? el.position : "";
+  const layoutPosition = canonicalKey(rawLayoutPosition);
+  const isAbsolute = layoutPosition === "absolute";
+  if (isAbsolute) {
+    base.position = "absolute";
+  } else if (layoutPosition && layoutPosition !== "relative" && layoutPosition !== "static" && layoutPosition !== "flow") {
+    repairs.push({
+      kind: "layout",
+      path: `${path}/position`,
+      message: `"${rawLayoutPosition}" is not a layout position (expected "absolute")`
+    });
+  }
+
+  // Read `align-self` before resolving `width: "auto"` / sizing defaults so stretch context is known.
+  let alignSelfValue: AutoLayout["align"] | undefined;
+  const rawAlignSelf = elRecord["align-self"] ?? elRecord.alignSelf;
+  if (rawAlignSelf !== undefined) {
+    const written = canonicalKey(String(rawAlignSelf));
+    const alignSelf = written === "flex-start" ? "start" : written === "flex-end" ? "end" : written;
+    if (ALIGN_SELF_VALUES.has(alignSelf)) {
+      alignSelfValue = alignSelf as AutoLayout["align"];
+      base["align-self"] = toCssLine(alignSelf) as typeof base["align-self"];
+    } else {
+      repairs.push({
+        kind: "layout",
+        path: `${path}/align-self`,
+        message: `"${String(rawAlignSelf)}" is not a cross-axis alignment (${[...ALIGN_SELF_VALUES].join("|")})`
+      });
+    }
+  }
+
   const flatSizing: ElementSizing = {};
   for (const [axis, rawValue] of [["width", el.width], ["height", el.height]] as const) {
     if (rawValue === undefined) continue;
     if (pxLength(rawValue) !== undefined) continue; // an authored pixel size stays where it is
+    const canon = typeof rawValue === "string" ? canonicalKey(rawValue) : "";
+    if (canon === "100%") {
+      if (parentBox && (!parentLayout || isAbsolute)) {
+        flatSizing[`${axis}Expr`] = "100%";
+        flatSizing[axis] = "fixed";
+      } else {
+        flatSizing[axis] = "fill";
+        repairs.push({ kind: "sizing", path: `${path}/${axis}`, severity: "info", message: `outer "${axis}" ${JSON.stringify(rawValue)} moved into sizing.${axis} = "fill"` });
+      }
+      continue;
+    }
+    const dyn = parseDynamicLength(rawValue);
+    if (dyn) {
+      if (dyn.hasPercent && dyn.expr) {
+        flatSizing[`${axis}Expr`] = dyn.expr;
+        flatSizing[axis] = "fixed";
+      }
+      continue;
+    }
+    if (canon === "auto") {
+      const autoMode = resolveCssAutoMode(
+        { type, ownLayout, parentLayout, parentSizing, authoredWidth: undefined, authoredHeight: undefined, isAbsolute, alignSelf: alignSelfValue },
+        axis
+      );
+      flatSizing[axis] = autoMode;
+      repairs.push({ kind: "sizing", path: `${path}/${axis}`, severity: "info", message: `outer "${axis}" ${JSON.stringify(rawValue)} moved into sizing.${axis} = "${autoMode}"` });
+      continue;
+    }
     const mode = flatSizeMode(rawValue, axis);
-    if (mode === "percent") {
-      repairs.push({
-        kind: "sizing",
-        path: `${path}/${axis}`,
-        message: `${axis} ${JSON.stringify(rawValue)} is a percentage the DSL cannot hold (only "100%"); dropped`
-      });
-    } else if (mode) {
+    if (mode && mode !== "percent") {
       (flatSizing as Record<string, SizeMode>)[axis] = mode;
       repairs.push({ kind: "sizing", path: `${path}/${axis}`, severity: "info", message: `outer "${axis}" ${JSON.stringify(rawValue)} moved into sizing.${axis} = "${mode}"` });
     }
@@ -578,32 +646,78 @@ export function normalizeElement(
     const rawBound = el[boundKey] ?? el[kebabKey];
     if (rawBound === undefined) continue;
     const writtenKey = el[boundKey] !== undefined ? boundKey : kebabKey;
-    const unit = lengthUnit(rawBound);
-    const n = pxLength(rawBound);
-    if (n === undefined || !Number.isFinite(n) || n < 0) {
+    const parsed = parseBoundLength(rawBound);
+    if (!parsed) {
+      const unit = lengthUnit(rawBound);
       repairs.push({
         kind: "sizing",
         path: `${path}/${writtenKey}`,
-        message: `${writtenKey} ${JSON.stringify(rawBound)} is not a px length${unit && unit !== "px" ? ` (carries "${unit}")` : ""}`
+        message: `${writtenKey} ${JSON.stringify(rawBound)} is not a px length or % expression${unit && unit !== "px" ? ` (carries "${unit}")` : ""}`
       });
-    } else {
-      flatSizing[boundKey] = Math.round(n * 100) / 100;
+    } else if (parsed.expr !== undefined) {
+      flatSizing[`${boundKey}Expr`] = parsed.expr;
+    } else if (parsed.px !== undefined) {
+      flatSizing[boundKey] = parsed.px;
     }
   }
 
-  // `ownLayout` is resolved here and becomes the `parentLayout` of children.
-  const ownLayout = readFlatAutoLayout(el, path, repairs, type);
-  const sizing: ElementSizing = {
-    ...flatSizing,
-    ...(normalizeElementSizing(el.sizing, path, repairs) ?? {})
+  const parsedSizing = normalizeElementSizing(el.sizing, path, repairs);
+  const sizing: ElementSizing = { ...flatSizing, ...(parsedSizing ?? {}) };
+  // Clear overridden expr/static pairs when `el.sizing` explicitly overrides a flat bound.
+  if (parsedSizing) {
+    for (const boundKey of ["minWidth", "maxWidth", "minHeight", "maxHeight"] as const) {
+      const exprKey = `${boundKey}Expr` as const;
+      if (parsedSizing[boundKey] !== undefined && parsedSizing[exprKey] === undefined) delete sizing[exprKey];
+      if (parsedSizing[exprKey] !== undefined && parsedSizing[boundKey] === undefined) delete sizing[boundKey];
+    }
+  }
+
+  const refForAxis = (axis: "width" | "height"): number | undefined => {
+    if (!parentBox) return undefined;
+    if (!parentLayout || isAbsolute) return axis === "width" ? parentBox.width : parentBox.height;
+    const pMode = parentSizing?.[axis];
+    if (pMode === "fit-content" || pMode === "max-content") return undefined;
+    return axis === "width"
+      ? (parentBox.contentWidth ?? parentBox.width)
+      : (parentBox.contentHeight ?? parentBox.height);
   };
+  for (const [boundKey, exprKey, axis] of [
+    ["minWidth", "minWidthExpr", "width"],
+    ["maxWidth", "maxWidthExpr", "width"],
+    ["minHeight", "minHeightExpr", "height"],
+    ["maxHeight", "maxHeightExpr", "height"]
+  ] as const) {
+    const expr = sizing[exprKey];
+    if (typeof expr !== "string") continue;
+    const ref = refForAxis(axis);
+    if (ref === undefined) continue;
+    const resolved = evalLengthExpr(expr, ref);
+    if (resolved !== undefined) sizing[boundKey] = Math.max(0, round2(resolved));
+  }
+  for (const [axis, exprKey] of [["width", "widthExpr"], ["height", "heightExpr"]] as const) {
+    const expr = sizing[exprKey];
+    if (typeof expr !== "string") continue;
+    const ref = refForAxis(axis);
+    if (ref === undefined) continue;
+    const resolved = evalLengthExpr(expr, ref);
+    if (resolved !== undefined) {
+      const pxVal = Math.max(0, round2(resolved));
+      base[axis] = pxVal;
+      if (axis === "width") width = pxVal;
+      else height = pxVal;
+    }
+  }
+
   const declaredWidthMode = sizing.width;
   applySizingDefaults(sizing, {
     type,
     ownLayout,
     parentLayout,
-    authoredWidth: pxLength(el.width),
-    authoredHeight: pxLength(el.height)
+    parentSizing,
+    authoredWidth: pxLength(el.width) ?? widthDyn?.constantPx,
+    authoredHeight: pxLength(el.height) ?? heightDyn?.constantPx,
+    isAbsolute,
+    alignSelf: alignSelfValue
   });
 
   // CSS's `white-space: nowrap` is a width statement here: a run that must not
@@ -629,7 +743,6 @@ export function normalizeElement(
   // a fixed `width` would stretch a child of a column along the wrong axis
   // (LESSONS_LEARNED class: axis confusion). The share itself is kept as
   // `flexGrow`, and only when it says more than the implicit equal `1`.
-  const elRecord = el as Record<string, unknown>;
   const growKey = elRecord["flex-grow"] !== undefined
     ? "flex-grow"
     : elRecord.flexGrow !== undefined
@@ -662,48 +775,27 @@ export function normalizeElement(
 
   if (Object.keys(sizing).length > 0) base.sizing = sizing;
 
-  // Only "absolute" means out-of-flow. In-flow is absent: "relative", "static",
-  // "flow" from authors thinking in CSS are accepted as "in the flow" (omitted),
-  // without a noisy dropped-property repair. Any unrecognised value is reported.
-  const rawLayoutPosition = typeof el.position === "string" ? el.position : "";
-  const layoutPosition = canonicalKey(rawLayoutPosition);
-  if (layoutPosition === "absolute") {
-    base.position = "absolute";
-  } else if (layoutPosition && layoutPosition !== "relative" && layoutPosition !== "static" && layoutPosition !== "flow") {
-    repairs.push({
-      kind: "layout",
-      path: `${path}/position`,
-      message: `"${rawLayoutPosition}" is not a layout position (expected "absolute")`
-    });
+  // Clamp fixed, free-canvas, root, or out-of-flow axes right at load time so
+  // `min-width` / `max-width` / `min-height` / `max-height` bound authored sizes
+  // even when no parent auto-layout pass runs over the element.
+  const shouldClampAtNormalize = (axis: "width" | "height"): boolean => {
+    const mode = sizing[axis];
+    if (mode === "fixed") return true;
+    if (mode !== undefined) return false;
+    const authored = axis === "width" ? authoredWidthRaw !== undefined : authoredHeightRaw !== undefined;
+    return !parentLayout || isAbsolute || authored;
+  };
+  if (shouldClampAtNormalize("width")) {
+    base.width = round2(clampAxis({ sizing } as DesignElement, "width", Number(base.width ?? width)));
+  }
+  if (shouldClampAtNormalize("height")) {
+    base.height = round2(clampAxis({ sizing } as DesignElement, "height", Number(base.height ?? height)));
   }
 
   const rawScrollBehavior = elRecord.scrollBehavior ?? elRecord["scroll-behavior"];
   if (rawScrollBehavior === "fixed" || rawScrollBehavior === "sticky" || rawScrollBehavior === "scroll") {
     if (rawScrollBehavior !== "scroll") {
       base.scrollBehavior = rawScrollBehavior;
-    }
-  }
-
-  // `start` is stored rather than folded into "absent": the two say different
-  // things — absent inherits the container's `align`, `start` overrides it — so
-  // dropping it would turn a deliberate override into whatever the container
-  // happens to say.
-  // Two spellings only — kebab `align-self` and camel `alignSelf`. A third,
-  // `align_self`, is snake_case and refused by name like every other snake key
-  // (the gate reports it), so the reader must not quietly honour it either.
-  const rawAlignSelf = elRecord["align-self"] ?? elRecord.alignSelf;
-  if (rawAlignSelf !== undefined) {
-    // CSS spells the start/end of a flex line `flex-start` / `flex-end`; stored so.
-    const written = canonicalKey(String(rawAlignSelf));
-    const alignSelf = written === "flex-start" ? "start" : written === "flex-end" ? "end" : written;
-    if (ALIGN_SELF_VALUES.has(alignSelf)) {
-      base["align-self"] = toCssLine(alignSelf) as typeof base["align-self"];
-    } else {
-      repairs.push({
-        kind: "layout",
-        path: `${path}/align-self`,
-        message: `"${String(rawAlignSelf)}" is not a cross-axis alignment (${[...ALIGN_SELF_VALUES].join("|")})`
-      });
     }
   }
 
@@ -839,8 +931,39 @@ export function normalizeElement(
   // A container hands its children back to this function with its own id as the
   // prefix and its own layout as theirs, so a nested frame inherits the parent's
   // auto-layout without the branch knowing how recursion is wired.
+  // Computed lazily on first child so `normalizeContainer` can normalize `base.strokes` first,
+  // deducting `inside` borders from the content box before resolving percentage child sizes.
+  let cachedChildParentBox:
+    | { width: number; height: number; contentWidth: number; contentHeight: number }
+    | undefined;
+  const getChildParentBox = () => {
+    if (!cachedChildParentBox) {
+      const childParentPadding = ownLayout
+        ? resolveContentInsets(base as unknown as DesignElement, ownLayout.padding)
+        : [0, 0, 0, 0];
+      cachedChildParentBox = {
+        width: Number(base.width ?? width),
+        height: Number(base.height ?? height),
+        contentWidth: Math.max(0, Number(base.width ?? width) - childParentPadding[1] - childParentPadding[3]),
+        contentHeight: Math.max(0, Number(base.height ?? height) - childParentPadding[0] - childParentPadding[2])
+      };
+    }
+    return cachedChildParentBox;
+  };
   const normalizeChild = (child: unknown, childPath: string, childIndex: number): DesignElement | null =>
-    normalizeElement(child, childPath, childIndex, repairs, `${String(base.id)}_`, ownLayout ?? null, preserveUnknown, seenIds, rawComponentBoxes);
+    normalizeElement(
+      child,
+      childPath,
+      childIndex,
+      repairs,
+      `${String(base.id)}_`,
+      ownLayout ?? null,
+      preserveUnknown,
+      seenIds,
+      rawComponentBoxes,
+      Object.keys(sizing).length > 0 ? sizing : null,
+      getChildParentBox()
+    );
 
   // --- per-type payload ---------------------------------------------------
   // Dispatched, not switched: the arms live in `element-branches/`, one entry
@@ -853,11 +976,17 @@ export function normalizeElement(
     path,
     repairs,
     type,
-    box: { x, y, width, height },
+    box: {
+      x: Number(base.x ?? x),
+      y: Number(base.y ?? y),
+      width: Number(base.width ?? width),
+      height: Number(base.height ?? height)
+    },
     sizing,
     ownLayout,
     normalizeChild
   });
+  if (Object.keys(sizing).length > 0) base.sizing = sizing;
 
   /* `outline` is the text glyph's own geometry, kept only as `{ d }`. CSS's
      `outline` is a ring drawn outside the box, which has no field here, and an

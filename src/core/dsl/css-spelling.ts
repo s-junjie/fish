@@ -144,6 +144,8 @@ export const NO_CSS_EQUIVALENT: Readonly<Record<string, string>> = {
       "layoutGrow", "pathData", "viewBox", "whiteSpace", "textColor", "linkUrl",
       "focalPoint", "imageCrop", "backgroundColor", "borderColor", "borderWidth",
       "borderStyle", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth",
+      "borderTopColor", "borderRightColor", "borderBottomColor", "borderLeftColor",
+      "borderTopStyle", "borderRightStyle", "borderBottomStyle", "borderLeftStyle",
       "boxShadow", "objectFit", "cornerRadius", "strokeWidth",
       "strokeSides", "borderSides", "strokeTopWeight", "strokeRightWeight",
       "strokeBottomWeight", "strokeLeftWeight", "strokeSide", "borderSide",
@@ -233,12 +235,42 @@ function spellElement(el: Record<string, unknown>): Record<string, unknown> {
     out["scroll-y"] = px(scrollY);
   }
 
+  let spelledBorderRadiusY: unknown;
+  let spelledBorderRadiusExpr: unknown;
   if (isObject(sizing)) {
-    const { minWidth, maxWidth, minHeight, maxHeight, ...sizingRest } = sizing;
-    if (minWidth !== undefined) out["min-width"] = px(minWidth);
-    if (maxWidth !== undefined) out["max-width"] = px(maxWidth);
-    if (minHeight !== undefined) out["min-height"] = px(minHeight);
-    if (maxHeight !== undefined) out["max-height"] = px(maxHeight);
+    const {
+      minWidth,
+      maxWidth,
+      minHeight,
+      maxHeight,
+      widthExpr,
+      heightExpr,
+      minWidthExpr,
+      maxWidthExpr,
+      minHeightExpr,
+      maxHeightExpr,
+      borderRadiusY,
+      borderRadiusExpr,
+      ...sizingRest
+    } = sizing;
+    if (typeof widthExpr === "string") {
+      out.width = widthExpr;
+      if (sizingRest.width === "fixed") delete sizingRest.width;
+    }
+    if (typeof heightExpr === "string") {
+      out.height = heightExpr;
+      if (sizingRest.height === "fixed") delete sizingRest.height;
+    }
+    if (minWidthExpr !== undefined) out["min-width"] = minWidthExpr;
+    else if (minWidth !== undefined) out["min-width"] = px(minWidth);
+    if (maxWidthExpr !== undefined) out["max-width"] = maxWidthExpr;
+    else if (maxWidth !== undefined) out["max-width"] = px(maxWidth);
+    if (minHeightExpr !== undefined) out["min-height"] = minHeightExpr;
+    else if (minHeight !== undefined) out["min-height"] = px(minHeight);
+    if (maxHeightExpr !== undefined) out["max-height"] = maxHeightExpr;
+    else if (maxHeight !== undefined) out["max-height"] = px(maxHeight);
+    spelledBorderRadiusY = borderRadiusY;
+    spelledBorderRadiusExpr = borderRadiusExpr;
     if (Object.keys(sizingRest).length > 0) out.sizing = sizingRest;
   } else if (sizing !== undefined) {
     out.sizing = sizing;
@@ -269,7 +301,14 @@ function spellElement(el: Record<string, unknown>): Record<string, unknown> {
       .filter(Boolean)
       .join(" ");
   }
-  if (borderRadius !== undefined) out["border-radius"] = cssRadius(borderRadius);
+  if (typeof spelledBorderRadiusExpr === "string") {
+    out["border-radius"] = spelledBorderRadiusExpr;
+  } else if (borderRadius !== undefined) {
+    out["border-radius"] =
+      spelledBorderRadiusY !== undefined
+        ? `${cssRadius(borderRadius)} / ${cssRadius(spelledBorderRadiusY)}`
+        : cssRadius(borderRadius);
+  }
 
   if (isObject(style)) {
     // Only text carries a style object the flat surface reads.
