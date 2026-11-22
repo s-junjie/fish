@@ -361,8 +361,8 @@ describe("normalize", () => {
     });
   });
 
-  it("absorbs the legacy `filter` object into `adjust`", () => {
-    const { document, repairs } = normalizeDesignDocument(
+  it("does not read an object `filter` as `adjust`", () => {
+    const { document } = normalizeDesignDocument(
       baseDoc([
         {
           id: "rect_1",
@@ -376,8 +376,7 @@ describe("normalize", () => {
         }
       ])
     );
-    expect(getActivePage(document).children[0].adjust).toEqual({ invert: 1 });
-    expect(repairs).toEqual([]);
+    expect(getActivePage(document).children[0].adjust).toBeUndefined();
   });
 
   it("clamps the new axes instead of trusting the file", () => {

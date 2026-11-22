@@ -1,6 +1,8 @@
-import { HtmlEmbedElement } from "../dsl/types";
+import type { DesignDocument, DesignElement, HtmlEmbedElement, HtmlSource } from "../dsl/types";
 import { isFrameableUrl } from "../dsl/html-source";
+import { isContainer } from "../geometry/tree-query";
 import { createId } from "../id";
+import { stableHash } from "../persistence/hash";
 
 /**
  * An html embed has no intrinsic size to measure — a web page is as tall as its
@@ -12,13 +14,61 @@ export const DEFAULT_HTML_HEIGHT = 800;
 
 const MAX_HTML_EDGE = 1280;
 
+/** A reference into `doc.htmlSources`, distinct from the snapshot-layer locator. */
+export const HTML_REF_PREFIX = "fish-html:";
+
+export function htmlSourceKey(text: string): string {
+  return "h" + stableHash(text);
+}
+
+export function isHtmlSourceRef(value: string): boolean {
+  return value.startsWith(HTML_REF_PREFIX);
+}
+
+/** Literal HTML from older files still passes through untouched. */
+export function resolveHtmlSource(
+  doc: Pick<DesignDocument, "htmlSources">,
+  value: string | undefined
+): string {
+  if (!value) return "";
+  if (!isHtmlSourceRef(value)) return value;
+  return doc.htmlSources?.[value.slice(HTML_REF_PREFIX.length)]?.text ?? "";
+}
+
+/** A payload leaving this document cannot carry a reference into its table. */
+export function expandHtmlSourceRefs<T extends DesignElement>(
+  doc: Pick<DesignDocument, "htmlSources">,
+  el: T
+): T {
+  let out = el;
+  if (el.type === "html") {
+    const value = (el as HtmlEmbedElement).srcdoc;
+    if (value && isHtmlSourceRef(value)) {
+      out = { ...out, srcdoc: resolveHtmlSource(doc, value) } as T;
+    }
+  }
+  if (isContainer(out) && out.children) {
+    const children = out.children.map((child) => expandHtmlSourceRefs(doc, child));
+    out = { ...out, children } as T;
+  }
+  return out;
+}
+
 /**
- * An inlined document lives in the `.fish.html` itself, so a runaway file would
- * be written into every save and every version snapshot. Refused with a message
- * rather than truncated: half a document is a worse artifact than none, and the
- * author can still point at it with `src` if it is served somewhere.
+ * Content-addressed, never mutated: an edit writes a NEW key and only changes
+ * that element's reference, so a shared page never changes under its siblings.
  */
-export const MAX_HTML_FILE_BYTES = 8 * 1024 * 1024;
+export function registerHtmlSource(
+  doc: DesignDocument,
+  text: string,
+  language = "html"
+): { doc: DesignDocument; ref: string } {
+  const key = htmlSourceKey(text);
+  const ref = HTML_REF_PREFIX + key;
+  if (doc.htmlSources?.[key]) return { doc, ref };
+  const source: HtmlSource = language === "html" ? { text } : { text, language };
+  return { doc: { ...doc, htmlSources: { ...(doc.htmlSources ?? {}), [key]: source } }, ref };
+}
 
 export function computeHtmlTargetSize(
   width: number,
@@ -139,25 +189,16 @@ export function loadHtmlFromUrl(url: string, worldX = 0, worldY = 0): HtmlEmbedE
 }
 
 /**
- * A local `.html`, read as text and inlined.
- *
- * This is the only route to a local file: a page loaded from `file://` is an
- * opaque origin with no URL that names a sibling, so an iframe cannot be pointed
- * at one. The text is stored on the element and rendered through `srcdoc`, which
- * is also what keeps the document self-contained once it is saved.
+ * A local `.html`, read as text. This is the only route to a local file: a page
+ * loaded from `file://` is an opaque origin with no URL that names a sibling, so
+ * an iframe cannot be pointed at one. The caller registers the text in
+ * `doc.htmlSources` and stores only a reference on the element.
  */
 export async function loadHtmlFromFile(
   file: File | Blob,
   worldX = 0,
   worldY = 0
 ): Promise<HtmlEmbedElement> {
-  if (file.size > MAX_HTML_FILE_BYTES) {
-    throw new Error(
-      `File is ${(file.size / 1024 / 1024).toFixed(1)} MB; the inline limit is ${
-        MAX_HTML_FILE_BYTES / 1024 / 1024
-      } MB`
-    );
-  }
   const srcdoc = await file.text();
   if (!srcdoc.trim()) throw new Error("File is empty");
   const meta = extractHtmlMetadata(srcdoc);

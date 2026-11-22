@@ -40,6 +40,7 @@ export function useLayerRowActions({
         if (result.refused === "instance-in-own-master") showHint(t("component.selfNestingInstance"));
         else if (result.refused === "component-in-component") showHint(t("component.nestedMaster"));
         else if (result.refused === "variant-out-of-set") showHint(t("component.variantOutOfSet"));
+        else if (result.refused === "section-in-frame") showHint(t("section.intoFrame"));
         return;
       }
       commitSnapshot(updateActivePageElements(docRef.current, result.elements));

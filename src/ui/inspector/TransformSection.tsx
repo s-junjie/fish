@@ -1,3 +1,4 @@
+import { useState } from "preact/hooks";
 import { DesignElement, DesignDocument } from "../../core/dsl/types";
 import { updateActivePageElements } from "../../core/dsl/document-ops";
 import { getActivePage } from "../../core/dsl/document-ops";
@@ -6,6 +7,7 @@ import { mirrorElement } from "../../core/interactions/line-ops";
 import { findParentById, mapElements } from "../../core/geometry/tree-ops";
 import { layoutOf } from "../../core/dsl/layout-flat";
 import { ScrubInput, FIELD_BUTTON_CLASS } from "../ScrubInput";
+import { Button } from "../Button";
 import { ConstraintsSection } from "./ConstraintsSection";
 import { AlignmentToolbar } from "./AlignmentToolbar";
 import {
@@ -16,14 +18,14 @@ import {
 import { AlignmentType } from "../../core/interactions/alignment";
 import { t } from "../../i18n";
 import { Section } from "./SectionHeader";
-import { SUB_LABEL_CLASS } from "../label-tier";
 // Lucide's two flip families name the axis the other way round — the `-2` set
 // names the centreline the triangles straddle, the square set names the axis it
 // mirrors across. These buttons keep the square set's orientation, so flipX
 // wears `FlipVertical2` and flipY wears `FlipHorizontal2`.
-import { Angle, FlipHorizontal2, FlipVertical2 } from "lucide-react";
+import { Angle, FlipHorizontal2, FlipVertical2, MoreHorizontal } from "lucide-react";
 import { ROW_TIGHT_CLASS } from "../row-style";
 import { resolveAcross } from "./mixed";
+import { TransformMorePopover } from "./TransformMorePopover";
 
 interface TransformSectionProps {
   primarySelected: DesignElement | null;
@@ -115,6 +117,7 @@ export function TransformSection({
   const perspective = resolveAcross(selectedElements, (el) => el.perspective || 800);
   const skewX = resolveAcross(selectedElements, (el) => el.skewX || 0);
   const skewY = resolveAcross(selectedElements, (el) => el.skewY || 0);
+  const [moreAnchor, setMoreAnchor] = useState<HTMLElement | null>(null);
 
   return (
     <>
@@ -312,98 +315,37 @@ export function TransformSection({
             </button>
         </div>
 
-        {/* Perspective tilt, the CSS 3D pair. Degrees scrub like the rotation
-            field above, and the viewing distance rides beside them because
-            tilting without it is an orthographic squash. The projection is paint-side only: the resize
-            and rotate gestures still read the flat box, so this row stays a
-            numbers row and grows no handles of its own.
+        {/* Tilt and shear are secondary: two captioned rows of numbers at rest
+            cost more panel than a control most layers never opens. The Typography
+            group's More affordance is the same trade. */}
+        <Button
+          variant="bar"
+          data-transform-more="true"
+          title={t("properties.more")}
+          aria-label={t("properties.more")}
+          aria-expanded={Boolean(moreAnchor)}
+          onClick={(e) => setMoreAnchor((prev) => (prev ? null : e.currentTarget))}
+        >
+          <MoreHorizontal size={12} />
+        </Button>
 
-            Captioned like the shear below it: two adjacent rows of `X°`/`Y°`
-            with only one of them named is a panel that does not say which is
-            which, and the sub-label tier is exactly what names a group. */}
-        <div className={`${SUB_LABEL_CLASS} mb-1.5`}>{t("properties.tilt")}</div>
-        <div className={ROW_TIGHT_CLASS}>
-          <div className="grid grid-cols-3 gap-1 flex-1">
-            <ScrubInput
-              key={singleSelected ? `${singleSelected.id}_tiltX` : "multi_tiltX"}
-              label="X°"
-              value={tiltX.mixed ? undefined : tiltX.value}
-              mixed={tiltX.mixed}
-              min={-89}
-              max={89}
-              disabled={locked}
-              title={locked ? lockedHint : t("properties.tiltX")}
-              onDragStart={onDragStart}
-              onDragEnd={onDragEnd}
-              onChange={(v) => onMutate((el) => ({ ...el, rotateX: v }))}
-            />
-            <ScrubInput
-              key={singleSelected ? `${singleSelected.id}_tiltY` : "multi_tiltY"}
-              label="Y°"
-              value={tiltY.mixed ? undefined : tiltY.value}
-              mixed={tiltY.mixed}
-              min={-89}
-              max={89}
-              disabled={locked}
-              title={locked ? lockedHint : t("properties.tiltY")}
-              onDragStart={onDragStart}
-              onDragEnd={onDragEnd}
-              onChange={(v) => onMutate((el) => ({ ...el, rotateY: v }))}
-            />
-            <ScrubInput
-              key={singleSelected ? `${singleSelected.id}_persp` : "multi_persp"}
-              label="d"
-              value={perspective.mixed ? undefined : perspective.value}
-              mixed={perspective.mixed}
-              min={50}
-              max={100000}
-              disabled={locked}
-              title={locked ? lockedHint : t("properties.perspectiveDistance")}
-              onDragStart={onDragStart}
-              onDragEnd={onDragEnd}
-              onChange={(v) => onMutate((el) => ({ ...el, perspective: v }))}
-            />
-          </div>
-        </div>
-
-        {/* Shear: two numbers, no handles — the resize and rotate gestures keep
-            reading the box they always read, while `elementTransformMatrix`
-            carries the shear for every reader that maps a point. */}
-        <div className={`${SUB_LABEL_CLASS} mb-1.5`}>{t("properties.skew")}</div>
-        <div className={ROW_TIGHT_CLASS}>
-          {/* Two fields, two columns: the shear is a pair and the row is
-              theirs. It leaves the tilt row's third column empty by
-              comparison, which is the honest shape — an empty third well would
-              read as a field that failed to load. */}
-          <div className="grid grid-cols-2 gap-1 flex-1">
-            <ScrubInput
-              key={singleSelected ? `${singleSelected.id}_skewX` : "multi_skewX"}
-              label="X°"
-              value={skewX.mixed ? undefined : skewX.value}
-              mixed={skewX.mixed}
-              min={-89}
-              max={89}
-              disabled={locked}
-              title={locked ? lockedHint : t("properties.skewX")}
-              onDragStart={onDragStart}
-              onDragEnd={onDragEnd}
-              onChange={(v) => onMutate((el) => ({ ...el, skewX: v }))}
-            />
-            <ScrubInput
-              key={singleSelected ? `${singleSelected.id}_skewY` : "multi_skewY"}
-              label="Y°"
-              value={skewY.mixed ? undefined : skewY.value}
-              mixed={skewY.mixed}
-              min={-89}
-              max={89}
-              disabled={locked}
-              title={locked ? lockedHint : t("properties.skewY")}
-              onDragStart={onDragStart}
-              onDragEnd={onDragEnd}
-              onChange={(v) => onMutate((el) => ({ ...el, skewY: v }))}
-            />
-          </div>
-        </div>
+        {moreAnchor && (
+          <TransformMorePopover
+            anchor={moreAnchor}
+            onClose={() => setMoreAnchor(null)}
+            elementId={singleSelected?.id}
+            tiltX={tiltX}
+            tiltY={tiltY}
+            perspective={perspective}
+            skewX={skewX}
+            skewY={skewY}
+            locked={locked}
+            lockedHint={lockedHint}
+            onMutate={onMutate}
+            onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
+          />
+        )}
       </Section>
 
       <ConstraintsSection primarySelected={primarySelected!} doc={docRef.current} onMutate={onMutate} />

@@ -796,4 +796,40 @@ describe("a key the dialect cannot read fails the op that carries it", () => {
     expect(byId(next, "f")!.x).toBe(16);
     expect(byId(next, "f")!.y).toBe(32);
   });
+
+  it("recolours one side without rebuilding the stroke", () => {
+    const card = {
+      id: "card", type: "rect", name: "card", x: 0, y: 0, width: 100, height: 50,
+      strokes: [{
+        width: 2,
+        color: "#111111",
+        align: "outside",
+        cap: "round",
+        join: "bevel",
+        dashArray: [4, 2],
+        opacity: 0.5
+      }]
+    } as unknown as DesignElement;
+    const { doc: next, outcomes } = applyOps(doc([card]), [
+      { op: "patch", targetId: "card", props: { "border-top-color": "#EF4444" } }
+    ]);
+    expect(outcomes[0].ok).toBe(true);
+
+    const el = byId(next, "card") as unknown as Record<string, unknown>;
+    expect(el["border-top-color"]).toBeUndefined();
+    const strokes = el.strokes as Array<Record<string, unknown>>;
+    const top = strokes.find((s) => s.side === "top")!;
+    expect(top.color).toBe("#EF4444");
+    expect(top.align).toBe("outside");
+    expect(top.cap).toBe("round");
+    expect(top.join).toBe("bevel");
+    expect(top.opacity).toBe(0.5);
+    expect(top.dashArray).toEqual([4, 2]);
+
+    const rest = strokes.find((s) => s.side === "custom")!;
+    expect(rest.color).toBe("#111111");
+    expect(rest.sides).toEqual({ top: 0, right: 2, bottom: 2, left: 2 });
+    expect(rest.align).toBe("outside");
+    expect(rest.cap).toBe("round");
+  });
 });

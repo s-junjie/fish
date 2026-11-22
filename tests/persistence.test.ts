@@ -1,12 +1,22 @@
 import { describe, it, expect } from "vitest";
-import type { DesignDocument, AssetRef } from "../src/core/dsl/types";
+import type { DesignDocument, AssetRef, HtmlEmbedElement } from "../src/core/dsl/types";
 import { MemoryBackend, type KVBackend, type StoreName } from "../src/core/persistence/backend";
 import { createRecoveryStore, resolveFork, computeContentHash } from "../src/core/persistence/recovery";
-import { createAssetStore, toSnapshotAssets, fromSnapshotAssets } from "../src/core/persistence/assets";
+import {
+  createAssetStore,
+  toSnapshotAssets,
+  fromSnapshotAssets,
+  hasMissingAssets,
+  SRCDOC_REF_PREFIX,
+  type SnapshotDoc
+} from "../src/core/persistence/assets";
 import { createTimelineStore } from "../src/core/persistence/timeline";
 import { AutosaveController, type AutosaveStatus, type AutosaveControllerOptionsInput } from "../src/core/persistence/autosave-controller";
 import { clearFileHandle, setFileHandle } from "../src/core/data-bridge";
 import { stubDocument } from "./helpers/fake-document";
+import { documentToPlainObject, foldHtmlSources } from "../src/core/document-json";
+import { normalizeDesignDocument } from "../src/core/dsl/normalize";
+import { resolveHtmlSource } from "../src/core/interactions/html-embed-loader";
 
 const asset = { id: "a1", name: "img", uri: "data:image/png;base64,AAAA" } as unknown as AssetRef;
 
@@ -30,6 +40,24 @@ function makeDoc(name: string, withAsset = true): DesignDocument {
     activePageId: "page_1",
     assets: withAsset ? [asset] : []
   } as unknown as DesignDocument;
+}
+
+function makeHtmlDoc(name: string, html: string, count = 1): DesignDocument {
+  const doc = makeDoc(name, false);
+  doc.pages[0].children = Array.from({ length: count }, (_, i) => ({
+    id: `html_${i}`,
+    type: "html",
+    x: 0,
+    y: 0,
+    width: 100,
+    height: 100,
+    srcdoc: html
+  })) as unknown as DesignDocument["pages"][number]["children"];
+  return doc;
+}
+
+function firstSrcdoc(doc: DesignDocument | SnapshotDoc): string | undefined {
+  return (doc.pages[0].children[0] as unknown as HtmlEmbedElement).srcdoc;
 }
 
 describe("asset content-addressing", () => {
@@ -56,6 +84,70 @@ describe("asset content-addressing", () => {
     expect((snap1.assets as unknown as string[])[0]).toBe((snap2.assets as unknown as string[])[0]);
     const stored = await backend.getAll("assets");
     expect(stored.length).toBe(1);
+  });
+});
+
+describe("html srcdoc content-addressing", () => {
+  it("keeps the page out of the snapshot and restores it verbatim", async () => {
+    const backend = new MemoryBackend();
+    const assets = createAssetStore(backend);
+    const html = "<!doctype html><p>" + "x".repeat(4096) + "</p>";
+    const { doc: snap, hashes } = await toSnapshotAssets(makeHtmlDoc("A", html), assets);
+
+    expect(firstSrcdoc(snap)?.startsWith(SRCDOC_REF_PREFIX)).toBe(true);
+    expect(JSON.stringify(snap).length).toBeLessThan(html.length);
+    expect(hashes).toHaveLength(1);
+
+    const restored = await fromSnapshotAssets(snap, assets);
+    expect(firstSrcdoc(restored)).toBe(html);
+    expect(hasMissingAssets(restored)).toBe(false);
+  });
+
+  it("shares one row across versions that did not change the embedded page", async () => {
+    const backend = new MemoryBackend();
+    const assets = createAssetStore(backend);
+    const html = "<p>shared</p>";
+    const a = await toSnapshotAssets(makeHtmlDoc("A", html), assets);
+    const b = await toSnapshotAssets(makeHtmlDoc("B", html), assets);
+
+    expect(firstSrcdoc(a.doc)).toBe(firstSrcdoc(b.doc));
+    expect(a.hashes).toEqual(b.hashes);
+    expect((await backend.getAll("assets")).length).toBe(1);
+  });
+
+  it("claims one ref per layer but writes one row for a shared page", async () => {
+    const backend = new MemoryBackend();
+    const assets = createAssetStore(backend);
+    const html = "<p>shared</p>";
+    const { doc: snap, hashes } = await toSnapshotAssets(makeHtmlDoc("A", html, 2), assets);
+
+    expect(hashes).toHaveLength(2);
+    expect(hashes[0]).toBe(hashes[1]);
+    expect((await backend.getAll("assets")).length).toBe(1);
+    const restored = await fromSnapshotAssets(snap, assets);
+    expect(firstSrcdoc(restored)).toBe(html);
+    expect((restored.pages[0].children[1] as unknown as HtmlEmbedElement).srcdoc).toBe(html);
+  });
+
+  it("restores a legacy snapshot whose srcdoc is still literal HTML", async () => {
+    const assets = createAssetStore(new MemoryBackend());
+    const html = "<p>legacy</p>";
+    const legacy = { ...makeHtmlDoc("A", html), assets: [] } as unknown as SnapshotDoc;
+    const restored = await fromSnapshotAssets(legacy, assets);
+
+    expect(firstSrcdoc(restored)).toBe(html);
+    expect(hasMissingAssets(restored)).toBe(false);
+  });
+
+  it("reports an unresolved page instead of restoring a locator as HTML", async () => {
+    const backend = new MemoryBackend();
+    const assets = createAssetStore(backend);
+    const { doc: snap, hashes } = await toSnapshotAssets(makeHtmlDoc("A", "<p>gone</p>"), assets);
+    await backend.delete("assets", hashes[0]);
+
+    const restored = await fromSnapshotAssets(snap, assets);
+    expect(firstSrcdoc(restored)?.startsWith(SRCDOC_REF_PREFIX)).toBe(true);
+    expect(hasMissingAssets(restored)).toBe(true);
   });
 });
 
@@ -630,5 +722,39 @@ describe("write-back serialisation", () => {
       clearFileHandle();
       restoreDocument();
     }
+  });
+});
+
+describe("pooled html in snapshots", () => {
+  const html = "<!doctype html><p>pooled</p>";
+  const pooledDoc = () =>
+    normalizeDesignDocument(
+      foldHtmlSources(documentToPlainObject(makeHtmlDoc("A", html))) as never
+    ).document;
+
+  it("stores one row across versions and rehydrates the reference", async () => {
+    const backend = new MemoryBackend();
+    const assets = createAssetStore(backend);
+    const doc = pooledDoc();
+    const a = await toSnapshotAssets(doc, assets);
+    const b = await toSnapshotAssets(doc, assets);
+
+    expect(a.hashes).toEqual(b.hashes);
+    expect(JSON.stringify(a.doc)).not.toContain("pooled");
+    expect((await backend.getAll("assets")).length).toBe(1);
+
+    const restored = await fromSnapshotAssets(a.doc, assets);
+    expect(hasMissingAssets(restored)).toBe(false);
+    expect(resolveHtmlSource(restored, firstSrcdoc(restored))).toBe(html);
+  });
+
+  it("reports a pooled page whose row is gone instead of restoring a locator", async () => {
+    const backend = new MemoryBackend();
+    const assets = createAssetStore(backend);
+    const { doc: snap, hashes } = await toSnapshotAssets(pooledDoc(), assets);
+    await backend.delete("assets", hashes[hashes.length - 1]);
+
+    const restored = await fromSnapshotAssets(snap, assets);
+    expect(hasMissingAssets(restored)).toBe(true);
   });
 });

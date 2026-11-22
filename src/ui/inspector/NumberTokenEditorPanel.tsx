@@ -6,6 +6,7 @@ import { DEFAULT_NUMBER_MODES, getNumberTokenModeValue } from "../../core/intera
 import { t } from "../../i18n";
 import { useDraftHistory } from "../hooks/useDraftHistory";
 import { ScrubInput } from "../ScrubInput";
+import { formatFieldNumber } from "../field-number";
 import { Select } from "../Select";
 import { SUB_LABEL_CLASS } from "../label-tier";
 import { ROW_CLASS } from "../row-style";
@@ -136,7 +137,7 @@ export function NumberTokenEditorPanel({
             <ScrubInput
               label=""
               value={mVal}
-              placeholder={String(value)}
+              placeholder={formatFieldNumber(value)}
               onDragStart={startGesture}
               onDragEnd={endGesture}
               onChange={(v, discrete) => setModeValue(m.id, v, discrete)}

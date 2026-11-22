@@ -1,6 +1,7 @@
 import { useState } from "preact/hooks";
-import { DesignElement, HtmlEmbedElement } from "../../core/dsl/types";
+import { DesignDocument, DesignElement, HtmlEmbedElement } from "../../core/dsl/types";
 import { isFrameableUrl } from "../../core/dsl/html-source";
+import { resolveHtmlSource } from "../../core/interactions/html-embed-loader";
 import { Section } from "./SectionHeader";
 import { SUB_LABEL_CLASS } from "../label-tier";
 import { Button } from "../Button";
@@ -11,6 +12,7 @@ import { ROW_DENSE_CLASS } from "../row-style";
 
 interface HtmlEmbedSectionProps {
   primarySelected: DesignElement;
+  doc: DesignDocument;
   onMutate: (updater: (el: DesignElement) => DesignElement, commitImmediately?: boolean) => void;
 }
 
@@ -28,7 +30,7 @@ function formatBytes(bytes: number): string {
  * implicit because a site that refuses framing paints blank — a failure the
  * author would otherwise read as a bug in the tool.
  */
-export function HtmlEmbedSection({ primarySelected, onMutate }: HtmlEmbedSectionProps) {
+export function HtmlEmbedSection({ primarySelected, doc, onMutate }: HtmlEmbedSectionProps) {
   const id = primarySelected?.id ?? null;
   // Tagged with the layer, because a section is not remounted when the selection
   // moves: an un-tagged flag would carry one embed's bad URL onto the next one.
@@ -39,7 +41,7 @@ export function HtmlEmbedSection({ primarySelected, onMutate }: HtmlEmbedSection
   const invalid = invalidId !== null && invalidId === id;
   const src = el.src ?? "";
   const isUrl = Boolean(src);
-  const inlineBytes = el.srcdoc ? new Blob([el.srcdoc]).size : 0;
+  const inlineBytes = new Blob([resolveHtmlSource(doc, el.srcdoc)]).size;
 
   const writeSrc = (next: string) => {
     if (next === src) return;

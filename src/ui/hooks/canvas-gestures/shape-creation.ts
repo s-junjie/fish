@@ -13,10 +13,11 @@ import {
   findFrameAtPoint,
   findParentFrameForBox,
   insertElementIntoContainer,
+  isSectionElement,
   removeElementFromTree
 } from "../../../core/geometry/tree-ops";
 import { elementAABB } from "../../../core/geometry/element-bounds";
-import { newTextInkAt } from "../../../core/geometry/ink-on";
+import { newSectionFill, newTextInkAt } from "../../../core/geometry/ink-on";
 import { ShapeDraftGeometry } from "../../../core/geometry/shape-creation";
 import { applyAutoLayout } from "../../../core/layout/auto-layout";
 import { layoutOf } from "../../../core/dsl/layout-flat";
@@ -107,6 +108,20 @@ export function commitCreatedShape({
         // where nobody decided, which is what keeps an imported page unframed.
         overflow: "hidden"
       } as FrameElement;
+    } else if (finalGeom.tool === "section") {
+      created = {
+        id: createId("frame"),
+        type: "frame",
+        section: true,
+        name: "Section",
+        x: finalGeom.x,
+        y: finalGeom.y,
+        width: finalGeom.width,
+        height: finalGeom.height,
+        children: [],
+        fills: [{ type: "solid", color: newSectionFill(docRef.current) }],
+        borderRadius: 12
+      } as FrameElement;
     } else if (finalGeom.tool === "text") {
       const ink = newTextInkAt(docRef.current, {
         x: finalGeom.x + finalGeom.width / 2,
@@ -168,8 +183,13 @@ export function commitCreatedShape({
       ? (created as LineElement).y + (created as LineElement).dy / 2
       : created.y + created.height / 2;
 
-    const parentFrame =
-      created.type === "frame"
+    // A section is always a page-level region — it is not dropped inside a
+    // frame the way a new frame is, because a region inside a screen would move
+    // and clip with that screen.
+    const sectionOnPage = created.type === "frame" && Boolean(created.section);
+    const parentFrame = sectionOnPage
+      ? null
+      : created.type === "frame"
         ? findParentFrameForBox(getActivePage(docRef.current).children, {
           x: created.x,
           y: created.y,
@@ -213,6 +233,11 @@ export function commitCreatedShape({
         const bottom = placed.y + placed.height;
         const enclosedIds = siblings
           .filter((sib) => sib.id !== placed.id && !sib.locked)
+          // A section is not something one section holds: the label of a nested
+          // region is not painted (labels are a top-level layer), so absorbing
+          // one would leave a grey plate with no name and no way to reach it
+          // back out. It stays a sibling.
+          .filter((sib) => !isSectionElement(sib))
           .filter((sib) => {
             const b = elementAABB(sib);
             return b.x >= left && b.y >= top && b.x + b.width <= right && b.y + b.height <= bottom;

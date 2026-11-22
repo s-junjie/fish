@@ -53,3 +53,15 @@ export function rowOrderOf(doc: DesignDocument | null | undefined, parent: Desig
 export function orderRowsForPanel(rows: DesignElement[], order: RowOrder): DesignElement[] {
   return order === "flow" ? rows : [...rows].reverse();
 }
+
+/**
+ * Whether a row's place in the list says nothing about where the element sits.
+ *
+ * A child that left a flow parent's flow has no slot to read: its row orders
+ * paint, and a `"flow"` list runs back-to-front (the top row is the furthest
+ * back), so the row reads as the opposite of the canvas. The mark this feeds
+ * tells the reader which of the two the row is speaking.
+ */
+export function isOutOfFlow(order: RowOrder, el: DesignElement): boolean {
+  return order === "flow" && el.position === "absolute";
+}

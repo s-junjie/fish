@@ -1,6 +1,6 @@
 import type { Effect, LiquidGlassEffect } from "../types";
 import { LIQUID_GLASS_DEFAULTS, clampGlassParam } from "../liquid-glass";
-import { asBoolean, asNumber, isPlainObject, pxLength, type NormalizationRepair } from "./shared";
+import { asBoolean, asNumber, isPlainObject, pxLength } from "./shared";
 import { readBlendMode } from "./blend-mode";
 import { parseBoxShadows, type ParsedShadow } from "../../import/css-values";
 import { normalizeTear } from "./tear";
@@ -23,27 +23,6 @@ function effectTokens(raw: Record<string, unknown>): { tokenId?: string; tokenBi
     ...(tokenId ? { tokenId } : {}),
     ...(Object.keys(bindings).length > 0 ? { tokenBindings: bindings } : {})
   };
-}
-
-/**
- * A text shadow, as a drop shadow.
- *
- * There is one shadow in the model. `text-shadow` used to be its own type and
- * its own branch, which meant two vocabularies for one paint and two places to
- * keep in step; a text element already renders a drop shadow as a CSS
- * `text-shadow` because the glyphs are the shape it casts, so the type only
- * said what the renderer could see for itself. The alias is still accepted and
- * the fold is reported, because a document that asked for a text shadow and got
- * a drop shadow should be able to read why.
- *
- * `spread` is dropped rather than carried: CSS `text-shadow` has no spread term,
- * so a value here could never be painted.
- */
-export function textShadowFrom(raw: unknown): Effect | undefined {
-  const effect = dropShadowFrom(raw);
-  if (!effect) return undefined;
-  const { spread: _unpaintable, ...rest } = effect as Effect & { spread?: number };
-  return rest as Effect;
 }
 
 export function dropShadowFrom(raw: unknown): Effect | undefined {
@@ -107,26 +86,13 @@ export function liquidGlassFrom(raw: unknown): LiquidGlassEffect | undefined {
 }
 
 /** Keeps only structurally valid canonical effects. */
-export function normalizeEffects(
-  raw: unknown,
-  path?: string,
-  repairs?: NormalizationRepair[]
-): Effect[] {
+export function normalizeEffects(raw: unknown): Effect[] {
   if (!Array.isArray(raw)) return [];
   const out: Effect[] = [];
-  for (const [index, item] of raw.entries()) {
+  for (const item of raw) {
     if (!isPlainObject(item)) continue;
     const type = typeof item.type === "string" ? item.type.toLowerCase() : "";
-    if (type === "text-shadow") {
-      const effect = textShadowFrom(item);
-      if (effect) out.push(effect);
-      repairs?.push({
-        kind: "effect",
-        path: `${path ?? ""}/effects/${index}/type`,
-        severity: "info",
-        message: '"text-shadow" normalized to "drop-shadow" (one shadow; a text paints it through its glyphs)'
-      });
-    } else if (type === "drop-shadow") {
+    if (type === "drop-shadow") {
       const effect = dropShadowFrom(item);
       if (effect) out.push(effect);
     } else if (type === "inner-shadow") {
@@ -149,20 +115,9 @@ export function normalizeEffects(
     } else if (type === "liquid-glass") {
       const effect = liquidGlassFrom(item);
       if (effect) out.push(effect);
-    } else if (type === "tear" || type === "edge" || type === "torn-edge") {
+    } else if (type === "tear") {
       const effect = normalizeTear(item);
       if (effect) out.push(effect);
-      // Two retired names fold onto `tear`, the same way `text-shadow` folded
-      // onto `drop-shadow`: accepted, folded, and reported, so a document that
-      // used either can read why the type moved.
-      if (type !== "tear") {
-        repairs?.push({
-          kind: "effect",
-          path: `${path ?? ""}/effects/${index}/type`,
-          severity: "info",
-          message: `"${type}" normalized to "tear" (one geometry effect; which break it is lives in \`profile\`, and whether it is an edge, a hole or a scrap lives in \`form\`)`
-        });
-      }
     }
   }
   return out;

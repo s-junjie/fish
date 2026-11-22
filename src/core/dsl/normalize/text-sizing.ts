@@ -1,5 +1,5 @@
 import type { TextStyle, TextSpan, AutoLayout, SizeMode, ElementSizing, ColorFilter, LineHeight, LetterSpacing } from "../types";
-import { asNumber, clamp, canonicalKey, isPlainObject, lengthUnit, pxLength, ALIGN_ALIASES, VERTICAL_ALIGN_ALIASES, FONT_WEIGHT_WORDS, SIZE_MODE_ALIASES, ElementType, NormalizationRepair } from "./shared";
+import { asNumber, clamp, canonicalKey, isPlainObject, lengthUnit, pxLength, ALIGN_ALIASES, VERTICAL_ALIGN_ALIASES, FONT_WEIGHT_WORDS, SIZE_MODE_ALIASES, ElementType, NormalizationRepair, RepairKind } from "./shared";
 import { parseDynamicLength } from "../length-expr";
 import { canonicalizeStyleKeys } from "./css-absorb";
 import { WIDTH_SIZING_MODES } from "../schema-enums";
@@ -124,12 +124,37 @@ const FILTER_BOUNDS: Record<string, [number, number]> = {
   shadows: [-1, 1]
 };
 
-export function normalizeColorFilter(raw: unknown): ColorFilter | undefined {
+/**
+ * A colour filter, with every axis clamped to the range the renderer applies.
+ *
+ * The clamp is reported because the stored number is not the painted one: a
+ * document that says `temperature: 6` is a document whose author believes the
+ * axis is a multiplier of some kind, and silently keeping `1` leaves no trace of
+ * the mistake. `severity: "info"` because the pixels do not move — the renderer
+ * clamps the same axis again — so this is a note about the file, not a loss.
+ */
+export function normalizeColorFilter(
+  raw: unknown,
+  path?: string,
+  repairs?: NormalizationRepair[],
+  kind: RepairKind = "paint"
+): ColorFilter | undefined {
   if (!isPlainObject(raw)) return undefined;
   const out: ColorFilter = {};
   for (const [key, [min, max]] of Object.entries(FILTER_BOUNDS)) {
     const v = asNumber((raw as Record<string, unknown>)[key]);
-    if (v !== undefined) (out as Record<string, number>)[key] = clamp(v, min, max);
+    if (v === undefined) continue;
+    const bounded = clamp(v, min, max);
+    if (bounded !== v && path && repairs) {
+      const range = Number.isFinite(max) ? `${min}..${max}` : `${min} and up`;
+      repairs.push({
+        kind,
+        path: `${path}/${key}`,
+        severity: "info",
+        message: `${key} ${v} is outside ${range}; stored as ${bounded}, which is what it would have painted as anyway`
+      });
+    }
+    (out as Record<string, number>)[key] = bounded;
   }
   const hue = asNumber((raw as any).hueRotate ?? (raw as any).hue);
   if (hue !== undefined) out.hueRotate = hue;

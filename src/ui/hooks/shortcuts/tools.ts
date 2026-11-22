@@ -86,6 +86,11 @@ export const TOOL_LETTERS: KeyRule = {
       case "f":
         ctx.setActiveTool("frame");
         return true;
+      case "s":
+        // Figma arms Slice on S; this tool has no slice, and a section is the
+        // neighbouring idea — a region you draw around things that already exist.
+        ctx.setActiveTool("section");
+        return true;
       case "c":
         ctx.setActiveTool(ctx.activeTool === "comment" ? "select" : "comment");
         return true;

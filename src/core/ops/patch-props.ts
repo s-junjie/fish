@@ -166,6 +166,89 @@ const BORDER_SIDE_STYLE_KEYS = [
   "border-left-style"
 ] as const;
 
+const STROKE_SIDES = ["top", "right", "bottom", "left"] as const;
+type StrokeSideName = (typeof STROKE_SIDES)[number];
+
+/**
+ * One layer, narrowed to a single side, carrying the patch's ink.
+ *
+ * `none` / `hidden` is CSS's "no border here", so the side produces no layer at
+ * all rather than a zero-width one the reader would still have to explain.
+ */
+function inkForSide(
+  layer: Record<string, unknown>,
+  side: StrokeSideName,
+  width: number,
+  props: Record<string, unknown>
+): Record<string, unknown> | undefined {
+  const stylePatch = props[`border-${side}-style`];
+  const nextStyle = typeof stylePatch === "string" ? stylePatch.trim().toLowerCase() : undefined;
+  if (nextStyle === "none" || nextStyle === "hidden") return undefined;
+  const next: Record<string, unknown> = { ...layer, width, side };
+  delete next.sides;
+  const colorPatch = props[`border-${side}-color`];
+  if (typeof colorPatch === "string") {
+    // Three colour sources on a row: the literal, the paint and the token that
+    // repaints it. The patch names a fourth, so the other three go.
+    next.color = colorPatch;
+    delete next.paint;
+    delete next.tokenId;
+  }
+  if (nextStyle !== undefined) {
+    next.style = nextStyle;
+    delete next.dashArray;
+  }
+  return next;
+}
+
+/**
+ * Apply single-side ink to the layer stack without rebuilding it.
+ *
+ * The layer that covers the side is split: what remains of its geometry keeps
+ * every field it had, and the patched side becomes its own row with the same
+ * fields plus the new colour or style. A rebuild from `border-*-color`
+ * longhands cannot express those fields, which is why it used to drop them.
+ */
+function restyleStrokeSides(raw: unknown, props: Record<string, unknown>): unknown[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const patched = STROKE_SIDES.filter(
+    (side) => props[`border-${side}-color`] !== undefined || props[`border-${side}-style`] !== undefined
+  );
+  if (patched.length === 0) return undefined;
+
+  const layers: unknown[] = [];
+  let hit = false;
+  for (const row of raw) {
+    if (!isObj(row)) {
+      layers.push(row);
+      continue;
+    }
+    const weights = resolveStrokeWeights(row as never);
+    const covered = patched.filter((side) => weights[side] > 0);
+    if (covered.length === 0) {
+      layers.push(row);
+      continue;
+    }
+    hit = true;
+    const remaining: Record<StrokeSideName, number> = {
+      top: weights.top,
+      right: weights.right,
+      bottom: weights.bottom,
+      left: weights.left
+    };
+    for (const side of covered) remaining[side] = 0;
+    const restMax = Math.max(remaining.top, remaining.right, remaining.bottom, remaining.left);
+    if (restMax > 0) {
+      layers.push({ ...row, width: restMax, side: "custom", sides: remaining });
+    }
+    for (const side of covered) {
+      const ink = inkForSide(row, side, weights[side], props);
+      if (ink) layers.push(ink);
+    }
+  }
+  return hit ? layers : undefined;
+}
+
 const CORNER_RADIUS_LONGHANDS = [
   "border-top-left-radius",
   "border-top-right-radius",
@@ -242,6 +325,10 @@ export function preparePatch(
     folded[PATCH_KEY_FOLD[canonicalKey(key)] ?? key] = value;
   }
   props = folded;
+  // What actually reaches the merge. The layer-restyle path consumes its own
+  // keys, and an element-level longhand left behind would be read as a CSS
+  // border — which also moves the stroke inside the box.
+  const carried: Record<string, unknown> = { ...props };
   const propCanon = new Set(Object.keys(props).map(canonicalKey));
   const has = (...names: string[]): boolean => names.some((name) => propCanon.has(canonicalKey(name)));
   // An input-only axis alias REPLACES the axis it names. The stored `x` is the
@@ -373,7 +460,26 @@ export function preparePatch(
   if (!has("strokes")) {
     const hasSideShorthand = has("border-top", "border-right", "border-bottom", "border-left");
     const hasSideColorOrStyle = has(...BORDER_SIDE_COLOR_KEYS, ...BORDER_SIDE_STYLE_KEYS);
-    if (has("border") || hasSideShorthand) {
+    // A patch that states nothing but one side's ink is applied to the layers
+    // themselves. Rebuilding them from `border-*-color` longhands would keep the
+    // three CSS fields and drop everything the dialect stores beside them —
+    // align, opacity, cap, join, dash offset, a paint — and would silently turn
+    // a per-layer colour token into a literal.
+    const inkOnly =
+      hasSideColorOrStyle &&
+      !hasSideShorthand &&
+      !has("border", "border-width", "stroke-width", "border-color", "border-style");
+    const restyled = inkOnly ? restyleStrokeSides(out.strokes, props) : undefined;
+    if (restyled) {
+      out.strokes = restyled;
+      // The layers carry the ink now. Leaving the longhands in the patch would
+      // write a CSS border spelling onto the element, and `fromCssBorder` reads
+      // that presence as "this stroke sits inside the box".
+      for (const side of STROKE_SIDES) {
+        delete carried[`border-${side}-color`];
+        delete carried[`border-${side}-style`];
+      }
+    } else if (has("border") || hasSideShorthand) {
       delete out.strokes;
     } else if (hasSideColorOrStyle) {
       if (Array.isArray(out.strokes) && out.strokes.length > 0) {
@@ -450,7 +556,7 @@ export function preparePatch(
   }
   if (has("filter") && !has("adjust")) delete out.adjust;
 
-  return { element: mergeProps(out, props), css, keys: Object.keys(props) };
+  return { element: mergeProps(out, carried), css, keys: Object.keys(props) };
 }
 
 /**

@@ -344,6 +344,7 @@ export function useCanvasGestures({
           if (refused === "instance-in-own-master") setHintMessage(t("component.selfNestingInstance"));
           else if (refused === "component-in-component") setHintMessage(t("component.nestedMaster"));
           else if (refused === "variant-out-of-set") setHintMessage(t("component.variantOutOfSet"));
+          else if (refused === "section-in-frame") setHintMessage(t("section.intoFrame"));
         }
 
         // Reorder inside the container the drag stayed in. The slot was chosen

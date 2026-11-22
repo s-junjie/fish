@@ -1,6 +1,6 @@
 import { HtmlEmbedElement } from "../../core/dsl/types";
 import { formatCssCornerRadius } from "../../core/geometry/shape-path";
-import { htmlNameFromUrl } from "../../core/interactions/html-embed-loader";
+import { htmlNameFromUrl, resolveHtmlSource } from "../../core/interactions/html-embed-loader";
 import { injectSnapshotHelper } from "../../core/interactions/html-embed-snapshot";
 import { t } from "../../i18n";
 import {
@@ -75,7 +75,8 @@ export function SvgHtmlEmbedNode({
 
   const pe = isPresent ? "auto" : "none";
   const commonStyle = { overflow: "hidden", borderRadius: radiusStyle, pointerEvents: pe } as const;
-  const hasSource = Boolean(el.src || el.srcdoc);
+  const inline = resolveHtmlSource(ctx.docRef?.current ?? {}, el.srcdoc);
+  const hasSource = Boolean(el.src || inline);
 
   const posterUri = el.posterAssetId
     ? (resolveAssetUri
@@ -86,7 +87,7 @@ export function SvgHtmlEmbedNode({
 
   const source: Record<string, string> = el.src
     ? { src: el.src }
-    : { srcdoc: injectSnapshotHelper(el.srcdoc ?? "", el.id) };
+    : { srcdoc: injectSnapshotHelper(inline, el.id) };
 
   const cx = Math.round(el.width / 2);
   const cy = Math.round(el.height / 2);

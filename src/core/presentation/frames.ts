@@ -16,6 +16,9 @@ import { resolveInstanceSelection } from "../interactions/instance-resolve";
 function isSlideCandidate(el: DesignElement): boolean {
   return (
     isSlideHostType(el.type) &&
+    // A section names a group of screens; it is not one itself. Presenting it
+    // would put the whole region on stage as a single slide.
+    !(el.type === "frame" && el.section === true) &&
     el.visible !== false &&
     (el.width ?? 0) > 0 &&
     (el.height ?? 0) > 0

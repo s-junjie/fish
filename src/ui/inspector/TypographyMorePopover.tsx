@@ -1,4 +1,4 @@
-import { useRef } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import { createPortal } from "preact/compat";
 import { Minus, ArrowDownFromLine } from "lucide-react";
 import type { TextStyle } from "../../core/dsl/types";
@@ -10,6 +10,7 @@ import { SUB_LABEL_CLASS } from "../label-tier";
 import { ROW_SPREAD_GAP_CLASS } from "../row-style";
 import { useAnchoredPosition, placementStyle, sidePanelCompute } from "../hooks/useAnchoredPosition";
 import { useDismiss } from "../hooks/useDismiss";
+import { setPickerOpen } from "../hooks/picker-focus";
 import { POPOVER_WIDTH } from "./StylePickerPopover";
 import { DecorationRow, CaseRow } from "./typography-fields";
 import { NumeralsMark } from "./NumeralsMark";
@@ -66,6 +67,13 @@ export function TypographyMorePopover({
     compute: sidePanelCompute(POPOVER_WIDTH, 240)
   });
   useDismiss(true, onClose, panelRef, anchorRef);
+
+  // The shortcut layer listens in capture, so Escape would reach it first and
+  // clear the selection — taking this popover's host section with it.
+  useEffect(() => {
+    setPickerOpen(true);
+    return () => setPickerOpen(false);
+  }, []);
 
   return createPortal(
     <div

@@ -58,6 +58,21 @@ describe("a frame name never grows past the frame", () => {
     const instance = el("i", "instance", 0, 0, 240, 300, "1 Title: App Splash Screen");
     expect(resolveFrameTitles([instance], 0.5, nameOf).get("i")!.length).toBe(16);
   });
+
+  it("charges a section's label the pill's padding, on both sides", () => {
+    // The name now sits OUTSIDE the box in an opaque pill, and the pill's own
+    // 6px padding per side is what the text may not spend: 240 - 12 = 228px of
+    // room, two glyphs fewer than the frame's 240.
+    const long = "0123456789012345678901234567890123456789";
+    const asFrame = resolveFrameTitles([frame("s", long)], 1, nameOf).get("s")!;
+    const section = { ...frame("s", long), section: true } as DesignElement;
+    const asSection = resolveFrameTitles([section], 1, nameOf).get("s")!;
+    expect(asFrame.length - asSection.length).toBe(2);
+  });
+
+  it("still names a section that is wide enough, so the inset alone never silences one", () => {
+    expect(resolveFrameTitles([{ ...frame("s", "Home"), section: true } as DesignElement], 1, nameOf).get("s")).toBe("Home");
+  });
 });
 
 describe("a canvas too far out carries no names at all", () => {

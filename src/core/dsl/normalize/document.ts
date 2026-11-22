@@ -1,4 +1,4 @@
-import type { DesignDocument, DesignStyle, FontSpec, AssetRef, Page, CanvasSpec, DesignElement, PaintStack, Stroke } from "../types";
+import type { DesignDocument, DesignStyle, FontSpec, AssetRef, HtmlSource, Page, CanvasSpec, DesignElement, PaintStack, Stroke } from "../types";
 import versions from "../versions.json";
 import { normalizePageViewport } from "../../geometry/viewport";
 import { asNumber, isPlainObject, NormalizeContext, NormalizeResult, NormalizationRepair, type RawComponentBoxes } from "./shared";
@@ -30,6 +30,20 @@ export function normalizeFontSpecs(raw: unknown): FontSpec[] {
     });
   }
   return out;
+}
+
+/** Keep only table entries that actually resolve to a document. */
+export function normalizeHtmlSources(raw: unknown): Record<string, HtmlSource> | undefined {
+  if (!isPlainObject(raw)) return undefined;
+  const out: Record<string, HtmlSource> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (!key || !isPlainObject(value)) continue;
+    const text = typeof value.text === "string" ? value.text : "";
+    if (!text) continue;
+    const language = typeof value.language === "string" && value.language ? value.language : undefined;
+    out[key] = language ? { text, language } : { text };
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /** Project each record onto the fields the engine keeps. */
@@ -154,7 +168,7 @@ export function normalizeStyles(raw: unknown, repairs?: NormalizationRepair[]): 
         style: declaration
       });
     } else if (styleType === "effect") {
-      const effects = normalizeEffects(item.effects, `/styles[${out.length}]`, repairs);
+      const effects = normalizeEffects(item.effects);
       out.push({
         id,
         name,
@@ -220,6 +234,7 @@ export const KNOWN_TOP_LEVEL_KEYS = new Set([
   "tokens",
   "elements",
   "assets",
+  "htmlSources",
   "fonts",
   "metadata",
   "variables",
@@ -468,6 +483,9 @@ export function normalizeDesignDocument(input: unknown, context?: NormalizeConte
     activePageId,
     assets: normalizeAssetRefs(source.assets)
   };
+
+  const htmlSources = normalizeHtmlSources(source.htmlSources);
+  if (htmlSources) document.htmlSources = htmlSources;
 
   const fonts = normalizeFontSpecs(source.fonts);
   if (fonts.length > 0) document.fonts = fonts;

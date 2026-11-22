@@ -12,7 +12,7 @@ import { dataUriBytes, embedImageBytes, embedImageUri, formatBytes } from "./ima
 import type { EmbeddedImage } from "./image-embed";
 import type { AssetRef, DesignDocument, DesignElement, ImagePaint, Paint, PathElement } from "../dsl/types";
 import { getActivePage, updateActivePageElements } from "../dsl/document-ops";
-import { pageRoots, referencedAssetIds } from "../dsl/asset-usage";
+import { pageRoots, referencedAssetIds, unusedAssetIds } from "../dsl/asset-usage";
 import { DOC_BLOCK_RE, readDocument } from "./doc-source";
 import type { Source } from "./doc-source";
 
@@ -97,19 +97,22 @@ export interface AssetsCommandOpts {
   name?: string;
   to?: string;
   replace?: boolean;
+  creditName?: string;
+  creditUrl?: string;
 }
 
 /**
  * `./fish assets <doc.fish.html | doc.json> [--json]`
  * `./fish assets search <query> [--source openverse|lucide|ri] [--limit N] [--size N] [--stroke-width N] [--add-to <doc>] [--pick N] [--embed] [--to <id>] [--replace] [--json]`
  * `./fish assets icon <svg...> [--size N] [--stroke-width N] [--name N] [--json]`
- * `./fish assets import <file...> <doc.fish.html> [--name N] [--to <id>] [--replace]`
+ * `./fish assets import <file|url...> <doc.fish.html> [--name N] [--credit-name N] [--credit-url U] [--to <id>] [--replace]`
  * `./fish assets embed <doc.fish.html> (--id <assetId> | --all)`
+ * `./fish assets prune <doc.fish.html> [--json]`
  */
 export async function assetsCommand(args: string[], opts: AssetsCommandOpts): Promise<number> {
   if (args.length === 0) {
     console.error(
-      'assets needs a document path, or "search <query>", or "icon <svg...>", or "import <file> <doc>", or "embed <doc>" ' +
+      'assets needs a document path, or "search <query>", or "icon <svg...>", or "import <file|url> <doc>", or "embed <doc>", or "prune <doc>" ' +
         "(e.g. `./fish assets design.fish.html` or `./fish assets search \"coffee\" --source openverse`)"
     );
     return 2;
@@ -127,6 +130,7 @@ export async function assetsCommand(args: string[], opts: AssetsCommandOpts): Pr
   if (args[0] === "icon") return assetsIconCommand(args.slice(1), opts);
   if (args[0] === "import") return assetsImportCommand(args.slice(1), opts);
   if (args[0] === "embed") return assetsEmbedCommand(args.slice(1), opts);
+  if (args[0] === "prune") return assetsPruneCommand(args.slice(1), opts);
 
   return listDocumentAssets(args[0], opts);
 }
@@ -247,44 +251,117 @@ export function dropUnreferencedAssets(doc: DesignDocument, candidates: string[]
   return { doc: { ...doc, assets: (doc.assets ?? []).filter((a) => !dropped.includes(a.id)) }, dropped };
 }
 
+const REMOTE_SOURCE = /^https?:\/\//i;
+
 /**
- * `assets import` — a file on this machine becomes an asset in the document.
+ * The two halves of an attribution, or the reason there is not one.
+ *
+ * `AssetRef.credit` stores a name and a page; a credit with only one of them is
+ * either unverifiable or anonymous, so the CLI refuses half an attribution
+ * rather than writing one nobody can check.
+ */
+export function creditFrom(name?: string, url?: string): { credit?: { name: string; url: string }; error?: string } {
+  if (!name && !url) return {};
+  if (!name || !url) {
+    return {
+      error:
+        "--credit-name and --credit-url go together: a name with no page cannot be checked, a page with no author credits nobody."
+    };
+  }
+  if (!REMOTE_SOURCE.test(url)) return { error: `--credit-url must be http(s), got "${url}"` };
+  return { credit: { name, url } };
+}
+
+function sourceName(source: string): string {
+  if (!REMOTE_SOURCE.test(source)) return path.basename(source).replace(/\.[^/.]+$/, "");
+  try {
+    const base = decodeURIComponent(path.basename(new URL(source).pathname));
+    return base.replace(/\.[^/.]+$/, "") || "image";
+  } catch {
+    return "image";
+  }
+}
+
+/**
+ * A URL chosen elsewhere: Unsplash, a client CDN, a press kit.
+ *
+ * Fetched once and embedded, never hotlinked — the document has to open offline,
+ * and `--strict-assets` fails one that still points at a URL. The Unsplash *API*
+ * requires hotlinking, so it cannot be a source here; a photo from it arrives the
+ * same way a downloaded file does.
+ */
+async function fetchRemoteBytes(url: string): Promise<{ bytes: Uint8Array; mime: string | null; sourceBytes: number }> {
+  const res = await fetch(url, { redirect: "follow", headers: { "user-agent": "fish-agent-kit" } });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText} — ${url}`);
+  const mime = res.headers.get("content-type");
+  // A photo *page* is the mistake this catches: an agent that pastes the URL it
+  // was reading gets HTML, and the decoder's "no image" would read as a broken
+  // file instead of the wrong URL.
+  if (mime && !mime.toLowerCase().startsWith("image/")) {
+    throw new Error(`that URL answered ${mime.split(";")[0]}, not an image — pass the image file URL, not the page that shows it`);
+  }
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  return { bytes, mime, sourceBytes: bytes.length };
+}
+
+/**
+ * `assets import` — a file on this machine, or an http(s) URL, becomes an asset
+ * in the document.
+ *
+ * The URL form is the door for every source this CLI does not ship: Unsplash, a
+ * client's CDN, a press kit, a museum archive. It is deliberately *not* a
+ * `--source` — a source table would need a key, a rate limit and a quality
+ * judgement per site, and the agent can already see the page it wants. One
+ * fetch, one embed, one credit line.
  *
  * The bytes are embedded rather than referenced because a document that points
- * at a local path renders as an empty box on every machine but this one, which
- * is the same failure as a remote URL and harder to notice.
+ * at a local path or a remote URL renders as an empty box on any other machine,
+ * which is the same failure and harder to notice.
  *
- * Several files in one run write the document once. Registering them one at a
+ * Several sources in one run write the document once. Registering them one at a
  * time rewrites the whole `#design-doc` block per file, so a batch of ten photos
  * copies the document's existing megabytes ten times over — the cost is the
  * rewrite, not the decode.
  *
- * Every file is embedded before anything is written: a local file either reads or
- * it does not, and a half-registered batch is a document whose assets[] depends
- * on which argument failed.
+ * Every source is embedded before anything is written: a file either reads or it
+ * does not, and a half-registered batch is a document whose assets[] depends on
+ * which argument failed.
  */
 async function assetsImportCommand(rest: string[], opts: AssetsCommandOpts): Promise<number> {
   const docFile = rest[rest.length - 1];
-  const files = rest.slice(0, -1);
-  if (files.length === 0 || !docFile) {
-    console.error("assets import needs a source file and a document (e.g. `fish assets import ./hero.jpg design.fish.html`)");
+  const sources = rest.slice(0, -1);
+  if (sources.length === 0 || !docFile) {
+    console.error(
+      "assets import needs a source and a document (e.g. `fish assets import ./hero.jpg design.fish.html` or `fish assets import https://…/hero.jpg design.fish.html`)"
+    );
     return 2;
   }
-  if (files.length > 1 && opts.name) {
-    console.error(`--name names one file, but ${files.length} were given — drop it and each file is named after its basename`);
+  if (sources.length > 1 && opts.name) {
+    console.error(`--name names one asset, but ${sources.length} were given — drop it and each source is named after its basename`);
     return 2;
   }
-  if (files.length > 1 && opts.to) {
-    console.error(`--to fills one element, but ${files.length} files were given — import them first, then bind each with an apply`);
+  if (sources.length > 1 && opts.to) {
+    console.error(`--to fills one element, but ${sources.length} sources were given — import them first, then bind each with an apply`);
     return 2;
   }
   if (opts.replace && !opts.to) {
     console.error("--replace needs --to <elementId> — it swaps the image on an element, it does not edit assets[] on its own");
     return 2;
   }
-  for (const file of files) {
-    if (!fs.existsSync(file)) {
-      console.error(`no such file: ${file}`);
+  const attribution = creditFrom(opts.creditName, opts.creditUrl);
+  if (attribution.error) {
+    console.error(attribution.error);
+    return 2;
+  }
+  if (attribution.credit && sources.length > 1) {
+    console.error(
+      `--credit-name / --credit-url describe one asset, but ${sources.length} sources were given — import the credited one on its own`
+    );
+    return 2;
+  }
+  for (const source of sources) {
+    if (!REMOTE_SOURCE.test(source) && !fs.existsSync(source)) {
+      console.error(`no such file: ${source}`);
       return 2;
     }
   }
@@ -292,23 +369,27 @@ async function assetsImportCommand(rest: string[], opts: AssetsCommandOpts): Pro
   if (isFailure(loaded)) return reportFailure(loaded);
 
   const imported: { asset: AssetRef; bytes: number; sourceBytes: number }[] = [];
-  for (const file of files) {
-    const name = opts.name ?? path.basename(file).replace(/\.[^/.]+$/, "");
+  for (const source of sources) {
+    const name = opts.name ?? sourceName(source);
     try {
-      const embedded = await embedImageBytes(new Uint8Array(fs.readFileSync(file)), null, name);
+      const read = REMOTE_SOURCE.test(source)
+        ? await fetchRemoteBytes(source)
+        : { bytes: new Uint8Array(fs.readFileSync(source)), mime: null, sourceBytes: fs.statSync(source).size };
+      const embedded = await embedImageBytes(read.bytes, read.mime, name);
       imported.push({
         asset: {
           id: createId("asset"),
           name,
           uri: embedded.uri,
           width: embedded.width,
-          height: embedded.height
+          height: embedded.height,
+          ...(attribution.credit ? { credit: attribution.credit } : {})
         },
         bytes: embedded.bytes,
-        sourceBytes: fs.statSync(file).size
+        sourceBytes: read.sourceBytes
       });
     } catch (err) {
-      console.error(`import failed for ${file}: ${message(err)}`);
+      console.error(`import failed for ${source}: ${message(err)}`);
       console.error(`  nothing was written — the document still has its previous assets`);
       return 1;
     }
@@ -468,8 +549,57 @@ async function assetsEmbedCommand(rest: string[], opts: AssetsCommandOpts): Prom
   return failed.length === 0 ? 0 : 1;
 }
 
-declare const __FISH_LUCIDE_NAMES__: string | undefined;
+/**
+ * `assets prune <doc>` — drop the bytes nothing paints.
+ *
+ * Deleting a layer removes the paint, never the asset: `doc.assets[]` is a
+ * registry, so a 500KB photograph taken out of a product card stays in the file.
+ * The scan is `dropUnreferencedAssets`, which counts references the way the layer
+ * panel does — a paint held by a style or an instance override keeps its bytes.
+ *
+ * Nothing is deleted on a guess: every id removed is printed with the bytes it
+ * freed, and an unpruned document says so rather than claiming a silent success.
+ */
+function assetsPruneCommand(rest: string[], opts: AssetsCommandOpts): number {
+  const docFile = rest[0];
+  if (!docFile) {
+    console.error("assets prune needs a document (e.g. `fish assets prune design.fish.html`)");
+    return 2;
+  }
+  const loaded = loadDocument(docFile);
+  if (isFailure(loaded)) return reportFailure(loaded);
+  const assets = loaded.doc.assets ?? [];
+  const before = fs.statSync(loaded.src.file).size;
+  const { doc: next, dropped } = dropUnreferencedAssets(loaded.doc, assets.map((a) => a.id));
 
+  if (dropped.length === 0) {
+    if (opts.json) {
+      console.log(JSON.stringify({ ok: true, file: loaded.src.file, pruned: [], bytes: 0, before, after: before }, null, 2));
+    } else {
+      console.log(`${loaded.src.file} · ${assets.length} asset(s), every one referenced — nothing to prune`);
+    }
+    return 0;
+  }
+
+  const bytes = assets
+    .filter((a) => dropped.includes(a.id))
+    .reduce((sum, a) => sum + (a.uri ? (dataUriBytes(a.uri) ?? 0) : 0), 0);
+  writeDocBack(loaded.src, next);
+  const after = fs.statSync(loaded.src.file).size;
+
+  if (opts.json) {
+    console.log(JSON.stringify({ ok: true, file: loaded.src.file, pruned: dropped, bytes, before, after }, null, 2));
+    return 0;
+  }
+  console.log(`${loaded.src.file} · pruned ${dropped.length} unreferenced asset(s): ${dropped.join(", ")}`);
+  // Not a before/after on the file: the write re-serializes the whole document,
+  // so a hand-formatted source can grow while losing megabytes of bitmap, and the
+  // pair would read as "prune made it bigger".
+  console.log(`  ${formatBytes(bytes)} of embedded bytes freed · ${assets.length} → ${next.assets?.length ?? 0} asset(s)`);
+  return 0;
+}
+
+declare const __FISH_LUCIDE_NAMES__: string | undefined;
 const LUCIDE_DEFAULT_CREDIT = { name: "Lucide Icons · ISC", url: "https://lucide.dev/icons/" };
 
 function lucideFallbackNames(): string[] | undefined {

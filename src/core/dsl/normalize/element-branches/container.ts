@@ -1,5 +1,5 @@
 import type { DesignElement } from "../../types";
-import { flattenLayout } from "../../layout-flat";
+import { FLAT_LAYOUT_KEYS, flattenLayout } from "../../layout-flat";
 import { asBoolean, isPlainObject, normalizeOverflow, normalizeScrollOffset } from "../shared";
 import { normalizeFillStack } from "../paint";
 import { normalizeLayoutGuides } from "../layout-guides";
@@ -59,6 +59,46 @@ export const normalizeContainer: ElementBranch = ({ el, base, sizing, path, repa
   if (type !== "componentSet") normalizeCornerControls(el, base, true);
 
   if (ownLayout) Object.assign(base, flattenLayout(ownLayout));
+
+  // A section is a named REGION of the page: it groups screens that were placed
+  // by hand, so it neither places nor clips its children. Both are repairs
+  // rather than silent drops — an author who wrote either believed it applied,
+  // and the sentence says which key to delete to get it back.
+  if (type === "frame" && asBoolean(el.section) === true) {
+    base.section = true;
+    const dropped: string[] = [];
+    for (const key of FLAT_LAYOUT_KEYS) {
+      if (base[key] !== undefined) {
+        delete base[key];
+        dropped.push(key);
+      }
+    }
+    if (dropped.length > 0) {
+      repairs.push({
+        kind: "layout",
+        path: `${path}/${dropped[0]}`,
+        message: 'a section groups hand-placed layers — it has no auto layout, so the layout keys were dropped'
+      });
+    }
+    for (const key of ["overflow", "overflowX", "overflowY"] as const) {
+      if (base[key] !== undefined) {
+        delete base[key];
+        repairs.push({
+          kind: "layout",
+          path: `${path}/${key}`,
+          message: 'a section never clips its contents; the overflow keys were dropped'
+        });
+      }
+    }
+    if (base.slide !== undefined) {
+      delete base.slide;
+      repairs.push({
+        kind: "layout",
+        path: `${path}/slide`,
+        message: 'a section is a named region, not a screen — it does not present, so the slide keys were dropped'
+      });
+    }
+  }
 
   // Guides are the author's ruler over this box, so they belong to the two types
   // that HAVE a box the author lays out in. A componentSet is fitted to its

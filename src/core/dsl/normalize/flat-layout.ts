@@ -14,6 +14,7 @@
  */
 
 import type { AutoLayout } from "../types";
+import { splitTopLevelWhitespace } from "../length-expr";
 import { LAYOUT_FIELD_TO_FLAT, FLAT_LAYOUT_KEYS } from "../layout-flat";
 import { MAX_GRID_TRACKS, normalizeAutoLayout } from "./auto-layout";
 import { canonicalKey, pxLength, type ElementType, type NormalizationRepair } from "./shared";
@@ -51,22 +52,7 @@ export const FLAT_TO_FIELD: ReadonlyArray<readonly [string, string]> = [...owner
   .map(([flat, [field]]) => [flat, field] as const);
 
 /** Split a CSS track list on whitespace outside parentheses (`repeat(...)`, `minmax(...)`). */
-function splitTrackTokens(input: string): string[] {
-  const parts: string[] = [];
-  let depth = 0;
-  let start = 0;
-  for (let i = 0; i < input.length; i++) {
-    const ch = input[i];
-    if (ch === "(") depth++;
-    else if (ch === ")") depth--;
-    else if (depth === 0 && /\s/.test(ch)) {
-      if (i > start) parts.push(input.slice(start, i));
-      start = i + 1;
-    }
-  }
-  if (start < input.length) parts.push(input.slice(start));
-  return parts;
-}
+const splitTrackTokens = splitTopLevelWhitespace;
 
 /**
  * Parse a flat `grid-template-columns` / `grid-template-rows` value:

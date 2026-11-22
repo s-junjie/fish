@@ -29,6 +29,7 @@ import { useShortcuts } from "./hooks/useShortcuts";
 import { useCanvasGestures } from "./hooks/useCanvasGestures";
 import { useSmartSelectionGesture } from "./hooks/useSmartSelectionGesture";
 import { useInspectorOverlayHidden } from "./hooks/inspector-activity";
+import { setCanvasNavigation } from "./hooks/canvas-navigation";
 import { useFishBridge } from "./hooks/useFishBridge";
 import { useAssetInsertion } from "./hooks/useAssetInsertion";
 import { useHtmlImport } from "./hooks/useHtmlImport";
@@ -445,6 +446,13 @@ export function EditorRoot({ readOnly }: EditorRootProps) {
   );
 
   const isPanMode = tool.activeTool === "hand" || isSpacePressed;
+
+  // A press in pan mode is a camera move, not a click, so it must not dismiss a
+  // floating panel (see `canvas-navigation`). Written here because this is the
+  // only place that knows both halves of pan mode — the hand tool and the key.
+  useEffect(() => {
+    setCanvasNavigation(isPanMode);
+  }, [isPanMode]);
 
   // Memoized SVG node handlers read this at event time; their own closure goes
   // stale when only pan state changed (see element-click.ts).

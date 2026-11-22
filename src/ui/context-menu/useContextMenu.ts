@@ -284,6 +284,15 @@ export function useContextMenu(options: UseContextMenuOptions) {
           runEditorCommand("ungroup");
         }
       },
+      {
+        id: "createSection",
+        label: t("contextMenu.createSection"),
+        disabled: !hasStored || !editorCommandEnabled("groupAsSection"),
+        onSelect: () => {
+          close();
+          runEditorCommand("groupAsSection");
+        }
+      },
       // Flatten is offered only when it would do something: a text layer or a
       // frame has no curve in it, and a greyed-out row is just noise.
       ...(selected.some((el) => el.type === "path" || isConvertibleToPath(el))

@@ -119,7 +119,7 @@ export const CANONICAL_KEYS: ReadonlySet<string> = new Set([
   // false one costs the same as a silent drop.
   "strokes", "blendMode", "blend", "mix-blend-mode", "fillEnabled", "onPath", "link", "href", "linkUrl", "slide",
   "sides", "sweep", "innerRadius", "startAngle", "gap",
-  "points", "cornerSmoothing", "dx", "dy", "sizeOverride", "instanceScale", "collapsed", "spans",
+  "points", "cornerSmoothing", "dx", "dy", "sizeOverride", "instanceScale", "collapsed", "section", "spans",
   "autoplay", "loop", "muted", "controls", "posterAssetId", "src", "srcdoc", "cachedTitle", "cachedFavicon", "alwaysLive"
 ]);
 
@@ -617,6 +617,17 @@ export function normalizeElement(
     });
   }
 
+  // A section is a frame flag: every other type paints something with a
+  // meaning of its own, so the key is refused by name rather than stored on a
+  // rect that would then look like a region and behave like nothing.
+  if (type !== "frame" && el.section !== undefined) {
+    repairs.push({
+      kind: "layout",
+      path: `${path}/section`,
+      message: `only a frame can be a section; a ${type} has no region to name`
+    });
+  }
+
   // Only a top-level slide host presents, so `slide` on anything else is
   // reported: it looks authored and does nothing, which is worse than a
   // dropped key the author never sees.
@@ -937,7 +948,7 @@ export function normalizeElement(
   if (placedCell) base["grid-area"] = placedCell;
 
   // --- effects ------------------------------------------------------------
-  const effects = normalizeEffects(el.effects, path, repairs);
+  const effects = normalizeEffects(el.effects);
   // CSS `backdrop-filter` is the same blur applied to what is BEHIND the layer,
   // which is exactly `backdrop-blur`. Only the blur half maps: the colour
   // adjustments act on the backdrop and have no field, so they are named.
@@ -983,17 +994,21 @@ export function normalizeElement(
   }
   if (effects.length > 0) base.effects = effects;
 
-  // Element-wide colour adjustment; `adjust` is the canonical key and legacy
-  // `filter` (an object) is absorbed. A CSS `filter:` STRING is parsed by
+  // `adjust` is the canonical key. A CSS `filter:` STRING is parsed by
   // `parseFilterValue` — its colour-adjustment subset merges into `adjust`,
   // while `blur()` and `drop-shadow()` become effects.
-  const rawAdjust = (el as Record<string, unknown>).adjust ?? el.filter;
-  const colorFilter = normalizeColorFilter(rawAdjust);
+  const rawAdjust = el.adjust ?? (typeof el.filter === "string" ? el.filter : undefined);
+  const colorFilter = normalizeColorFilter(rawAdjust, `${path}/adjust`, repairs, "element");
   let baseAdjust = colorFilter;
   const filterRaw = typeof rawAdjust === "string" ? rawAdjust.trim() : "";
   if (filterRaw && filterRaw !== "none") {
     const parsed = parseFilterValue(filterRaw);
-    if (parsed.filter) baseAdjust = { ...(baseAdjust || {}), ...parsed.filter };
+    if (parsed.filter) {
+      // Re-read through the normalizer: a CSS string carries values that have
+      // never been clamped, and `Math.max(0, …)` in the renderer is the only
+      // other thing standing between `contrast(-2)` and a stored negative.
+      baseAdjust = normalizeColorFilter({ ...(baseAdjust || {}), ...parsed.filter }, `${path}/adjust`, repairs, "element");
+    }
     if (parsed.blur !== undefined) effects.push({ type: "layer-blur", blur: parsed.blur, enabled: true });
     for (const sh of parsed.shadows) effects.push(shadowToEffect(sh));
     if (parsed.unsupported.length) {

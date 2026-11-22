@@ -8,6 +8,7 @@ export type CreatableToolType =
   | "polygon"
   | "star"
   | "frame"
+  | "section"
   | "text";
 
 export function isCreatableTool(tool: ToolType): tool is CreatableToolType {
@@ -19,6 +20,7 @@ export function isCreatableTool(tool: ToolType): tool is CreatableToolType {
     tool === "polygon" ||
     tool === "star" ||
     tool === "frame" ||
+    tool === "section" ||
     tool === "text"
   );
 }
@@ -40,7 +42,7 @@ export function isSelectingTool(tool: ToolType): boolean {
 
 export interface BoxShapeDraft {
   kind: "box";
-  tool: "rect" | "ellipse" | "polygon" | "star" | "frame" | "text";
+  tool: "rect" | "ellipse" | "polygon" | "star" | "frame" | "section" | "text";
   x: number;
   y: number;
   width: number;
@@ -172,6 +174,8 @@ export function getDefaultShapeBounds(
       return { kind: "box", tool, x, y, width: 150, height: 150 };
     case "frame":
       return { kind: "box", tool, x, y, width: 320, height: 240 };
+    case "section":
+      return { kind: "box", tool, x, y, width: 480, height: 320 };
     case "text":
       return { kind: "box", tool, x, y, width: 260, height: 48 };
     case "line":

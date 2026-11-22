@@ -39,7 +39,9 @@ export function findThumbnailTargetFrame(doc: DesignDocument): FrameElement | nu
   const firstPage = pages[0];
   const firstElements = firstPage.children ?? [];
   for (const el of firstElements) {
-    if (el.type === "frame") return el;
+    // A section is a region of the page, not a screen to put on the cover;
+    // falling back to one would crop the thumbnail to a grey plate.
+    if (el.type === "frame" && el.section !== true) return el;
   }
 
   return null;

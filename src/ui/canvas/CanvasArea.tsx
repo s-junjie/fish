@@ -589,6 +589,7 @@ export function CanvasArea({
                   activeTool === "polygon" ||
                   activeTool === "star" ||
                   activeTool === "frame" ||
+                  activeTool === "section" ||
                   activeTool === "comment"
                 ? "cursor-crosshair"
                 : activeTool === "text"

@@ -72,6 +72,9 @@ if (-not $browser) {
 
 $absDoc = (Resolve-Path $Doc).Path
 $fileUrl = [System.Uri]::new($absDoc).AbsoluteUri
+# The caller names where the picture goes; making that place exist is ours.
+$outDir = [System.IO.Path]::GetDirectoryName($Out)
+if ($outDir) { New-Item -ItemType Directory -Path $outDir -Force | Out-Null }
 # out.report.json, never out.json: a design authored as design.json beside the
 # shell already owns the bare name, and the report would take it.
 $jsonOut = [System.IO.Path]::Combine([System.IO.Path]::GetDirectoryName($Out), [System.IO.Path]::GetFileNameWithoutExtension($Out) + ".report.json")

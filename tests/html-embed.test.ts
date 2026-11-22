@@ -3,20 +3,26 @@ import { getActivePage } from "../src/core/dsl/document-ops";
 import {
   DEFAULT_HTML_HEIGHT,
   DEFAULT_HTML_WIDTH,
-  MAX_HTML_FILE_BYTES,
   computeHtmlTargetSize,
   createHtmlElement,
   htmlNameFromUrl,
   loadHtmlFromEmbedCode,
   loadHtmlFromFile,
   loadHtmlFromUrl,
-  parseEmbedCode
+  parseEmbedCode,
+  resolveHtmlSource,
+  HTML_REF_PREFIX,
+  htmlSourceKey,
+  registerHtmlSource,
+  expandHtmlSourceRefs
 } from "../src/core/interactions/html-embed-loader";
+import { documentToPlainObject, foldHtmlSources } from "../src/core/document-json";
+import { computeContentHash } from "../src/core/persistence/recovery";
 import { isFrameableUrl } from "../src/core/dsl/html-source";
 import { normalizeDesignDocument } from "../src/core/dsl/normalize";
 import { documentFromHtml, serializeSelf } from "../src/core/data-bridge";
 import { presentationFrames } from "../src/core/presentation/frames";
-import { HtmlEmbedElement } from "../src/core/dsl/types";
+import { DesignElement, HtmlEmbedElement } from "../src/core/dsl/types";
 import { HTML_EMBED_SANDBOX } from "../src/ui/canvas/SvgHtmlEmbedNode";
 
 const docOf = (elements: unknown[]) =>
@@ -97,10 +103,9 @@ describe("placing an html embed", () => {
     expect(el.name).toBe("landing");
   });
 
-  it("refuses a file too large to live inside the document", async () => {
-    await expect(
-      loadHtmlFromFile(fakeHtmlFile("huge.html", "<p>x</p>", MAX_HTML_FILE_BYTES + 1))
-    ).rejects.toThrow(/limit/i);
+  it("does not refuse a file by size; content is deduplicated at insertion", async () => {
+    const el = await loadHtmlFromFile(fakeHtmlFile("huge.html", "<p>x</p>", 8 * 1024 * 1024 + 1));
+    expect(el.srcdoc).toBe("<p>x</p>");
   });
 
   it("refuses an empty file", async () => {
@@ -239,7 +244,8 @@ describe("an html embed survives a save and a load", () => {
     expect(html).toContain("\\u003c/script>");
 
     const back = documentFromHtml(html);
-    expect(getActivePage(back!).children[0] as HtmlEmbedElement).toMatchObject({ srcdoc });
+    const el = getActivePage(back!).children[0] as HtmlEmbedElement;
+    expect(resolveHtmlSource(back!, el.srcdoc)).toBe(srcdoc);
   });
 });
 
@@ -386,6 +392,72 @@ describe("the trust boundary an embedded document crosses", () => {
       }
     }).not.toThrow();
     expect(readVal).toBeNull();
+  });
+});
+
+describe("html content pool", () => {
+  const PAGE = "<!doctype html><p>shared</p>";
+  const PAGE2 = "<!doctype html><p>edited</p>";
+  const box = { x: 0, y: 0, width: 10, height: 10 };
+
+  it("folds two layers carrying the same page into one stored copy", () => {
+    const doc = docOf([
+      { id: "h1", type: "html", ...box, srcdoc: PAGE },
+      { id: "h2", type: "html", ...box, srcdoc: PAGE }
+    ]);
+    const plain = documentToPlainObject(doc);
+    expect(JSON.stringify(plain).split(PAGE).length - 1).toBe(1);
+    const children = (plain.pages as Array<{ children: Array<{ srcdoc: string }> }>)[0].children;
+    expect(children[0].srcdoc.startsWith(HTML_REF_PREFIX)).toBe(true);
+    expect(children[0].srcdoc).toBe(children[1].srcdoc);
+  });
+
+  it("reuses a key for identical text and lets an edit split only one layer", () => {
+    const first = registerHtmlSource(docOf([]), PAGE);
+    const again = registerHtmlSource(first.doc, PAGE);
+    expect(again.ref).toBe(first.ref);
+    expect(again.doc).toBe(first.doc);
+
+    const elA = { srcdoc: first.ref } as HtmlEmbedElement;
+    const elB = { ...elA };
+    const edited = registerHtmlSource(again.doc, PAGE2);
+    elA.srcdoc = edited.ref;
+    expect(resolveHtmlSource(edited.doc, elA.srcdoc)).toBe(PAGE2);
+    expect(resolveHtmlSource(edited.doc, elB.srcdoc)).toBe(PAGE);
+  });
+
+  it("reads literal HTML from older files", () => {
+    expect(resolveHtmlSource(docOf([]), PAGE)).toBe(PAGE);
+  });
+
+  it("drops a row no element references any more", () => {
+    const stale = htmlSourceKey(PAGE);
+    const live = htmlSourceKey(PAGE2);
+    const doc = docOf([{ id: "h1", type: "html", ...box, srcdoc: HTML_REF_PREFIX + live }]);
+    doc.htmlSources = { [stale]: { text: PAGE }, [live]: { text: PAGE2 } };
+
+    const plain = documentToPlainObject(doc);
+    expect(Object.keys(plain.htmlSources as object)).toEqual([live]);
+  });
+
+  it("expands a reference when an element leaves the document", () => {
+    const registered = registerHtmlSource(docOf([]), PAGE);
+    const el = { id: "h1", type: "html", ...box, srcdoc: registered.ref } as DesignElement;
+    expect((expandHtmlSourceRefs(registered.doc, el) as HtmlEmbedElement).srcdoc).toBe(PAGE);
+  });
+
+  it("does not report the pool as an unsupported top-level property", () => {
+    const registered = registerHtmlSource(docOf([]), PAGE);
+    const { repairs } = normalizeDesignDocument(documentToPlainObject(registered.doc) as never, {
+      preserveUnknown: false
+    });
+    expect(repairs.filter((r) => r.kind === "dropped-property" && r.path === "/htmlSources")).toEqual([]);
+  });
+
+  it("hashes the literal and pooled forms as the same content", () => {
+    const literal = docOf([{ id: "h1", type: "html", ...box, srcdoc: PAGE }]);
+    const pooled = normalizeDesignDocument(foldHtmlSources(documentToPlainObject(literal)) as never).document;
+    expect(computeContentHash(pooled)).toBe(computeContentHash(literal));
   });
 });
 

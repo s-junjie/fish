@@ -1,7 +1,7 @@
 import { AutoLayout, DesignElement, DesignDocument, FrameElement, PolygonElement } from "../../core/dsl/types";
 import { getActivePage } from "../../core/dsl/document-ops";
 import { applyAutoLayout } from "../../core/compile";
-import { findParentById, isContainer } from "../../core/geometry/tree-ops";
+import { findParentById, isContainer, isSectionElement } from "../../core/geometry/tree-ops";
 import { ScrubInput } from "../ScrubInput";
 import { AlignmentPicker } from "./AlignmentPicker";
 import { Button } from "../Button";
@@ -125,10 +125,14 @@ export function AutoLayoutSection({
 
   // An instance clips the same way a frame does — its resolved children are
   // painted into its box — so the clip switch belongs to the layout section.
+  // A section clips nothing by definition: it groups hand-placed screens, so
+  // neither the clip switch nor the layout controls are offered on it.
+  const sectionSelected = isSectionElement(primarySelected);
   const clipsChildren =
-    primarySelected.type === "frame" ||
-    primarySelected.type === "component" ||
-    primarySelected.type === "instance";
+    !sectionSelected &&
+    (primarySelected.type === "frame" ||
+      primarySelected.type === "component" ||
+      primarySelected.type === "instance");
   const clipControl = clipsChildren && (
     <ScrollOverflowControl
       element={primarySelected}
@@ -195,7 +199,7 @@ export function AutoLayoutSection({
         ? "2"
         : "4");
 
-  const frame = isContainerEl ? (primarySelected as FrameElement) : undefined;
+  const frame = isContainerEl && !sectionSelected ? (primarySelected as FrameElement) : undefined;
   const frameLayout = frame ? layoutOf(frame) : undefined;
   const pad: PadTuple = (() => {
     const p = frameLayout?.padding;

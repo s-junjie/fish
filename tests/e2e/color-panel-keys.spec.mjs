@@ -8,7 +8,9 @@ import path from "node:path";
 //   2. Enter in a field — commits the typed value and KEEPS the panel open: a
 //                          confirmed number is an edit, not a dismissal
 //   3. the X button   — closes it too
-//   4. Enter under an open picker — does NOT reach the editor. `useShortcuts`
+//   4. pan mode       — a press that moves the camera keeps the panel: navigation
+//                        is not a click on the canvas
+//   5. Enter under an open picker — does NOT reach the editor. `useShortcuts`
 //                                     listens on `window` in the capture phase, so
 //                                     with a path selected Enter used to enter
 //                                     vector edit mode *underneath* the open panel:
@@ -131,7 +133,32 @@ check(
   `${JSON.stringify(await page.evaluate(() => window.__FISH_BRIDGE__.getSelectedIds()))} @ ${JSON.stringify(canvasSpot)}`
 );
 
-// ---- 4. Enter while a path is being edited --------------------------------
+// ---- 4. a pan press is not a click ----------------------------------------
+//
+// Space (and the hand tool) turn every press into a camera move: it changes
+// nothing the panel describes, and the panel hangs off the inspector, so it never
+// moves out from under itself. It used to close on that press, taking the panel —
+// and the gradient grip it was steering — out of the window on every pan.
+await select("p_rect");
+await page.waitForTimeout(200);
+check("the panel reopens", await openPanel());
+await page.keyboard.down("Space");
+await page.mouse.move(canvasSpot.x, canvasSpot.y);
+await page.mouse.down();
+await page.mouse.move(canvasSpot.x + 60, canvasSpot.y + 40, { steps: 6 });
+await page.mouse.up();
+await page.keyboard.up("Space");
+await page.waitForTimeout(300);
+check("a press that pans the canvas leaves the panel open", (await panels()) === 1, `panels=${await panels()}`);
+check(
+  "and leaves the selection alone",
+  (await page.evaluate(() => window.__FISH_BRIDGE__.getSelectedIds().length)) === 1,
+  JSON.stringify(await page.evaluate(() => window.__FISH_BRIDGE__.getSelectedIds()))
+);
+await page.keyboard.press("Escape");
+await page.waitForTimeout(250);
+
+// ---- 5. Enter while a path is being edited --------------------------------
 await select("p_path");
 await page.waitForTimeout(250);
 await page.keyboard.press("Enter");

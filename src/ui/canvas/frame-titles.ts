@@ -1,4 +1,5 @@
 import { DesignElement, ElementType } from "../../core/dsl/types";
+import { isSectionElement } from "../../core/geometry/tree-query";
 import { measureText, TextMeasureSpec } from "../../core/geometry/text-measure";
 import { CANVAS_CHROME_TEXT } from "./canvas-text";
 
@@ -40,6 +41,14 @@ const TITLE_MIN_CHARS = 2;
 const TITLE_MARK_PX: Partial<Record<ElementType, number>> = { component: 14, componentSet: 14 };
 const TITLE_PREFIX_CHARS: Partial<Record<ElementType, number>> = { instance: 2 };
 
+/**
+ * What a section's label pays on each side. The label is a PILL that sits
+ * outside the box's top edge (Figma's), so the pill's own padding is the only
+ * inset — the text may run to the box's right edge minus that padding, and the
+ * pill still fits inside the width the section declares.
+ */
+export const SECTION_LABEL_PAD = 6;
+
 const TITLED_TYPES: ReadonlySet<ElementType> = new Set<ElementType>([
   "frame",
   "component",
@@ -65,6 +74,15 @@ function charAdvance(): number {
 /** The name a label would say — an instance may be naming its master. */
 export type FrameTitleName = (el: DesignElement) => string;
 
+/**
+ * The painted width of a label, in screen pixels — what the section pill behind
+ * it has to be. Measured with the same face the text is drawn in, so the plate
+ * cannot come out narrower than the word it holds.
+ */
+export function titleLabelWidth(text: string): number {
+  return measureText(text, TITLE_FONT, Infinity).width;
+}
+
 export function resolveFrameTitles(
   list: readonly DesignElement[],
   zoom: number,
@@ -77,8 +95,10 @@ export function resolveFrameTitles(
   for (const el of list) {
     if (el.visible === false || el.isMask || !TITLED_TYPES.has(el.type)) continue;
     const budget =
-      Math.floor((el.width * zoom - (TITLE_MARK_PX[el.type] ?? 0)) / advance) -
-      (TITLE_PREFIX_CHARS[el.type] ?? 0);
+      Math.floor(
+        (el.width * zoom - (TITLE_MARK_PX[el.type] ?? 0) - (isSectionElement(el) ? SECTION_LABEL_PAD * 2 : 0)) /
+          advance
+      ) - (TITLE_PREFIX_CHARS[el.type] ?? 0);
     if (budget < TITLE_MIN_CHARS) continue;
     const name = nameOf(el);
     titles.set(el.id, name.length <= budget ? name : name.slice(0, budget - 1) + ELLIPSIS);

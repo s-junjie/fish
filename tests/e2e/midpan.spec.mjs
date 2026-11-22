@@ -174,6 +174,31 @@ alpha = await getEl("alpha");
 checkNear("left drag still moves the element x", alpha.x, 175, 25);
 checkNear("left drag still moves the element y", alpha.y, 145, 25);
 
+// 7. A two-finger horizontal swipe pans, and never turns into history navigation.
+//
+// The gesture itself is a macOS system event that headless Chromium cannot
+// produce, so what is pinned here is the two facts that decide it: the root
+// scroller refuses overscroll (the only switch Chromium's swipe-back respects),
+// and a horizontal wheel really moves `pan.x` instead of the zoom.
+const overscroll = await page.evaluate(() => ({
+  html: getComputedStyle(document.documentElement).overscrollBehavior,
+  body: getComputedStyle(document.body).overscrollBehavior
+}));
+check("the root scroller refuses overscroll", overscroll, { html: "none", body: "none" });
+await applySetup();
+await clearSelection();
+const wheelBefore = await readView();
+await page.mouse.move(
+  Math.round(wheelBefore.rect.left + wheelBefore.rect.width * 0.5),
+  Math.round(wheelBefore.rect.top + wheelBefore.rect.height * 0.5)
+);
+await page.mouse.wheel(90, 0);
+await settle();
+const wheelAfter = await readView();
+checkNear("a horizontal swipe pans x by its delta", wheelAfter.pan.x - wheelBefore.pan.x, -90, 2);
+checkNear("and leaves pan y alone", wheelAfter.pan.y - wheelBefore.pan.y, 0);
+checkNear("and does not zoom", wheelAfter.zoom, wheelBefore.zoom, 0.001);
+
 const failed = results.filter((r) => !r.ok);
 for (const r of results) {
   console.log(`${r.ok ? "PASS" : "FAIL"}  ${r.name}${r.ok ? "" : `  -> ${JSON.stringify(r.actual)} (expected ${JSON.stringify(r.expected)})`}`);

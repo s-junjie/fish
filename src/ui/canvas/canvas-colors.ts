@@ -117,6 +117,26 @@ export const CANVAS_PREVIEW = "#5EA2FF";
 export const CANVAS_GUIDE = "#888888";
 
 /**
+ * The plate behind a SECTION's name and the ink on it.
+ *
+ * Figma gives a section label an opaque pill rather than bare text, because the
+ * label sits outside the region and lands on whatever the page has there — a
+ * photograph, another section's edge, the canvas itself. Bare text was unreadable
+ * on all three. The plate is white and the ink near-black in both themes: a
+ * section name is a coordinate on the canvas, not a colour that follows the
+ * document, and `CANVAS_SELECT` replaces both when the section is selected.
+ */
+export const CANVAS_SECTION_LABEL = "#FFFFFF";
+export const CANVAS_SECTION_INK = "#111111";
+
+/**
+ * A hairline on that plate. On a white page a white pill on a white canvas is a
+ * plate nobody can see; the ring costs nothing on dark paper and is the only
+ * thing that keeps the label a shape rather than a floating word on light.
+ */
+export const CANVAS_SECTION_LABEL_RING = withAlpha("#000000", 0.1);
+
+/**
  * The size badge's own three colours — the workbench's surface, ridge and ink,
  * restated as values because the badge is drawn INSIDE the SVG with no CSS to
  * inherit from. Same three, one meaning each; see `tailwind.config.js`.

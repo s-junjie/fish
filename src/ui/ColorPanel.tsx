@@ -16,6 +16,7 @@ import { Select } from "./Select";
 import { HUE_TRACK, Rail, alphaTrackStyle } from "./ColorRail";
 import { ColorValueFields } from "./ColorValueFields";
 import { pickerDepth, setPickerOpen } from "./hooks/picker-focus";
+import { isCanvasNavigation } from "./hooks/canvas-navigation";
 import { useAnchoredPosition } from "./hooks/useAnchoredPosition";
 import { useColorNotation } from "./hooks/useColorNotation";
 import { useDismiss } from "./hooks/useDismiss";
@@ -273,7 +274,12 @@ export function ColorPanel({
   ],
   // …and a press or an Escape with that child on screen is ITS to answer: closing
   // both at once is what made changing a pattern's colour feel like a crash.
-  () => pickerDepth() > depth.current);
+  () => pickerDepth() > depth.current,
+  // A press while the canvas is in pan mode is a camera move, not a click. This
+  // panel hangs off the inspector, so panning never moves it and never asks it to
+  // go away; closing on that press took the panel — and the gradient grip it was
+  // steering — out of the window every time the user nudged the page.
+  () => isCanvasNavigation());
 
   // Enter confirms the pick and closes — but only when the panel itself holds the
   // keyboard. Handled in the CAPTURE phase so it cannot reach the editor's own

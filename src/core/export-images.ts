@@ -31,7 +31,10 @@ async function fetchToDataUri(url: string): Promise<string | null> {
 }
 
 async function canvasToDataUri(url: string): Promise<string | null> {
-  if (typeof document === "undefined") return null;
+  // `document` alone is not the test: a DOM shim can exist without the
+  // constructor, and `new Image()` then throws a ReferenceError out of a
+  // behaviour that promises `null` on every failure.
+  if (typeof document === "undefined" || typeof Image === "undefined") return null;
   const image = new Image();
   image.crossOrigin = "anonymous";
   const loaded = await new Promise<boolean>((resolve) => {

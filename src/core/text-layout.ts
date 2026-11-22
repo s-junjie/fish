@@ -191,7 +191,7 @@ function applyLineClamp(lines: LaidLine[], content: string, run: TextLayoutInput
 
   const source = applyTextTransform(content, run.textTransform);
   let kept = maxLines === 1
-    ? [{ text: source.replace(/\s+/g, " ").trim(), start: 0, end: source.length }]
+    ? [{ text: trimCollapsibleStart(source.replace(/[^\S\u00a0]+/g, " ")), start: 0, end: source.length }]
     : lines.slice(0, maxLines);
   if (run.textOverflow !== "ellipsis" || kept.length === 0) return kept;
 
@@ -236,6 +236,20 @@ const NO_LINE_START = /[。，、．：；！？…—～）〕］｝〉》」�
 const NO_LINE_END = /[（〔［｛〈《「『【〖｟｢‘“]/;
 
 /**
+ * The space `pre-line` collapses runs of, and may break at.
+ *
+ * NOT `\s`: `\u00a0` is a CHARACTER, not collapsible white space — CSS keeps it,
+ * and forbids a break at it. Testing `\s` here trimmed an indent off the start of
+ * every exported line, broke `10 000` in two, and made the canvas and the file
+ * disagree about a string nobody could see was different. The indent Tab types
+ * is made of these, so it is the one character this has to be exact about.
+ */
+const isCollapsibleSpace = (ch: string): boolean => ch !== "\u00a0" && /\s/.test(ch);
+
+/** `String.prototype.trimStart`, sparing the non-breaking spaces. */
+const trimCollapsibleStart = (text: string): string => text.replace(/^[^\S\u00a0]+/, "");
+
+/**
  * The units a line may be broken between.
  *
  * Whitespace runs and Latin words behave exactly as `split(/(\s+)/)` did, so the
@@ -250,7 +264,7 @@ function breakTokens(paragraph: string): string[] {
   const flushWord = () => { if (word) { out.push(word); word = ""; } };
   const flushSpace = () => { if (space) { out.push(space); space = ""; } };
   for (const ch of paragraph) {
-    if (/\s/.test(ch)) {
+    if (isCollapsibleSpace(ch)) {
       flushWord();
       space += ch;
     } else if (CJK.test(ch)) {
@@ -295,7 +309,7 @@ function wrapLines(run: TextLayoutInput, spec: TextMeasureSpec): LaidLine[] {
     // line before laying it out — the canvas wraps and paints from the first
     // glyph. Laying the raw paragraph out put that space into the exported
     // ink: one space advance the canvas never had, on every line after a break.
-    const lead = raw.length - raw.trimStart().length;
+    const lead = raw.length - trimCollapsibleStart(raw).length;
     const paragraph = raw.slice(lead);
     if (!paragraph) {
       lines.push({ text: "", start, end: start });
@@ -312,7 +326,7 @@ function wrapLines(run: TextLayoutInput, spec: TextMeasureSpec): LaidLine[] {
     }
     let currentLine = "";
     // Where the line being built starts in the source. It advances by what was
-    // CONSUMED, not by what was painted: `token.trimStart()` drops the
+    // CONSUMED, not by what was painted: `trimCollapsibleStart(token)` drops the
     // whitespace a break landed on, and that whitespace still has to be
     // accounted for or every later line shifts left by it.
     let lineStart = start + lead;
@@ -326,8 +340,8 @@ function wrapLines(run: TextLayoutInput, spec: TextMeasureSpec): LaidLine[] {
           continue;
         }
         lines.push({ text: currentLine, start: lineStart, end: lineStart + currentLine.length });
-        lineStart += currentLine.length + (token.length - token.trimStart().length);
-        currentLine = token.trimStart();
+        lineStart += currentLine.length + (token.length - trimCollapsibleStart(token).length);
+        currentLine = trimCollapsibleStart(token);
       } else {
         currentLine = testLine;
       }

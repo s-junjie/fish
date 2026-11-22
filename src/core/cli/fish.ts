@@ -133,6 +133,8 @@ function dispatch(argv: string[]): number | Promise<number> {
     pick: numberOf("--pick"),
     id: valueOf("--id"),
     name: valueOf("--name"),
+    creditName: valueOf("--credit-name"),
+    creditUrl: valueOf("--credit-url"),
     viewport: numberOf("--viewport"),
     viewportHeight: numberOf("--viewport-height"),
     template: valueOf("--template"),
@@ -148,10 +150,9 @@ function dispatch(argv: string[]): number | Promise<number> {
     if (args.length < 1) return usage("check needs a document");
     return check(args[0], opts);
   }
-  if (command === "brief") {
-    if (args.length < 1) return usage("brief needs a document");
-    return brief(args[0], opts);
-  }
+  // No document is where a design starts. `brief` answering the directory
+  // instead of the syntax is what makes it the first command of a new project.
+  if (command === "brief") return brief(args[0] ?? null, opts);
   if (command === "inspect") {
     if (args.length < 2) return usage("inspect needs an element id and a document");
     // `<id> <doc>` reads like the command; `<doc> <id>` is how every other

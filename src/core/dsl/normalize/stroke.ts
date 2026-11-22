@@ -6,6 +6,7 @@ import {
   cornerRadiusEqual,
   parseDynamicLength,
   resolveDynamicBorderRadius,
+  splitTopLevelWhitespace,
   type ResolvedBorderRadiusSpec
 } from "../length-expr";
 import { asNumber, canonicalKey, isPlainObject, lengthUnit, pxLength, NormalizationRepair } from "./shared";
@@ -62,24 +63,6 @@ const OPEN_STROKE_TYPES: ReadonlySet<string> = new Set(["path", "line", "arrow"]
 const sitsInsideBox = (type: unknown): boolean =>
   typeof type === "string" && type.trim() !== "" && !OPEN_STROKE_TYPES.has(type.trim().toLowerCase());
 
-/** Split a CSS value on whitespace that is not inside parentheses, so `rgb(1, 2, 3)` stays one token. */
-function splitCssTokens(input: string): string[] {
-  const parts: string[] = [];
-  let depth = 0;
-  let start = 0;
-  for (let i = 0; i < input.length; i++) {
-    const ch = input[i];
-    if (ch === "(") depth++;
-    else if (ch === ")") depth = Math.max(0, depth - 1);
-    else if (depth === 0 && /\s/.test(ch)) {
-      if (i > start) parts.push(input.slice(start, i));
-      start = i + 1;
-    }
-  }
-  if (start < input.length) parts.push(input.slice(start));
-  return parts;
-}
-
 /**
  * The CSS `border` shorthand, `<width> || <style> || <color>` in any order.
  *
@@ -95,7 +78,7 @@ export function parseBorderShorthand(raw: string): { width?: number; style?: str
   const text = raw.trim();
   if (!text) return undefined;
   const out: { width?: number; style?: string; color?: string; none?: boolean } = {};
-  for (const token of splitCssTokens(text)) {
+  for (const token of splitTopLevelWhitespace(text)) {
     const lower = token.toLowerCase();
     if (!out.style && BORDER_STYLES.includes(lower)) {
       out.style = lower;
@@ -218,22 +201,6 @@ export function cornerRadiusInput(el: Record<string, unknown>): unknown {
   });
   return out;
 }
-
-/**
- * One corner, from any spelling: a number, a px string, or a `%` of the box's
- * shorter side — the SAME rule `parseRadiusString` applies to the string form, so
- * `{ topLeft: "50%" }` and `"50%"` mean one thing. The array and object forms
- * used to read through `asNumber`, and `asNumber("50%")` is 50: a percentage
- * corner became 50 px with nothing reported.
- */
-const cornerToken = (value: unknown, reference: number): number | undefined => {
-  if (typeof value === "number") return Number.isFinite(value) ? Math.max(0, value) : undefined;
-  if (typeof value === "string") {
-    const n = radiusToken(value, reference);
-    return n === undefined ? undefined : Math.max(0, n);
-  }
-  return undefined;
-};
 
 /** The first unit any string leaf under `value` carries, so a repair can name it.
  *  Bounded: a radius object is four corners, and this only has to reach the first. */
@@ -434,94 +401,6 @@ export function applyNormalizedBorderRadius(
   base.borderRadius = spec.radius;
   if (spec.radiusY !== undefined) sizing.borderRadiusY = spec.radiusY;
   if (spec.expr !== undefined) sizing.borderRadiusExpr = spec.expr;
-}
-
-export function normalizeCornerRadius(
-  raw: unknown,
-  path?: string,
-  repairs?: NormalizationRepair[],
-  box?: { width: number; height: number }
-): CornerRadius | undefined {
-  const reference = box ? Math.min(box.width, box.height) : 0;
-  const reportCorners = (value: unknown): void => {
-    if (!path || !repairs) return;
-    const unit = firstUnit(value);
-    repairs.push({
-      kind: "element",
-      path: `${path}/borderRadius`,
-      message: `${JSON.stringify(value)} is not a corner length (${
-        box ? "px, or a % of the box's shorter side" : "px"
-      }${unit ? `; it carries "${unit}"` : ""})`
-    });
-  };
-
-  if (typeof raw === "number" && Number.isFinite(raw) && raw >= 0) return raw;
-  if (typeof raw === "string" && raw.trim()) {
-    const parsed = parseRadiusString(raw, box);
-    if (parsed !== undefined) return parsed;
-    if (path && repairs) {
-      repairs.push({
-        kind: "element",
-        path: `${path}/borderRadius`,
-        message: `borderRadius ${JSON.stringify(raw)} is not a valid CSS length (px number${box ? " or %" : ""}); dropped`
-      });
-    }
-    return undefined;
-  }
-  if (Array.isArray(raw) && raw.length === 4) {
-    const radii = raw.map((r) => cornerToken(r, reference));
-    if (radii.some((r) => r === undefined)) {
-      reportCorners(raw);
-      return undefined;
-    }
-    const corners = radii as [number, number, number, number];
-    // Four equal corners are the same value CSS writes as one radius, and the
-    // writer compresses them to one — keeping the array here would make a
-    // round trip change the stored shape.
-    return corners.every((value) => value === corners[0]) ? corners[0] : corners;
-  }
-  if (isPlainObject(raw)) {
-    // { topLeft, topRight, bottomRight, bottomLeft } / { all: 8 }
-    // An absent corner is 0 (CSS lets you name one); a corner the author WROTE
-    // and the reader cannot resolve fails the whole shape, so the same rule the
-    // padding/margin object branches use applies — never a silent 0.
-    const side = (value: unknown): number | undefined =>
-      value === undefined ? 0 : cornerToken(value, reference);
-    if (raw.all !== undefined) {
-      const all = side(raw.all);
-      if (all === undefined) {
-        reportCorners(raw.all);
-        return undefined;
-      }
-      return all;
-    }
-    const corners = [
-      side(raw.topLeft ?? raw.tl),
-      side(raw.topRight ?? raw.tr),
-      side(raw.bottomRight ?? raw.br),
-      side(raw.bottomLeft ?? raw.bl)
-    ];
-    if (corners.some((c) => c !== undefined)) {
-      if (corners.some((c) => c === undefined)) {
-        reportCorners(raw);
-        return undefined;
-      }
-      return corners as [number, number, number, number];
-    }
-  }
-  // The radius reader takes only number / 4-array / object / CSS string. Anything
-  // else — the spelling an author writes — was dropped outright and silently.
-  if (raw !== undefined && raw !== null && path && repairs) {
-    const present = isPlainObject(raw) ? Object.keys(raw).length : 1;
-    if (present > 0) {
-      repairs.push({
-        kind: "element",
-        path: `${path}/borderRadius`,
-        message: `borderRadius ${JSON.stringify(raw)} is not a number, a 4-value array, an object or a CSS string; dropped`
-      });
-    }
-  }
-  return undefined;
 }
 
 export function normalizeStroke(

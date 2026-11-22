@@ -11,7 +11,9 @@ import { findPage, getActivePage, withActivePage } from "../dsl/document-ops";
 import { laidOutAllPages, laidOutDocument, type LayoutFinding } from "../layout-report";
 import type { GeometryFinding } from "../geometry-report";
 import { fontDiagnostics } from "../font-diagnostics";
-import { danglingAssetRefs } from "../dsl/asset-usage";
+import { adjustDiagnostics } from "../adjust-diagnostics";
+import { danglingAssetRefs, unusedAssetIds } from "../dsl/asset-usage";
+import { dataUriBytes, formatBytes } from "./image-embed";
 import { countElements } from "../geometry/tree-ops";
 import type { DesignDocument } from "../dsl/types";
 import type { CompileDiagnostic } from "../compile";
@@ -73,6 +75,21 @@ function assetDiagnostics(
       message:
         `${remote.length} of ${assets.length} asset(s) are remote URLs (${remote.map((a) => a.id).join(", ")}) — ` +
         "the file will not render them offline. Embed them with `fish assets embed <doc> --all`"
+    });
+  }
+
+  // Deleting a layer removes the paint, never the asset, so the bytes of a
+  // photograph taken out of the artwork stay embedded and nothing else says so.
+  // Info in every environment: an asset kept for the next round is a legitimate
+  // state, and this is the number that makes the decision possible.
+  const unused = unusedAssetIds(doc);
+  if (unused.length > 0) {
+    const bytes = assets.filter((a) => unused.includes(a.id)).reduce((sum, a) => sum + (a.uri ? (dataUriBytes(a.uri) ?? 0) : 0), 0);
+    out.push({
+      level: "info",
+      message:
+        `${unused.length} asset(s) in doc.assets[] are painted nowhere (${unused.map((id) => `"${id}"`).join(", ")}) — ` +
+        `${formatBytes(bytes)} of the file. \`fish assets prune <doc>\` drops them`
     });
   }
   return out;
@@ -294,6 +311,7 @@ export function check(
   const diagnostics = validateDocument(document, { skipVisualPages: skipIds });
   const assetFindings = assetDiagnostics(document, opts.strictAssets);
   const fontFindings = fontDiagnostics(document, opts.strictAssets);
+  const adjustFindings = adjustDiagnostics(document);
 
   let pageRecords: PageCheckRecord[] | null = null;
   let geometry: GeometryFinding[];
@@ -330,7 +348,7 @@ export function check(
     message: finding.message,
     elementId: finding.elementId
   }));
-  const all: CompileDiagnostic[] = [...diagnostics, ...layoutFindings, ...geometry, ...assetFindings, ...fontFindings, ...inkFindings];
+  const all: CompileDiagnostic[] = [...diagnostics, ...layoutFindings, ...geometry, ...assetFindings, ...fontFindings, ...adjustFindings, ...inkFindings];
   const errors = all.filter((d) => d.level === "error");
   const warnings = all.filter((d) => d.level === "warning");
   const { ok, lossy, failReason } = checkVerdict(repairs, errors.length, warnings.length, opts.strict);
@@ -371,7 +389,8 @@ export function check(
               }
             : {}),
           ...(assetFindings.length > 0 ? { assetFindings } : {}),
-          ...(fontFindings.length > 0 ? { fontFindings } : {})
+          ...(fontFindings.length > 0 ? { fontFindings } : {}),
+          ...(adjustFindings.length > 0 ? { adjustFindings } : {})
         },
         null,
         2

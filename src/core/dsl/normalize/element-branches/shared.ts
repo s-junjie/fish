@@ -33,7 +33,7 @@ export type ElementBranch = (ctx: ElementBranchContext) => void;
  * survives a round-trip byte-identical.
  *
  * `cornerRadius` is a px LENGTH and belongs beside `borderRadius`; on a rect the
- * two are the same field under two spellings, which `normalizeCornerRadius`
+ * two are the same field under two spellings, which `cornerRadiusInput`
  * already folds together, so a rect passes `skipRadius`.
  */
 export function normalizeCornerControls(

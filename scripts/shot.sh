@@ -100,6 +100,10 @@ MSG
 fi
 
 ABS="$(cd "$(dirname "$DOC")" && pwd)/$(basename "$DOC")"
+# The caller names where the picture goes; making that place exist is ours. The
+# failure it used to produce named the report file, which reads as a path bug in
+# the script rather than a missing directory in the caller's tree.
+mkdir -p "$(dirname "$OUT")"
 JSON="${OUT%.png}.report.json"
 JSON_DIR="$(cd "$(dirname "$JSON")" 2>/dev/null && pwd || true)"
 JSON_ABS="${JSON_DIR:-$(dirname "$JSON")}/$(basename "$JSON")"

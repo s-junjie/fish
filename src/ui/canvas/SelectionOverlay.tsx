@@ -4,6 +4,7 @@ import { DesignDocument, DesignElement, Paint, RectElement, TextElement } from "
 import { cornerRadiiOf } from "../../core/geometry/shape-path";
 import { GuideLine } from "../../core/geometry/snap-guides";
 import { getRotateCursor, getScaleCursor } from "../../core/geometry/transforms";
+import { makeProjector, type TiltParams } from "../../core/geometry/projection";
 import { isLineElement, elementAABB } from "../../core/geometry/element-bounds";
 import { matrixRotationDeg, matrixToSvg } from "../../core/geometry/matrix";
 import { getGradientStops, isGradientPaint, linearLeverEndpoints } from "../../core/geometry/gradient-utils";
@@ -35,6 +36,34 @@ import {
   CANVAS_SMART_SELECT,
   withAlpha
 } from "./canvas-colors";
+
+/**
+ * The quad a tilted layer actually paints, in the box coordinates the selection
+ * chrome is drawn in. `null` for a flat layer, and for a projection whose corners
+ * fall behind the viewer — a rectangle is the honest fallback when there is no
+ * quad to draw.
+ */
+function tiltOutlinePoints(el: DesignElement): string | null {
+  const rx = el.rotateX || 0;
+  const ry = el.rotateY || 0;
+  if (!rx && !ry) return null;
+  const w = Math.max(1, el.width);
+  const h = Math.max(1, el.height);
+  const t: TiltParams = {
+    ax: (rx * Math.PI) / 180,
+    ay: (ry * Math.PI) / 180,
+    d: el.perspective && el.perspective > 0 ? el.perspective : 800
+  };
+  const project = makeProjector(el.x, el.y, w, h, t);
+  const corners = [
+    project(el.x, el.y),
+    project(el.x + w, el.y),
+    project(el.x + w, el.y + h),
+    project(el.x, el.y + h)
+  ];
+  if (corners.some(([x, y]) => !isFinite(x) || !isFinite(y))) return null;
+  return corners.map(([x, y]) => `${x},${y}`).join(" ");
+}
 
 /**
  * The handles that move both axes. Only these carry the Scale tool's corner arrow:
@@ -161,7 +190,8 @@ export function SelectionOverlay({
     return visibleSelected.map((el) => ({
       id: el.id,
       box: elementAABB(el),
-      transform: matrixToSvg(worldMatrixOf(doc, el))
+      transform: matrixToSvg(worldMatrixOf(doc, el)),
+      points: tiltOutlinePoints(el)
     }));
   }, [visibleSelected, doc]);
   // The component/instance purple belongs to a single layer's identity — it answers
@@ -203,6 +233,15 @@ export function SelectionOverlay({
         // gesture that either the lock or the missing stored geometry refuses.
         const lockedEl =
           el.locked === true || transformLocked === true;
+
+        // A tilt is a projection, not an affine turn: `worldMatrixOf` cannot
+        // place its corners. The quad comes from the homography the export bakes
+        // with, in this <g>'s own coordinates, so viewport scale applies to
+        // chrome and artwork alike. Chromium still shifts its own projection
+        // when an ancestor turns (lessons §11); the quad stays the exact one.
+        // No transform handles: their drag math reads the flat box.
+        const tiltOutline = tiltOutlinePoints(el);
+        const transformHandlesHidden = lockedEl || tiltOutline !== null;
 
         // Gradient edit: this layer's fill row is the one the lever aims at. The
         // target outlives the picker popover (see `gradient-edit`), so the lever
@@ -269,7 +308,7 @@ export function SelectionOverlay({
 
         // Lines and arrows are edited by their two endpoints (Figma parity):
         // no resize box, no rotate corners — just a draggable node per end.
-        if (isLineElement(el) && !lockedEl) {
+        if (isLineElement(el) && !transformHandlesHidden) {
           if (isEditingText) return null;
           const handleSize = 10 / zoom;
           const half = handleSize / 2;
@@ -310,10 +349,6 @@ export function SelectionOverlay({
         const half = handleSize / 2;
         const rotOffset = 14 / zoom;
 
-        // Chrome stays FLAT on a tilted layer, on purpose: the handles' drag
-        // math reads the stored geometry, and the projected-chrome experiment
-        // sheared under scaled viewports. The box therefore shows the geometry
-        // the gestures act on, not the pixels the artwork paints.
 
         // Figma parity: a blue diamond pinned to the path where the glyph run
         // begins; dragging it slides the run. The guide path is baked with the
@@ -321,7 +356,7 @@ export function SelectionOverlay({
         // so the sampled point is in the TEXT's parent space — the same space the
         // handles below are drawn in, which is why no origin is added to it.
         let offsetHandle: { x: number; y: number } | null = null;
-        if (el.type === "text" && (el as TextElement).onPath?.pathId && !isEditingText && !lockedEl) {
+        if (el.type === "text" && (el as TextElement).onPath?.pathId && !isEditingText && !transformHandlesHidden) {
           const onPath = (el as TextElement).onPath!;
           const target = findElementById(getActivePage(doc).children, onPath.pathId);
           const guide = target ? (document.getElementById(`guide_path_${el.id}`) as SVGPathElement | null) : null;
@@ -366,34 +401,38 @@ export function SelectionOverlay({
           if (activeTool !== "scale") return base;
           return getScaleCursor(base === "nwse-resize" ? "nwse" : "nesw");
         };
+        const outlineProps = {
+          fill: "none",
+          stroke: accentColor,
+          strokeWidth: strokeW,
+          strokeDasharray:
+            frameOnly || wLocked || hLocked || transformLocked ? `${4 / zoom} ${3 / zoom}` : undefined,
+          pointerEvents: "none"
+        };
 
         return (
           <g
             data-frame-resize={frameOnly ? "true" : undefined}
             transform={matrixToSvg(worldM)}
           >
-            {!gradientTarget && !cropTarget && (
+            {!gradientTarget && !cropTarget && (tiltOutline ? (
+              <polygon {...outlineProps} data-selection-tilt="true" points={tiltOutline} />
+            ) : (
               <rect
+                {...outlineProps}
                 data-transform-locked={transformLocked ? "true" : undefined}
                 x={worldX}
                 y={worldY}
                 width={el.width}
                 height={el.height}
-                fill="none"
-                stroke={accentColor}
-                strokeWidth={strokeW}
-                strokeDasharray={
-                  frameOnly || wLocked || hLocked || transformLocked ? `${4 / zoom} ${3 / zoom}` : undefined
-                }
-                pointerEvents="none"
               />
-            )}
+            ))}
 
             {/* "Add variant" on the canvas appears only once the component already
                 has at least one variant (either the set box itself or a member
                 inside one); a standalone component starts its first variant from
                 the inspector so the canvas chrome stays quiet before variants exist. */}
-            {!isEditingText && !lockedEl && !gradientTarget && !cropTarget &&
+            {!isEditingText && !transformHandlesHidden && !gradientTarget && !cropTarget &&
               ((el.type === "componentSet" && (el.children?.length ?? 0) > 0) ||
                 (el.type === "component" && sizingParent?.type === "componentSet")) && (
                 <g
@@ -429,7 +468,7 @@ export function SelectionOverlay({
               )}
 
             {/* Corner Resize Handles — hidden when layout-controlled or editing text */}
-            {!isEditingText && canResize && !lockedEl && !gradientTarget && !cropTarget && [
+            {!isEditingText && canResize && !transformHandlesHidden && !gradientTarget && !cropTarget && [
               { type: "tl" as const, hx: worldX, hy: worldY, cursor: "nwse-resize" },
               { type: "tr" as const, hx: worldX + el.width, hy: worldY, cursor: "nesw-resize" },
               { type: "br" as const, hx: worldX + el.width, hy: worldY + el.height, cursor: "nwse-resize" },
@@ -453,7 +492,7 @@ export function SelectionOverlay({
             ))}
 
             {/* Edge Resize Handles — per-axis: hidden when that axis is layout-controlled or editing text */}
-            {!isEditingText && !lockedEl && !gradientTarget && !cropTarget && ([
+            {!isEditingText && !transformHandlesHidden && !gradientTarget && !cropTarget && ([
               { type: "tm" as const, hx: worldX + el.width / 2, hy: worldY, cursor: "ns-resize", locked: hLocked },
               { type: "mr" as const, hx: worldX + el.width, hy: worldY + el.height / 2, cursor: "ew-resize", locked: wLocked },
               { type: "bm" as const, hx: worldX + el.width / 2, hy: worldY + el.height, cursor: "ns-resize", locked: hLocked },
@@ -479,7 +518,7 @@ export function SelectionOverlay({
               ))}
 
             {/* 4 Corner Rotate Hot Zones — hidden while editing text */}
-            {!isEditingText && !lockedEl && !gradientTarget && !cropTarget && [
+            {!isEditingText && !transformHandlesHidden && !gradientTarget && !cropTarget && [
               { corner: "tl" as const, hx: worldX - rotOffset, hy: worldY - rotOffset, angle: 0 },
               { corner: "tr" as const, hx: worldX + el.width + rotOffset, hy: worldY - rotOffset, angle: 90 },
               { corner: "br" as const, hx: worldX + el.width + rotOffset, hy: worldY + el.height + rotOffset, angle: 180 },
@@ -500,7 +539,7 @@ export function SelectionOverlay({
             {/* Corner radius handle — Figma parity: a dot tucked inside the
                 top-left corner; dragging it retunes the corner radius. Rendered
                 last so it wins the hit test where it nears the resize handle. */}
-            {!isEditingText && !lockedEl && !gradientTarget && !cropTarget && el.type === "rect" && (() => {
+            {!isEditingText && !transformHandlesHidden && !gradientTarget && !cropTarget && el.type === "rect" && (() => {
               const [tl] = cornerRadiiOf((el as RectElement).borderRadius, el.width, el.height);
               // Keep the dot grabbable when the radius is zero; track the arc
               // centre once the radius grows past that minimum inset.
@@ -583,7 +622,9 @@ export function SelectionOverlay({
               fill="none"
               pointerEvents="none"
             >
-              {selectionBoxes.map(({ id, box, transform }) => (
+              {selectionBoxes.map(({ id, box, transform, points }) => (points ? (
+                <polygon key={`sel_${id}`} transform={transform} points={points} />
+              ) : (
                 <rect
                   key={`sel_${id}`}
                   transform={transform}
@@ -592,7 +633,7 @@ export function SelectionOverlay({
                   width={box.width}
                   height={box.height}
                 />
-              ))}
+              )))}
             </g>
           )}
           {multiBounds && (

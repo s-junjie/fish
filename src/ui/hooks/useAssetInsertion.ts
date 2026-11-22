@@ -3,7 +3,8 @@ import { AssetRef, DesignDocument, DesignElement } from "../../core/dsl/types";
 import { getActivePage, updateActivePageElements } from "../../core/dsl/document-ops";
 import { loadImageFromFile, loadImageFromUrl, embedExternalAsset, isSvg } from "../../core/interactions/image-loader";
 import { loadVideoFromFile, loadVideoFromUrl, embedExternalVideoAsset, createVideoElement, isVideoAsset, isVideoFile } from "../../core/interactions/video-loader";
-import { loadHtmlFromEmbedCode, loadHtmlFromFile, loadHtmlFromUrl } from "../../core/interactions/html-embed-loader";
+import { loadHtmlFromEmbedCode, loadHtmlFromFile, loadHtmlFromUrl, registerHtmlSource } from "../../core/interactions/html-embed-loader";
+import { dedupeAssetForInsert } from "../../core/interactions/asset-dedupe";
 import { captureHeadlessSnapshot } from "../../core/interactions/html-embed-snapshot";
 import { createId } from "../../core/id";
 import { createInstanceFromComponent } from "../../core/interactions/component-ops";
@@ -62,15 +63,16 @@ export function useAssetInsertion({
    * source and registers nothing.
    */
   const placeMediaElement = useCallback(
-    (rawElement: DesignElement, worldX?: number, worldY?: number, asset?: AssetRef) => {
+    (rawElement: DesignElement, worldX?: number, worldY?: number, asset?: AssetRef, base?: DesignDocument) => {
+      const doc = base ?? docRef.current;
       const positioned =
         worldX !== undefined && worldY !== undefined
           ? { x: worldX, y: worldY }
           : dropTopLeft({ width: rawElement.width, height: rawElement.height });
       const element = { ...rawElement, ...positioned };
-      const cur = getActivePage(docRef.current);
-      let nextDoc = updateActivePageElements(docRef.current, [...cur.children, element]);
-      if (asset) nextDoc = { ...nextDoc, assets: [...(docRef.current.assets || []), asset] };
+      const cur = getActivePage(doc);
+      let nextDoc = updateActivePageElements(doc, [...cur.children, element]);
+      if (asset) nextDoc = { ...nextDoc, assets: [...(doc.assets || []), asset] };
       commitSnapshot(nextDoc);
       select(new Set([element.id]));
     },
@@ -88,7 +90,8 @@ export function useAssetInsertion({
       const res = isVideoFile(file)
         ? await loadVideoFromFile(file, 0, 0)
         : await loadImageFromFile(file, 0, 0);
-      placeMediaElement(res.element, worldX, worldY, res.asset);
+      const deduped = dedupeAssetForInsert(docRef.current, res.element, res.asset);
+      placeMediaElement(deduped.element, worldX, worldY, deduped.asset);
     } catch (err) {
       console.error("Failed to insert media file:", err);
     }
@@ -121,23 +124,35 @@ export function useAssetInsertion({
    */
   const insertHtmlFile = async (file: File | Blob, worldX?: number, worldY?: number) => {
     try {
-      const element = await loadHtmlFromFile(file, 0, 0);
+      const loaded = await loadHtmlFromFile(file, 0, 0);
+      const full = loaded.srcdoc ?? "";
+      let base = docRef.current;
+      let element: DesignElement = loaded;
+      if (full) {
+        const registered = registerHtmlSource(base, full);
+        base = registered.doc;
+        element = { ...loaded, srcdoc: registered.ref };
+      }
       let asset: AssetRef | undefined;
-      if (element.srcdoc) {
-        const posterUri = await captureHeadlessSnapshot(element.srcdoc, element.width, element.height);
+      if (full) {
+        const posterUri = await captureHeadlessSnapshot(full, loaded.width, loaded.height);
         if (posterUri) {
           const posterAsset: AssetRef = {
             id: createId("asset"),
-            name: `${element.name || "HTML"} Poster`,
+            name: `${loaded.name || "HTML"} Poster`,
             uri: posterUri,
-            width: element.width,
-            height: element.height
+            width: loaded.width,
+            height: loaded.height
           };
-          asset = posterAsset;
-          element.posterAssetId = posterAsset.id;
+          element = { ...element, posterAssetId: posterAsset.id };
+          // The same page snapshots to the same bitmap, so a second import is a
+          // second reference to one row — not a second copy of the cover.
+          const deduped = dedupeAssetForInsert(base, element, posterAsset);
+          element = deduped.element;
+          asset = deduped.asset;
         }
       }
-      placeMediaElement(element, worldX, worldY, asset);
+      placeMediaElement(element, worldX, worldY, asset, base);
     } catch (err) {
       console.error("Failed to insert HTML file:", err);
       showHint?.(err instanceof Error ? err.message : t("htmlEmbed.loadFailed"));

@@ -20,7 +20,13 @@
 
 import { DesignDocument, DesignElement } from "../dsl/types";
 import { getActivePage } from "../dsl/document-ops";
-import { DEFAULT_CANVAS_BACKGROUND, DEFAULT_TEXT_INK_ON_DARK, DEFAULT_TEXT_INK_ON_LIGHT } from "../dsl/defaults";
+import {
+  DEFAULT_CANVAS_BACKGROUND,
+  DEFAULT_SECTION_FILL_ON_DARK,
+  DEFAULT_SECTION_FILL_ON_LIGHT,
+  DEFAULT_TEXT_INK_ON_DARK,
+  DEFAULT_TEXT_INK_ON_LIGHT
+} from "../dsl/defaults";
 import { topPaint } from "../dsl/paint-stack";
 import { contrastRatio, parseColorAlpha } from "./color-utils";
 import { elementAABB } from "./element-bounds";
@@ -86,4 +92,20 @@ export function newTextInkAt(doc: DesignDocument, point: { x: number; y: number 
   const pageBackground =
     canvas?.background?.type === "solid" ? canvas.background.color : DEFAULT_CANVAS_BACKGROUND;
   return inkForBackground(backgroundAt(page?.children ?? [], point) ?? pageBackground);
+}
+
+/**
+ * The plate a new section starts on: one step brighter than the page behind it.
+ *
+ * A section lands on the page, not inside another layer, so this reads the page
+ * background alone — the same two-value answer as the text inks above, chosen by
+ * whether that page is dark.
+ */
+export function newSectionFill(doc: DesignDocument): string {
+  const canvas = getActivePage(doc)?.canvas ?? doc.canvas;
+  const background =
+    canvas?.background?.type === "solid" ? canvas.background.color : DEFAULT_CANVAS_BACKGROUND;
+  return inkForBackground(background) === DEFAULT_TEXT_INK_ON_DARK
+    ? DEFAULT_SECTION_FILL_ON_DARK
+    : DEFAULT_SECTION_FILL_ON_LIGHT;
 }

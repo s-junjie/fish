@@ -13,7 +13,7 @@ import { STABLE_KIT, STABLE_SKILL, skillRefPath } from "./release-layout.mjs";
 const TOKEN = /\{\{([A-Z0-9_]+)\}\}/g;
 
 /** A reference the archive already carries; the page publishes the same bytes. */
-export const SKILL_REFERENCES = ["workflow.md", "dsl.md", "assets.md"];
+export const SKILL_REFERENCES = ["intake.md", "workflow.md", "dsl.md", "assets.md"];
 
 function trimOrigin(origin) {
   return String(origin).replace(/\/+$/, "");

@@ -29,6 +29,26 @@
   html {
     font-family: theme("fontFamily.mono");
   }
+
+  /* A two-finger horizontal swipe is a PAN here, not a page turn.
+   *
+   * Chromium resolves an unconsumed horizontal scroll gesture on macOS into
+   * history navigation (`swipe between pages`), and that decision is made on the
+   * compositor before the page is asked: the canvas' own `wheel` handler — which
+   * does `preventDefault()` and maps `deltaX` to `pan.x` — never gets the chance
+   * to keep it. The page is `overflow: hidden` at every level, so there is no
+   * scroller to absorb the delta either, which is exactly the state Chromium
+   * reads as "the user wants to go back".
+   *
+   * `overscroll-behavior` is the only switch the gesture respects, and it has to
+   * sit on the ROOT scroller: the chain a gesture walks ends at `html`, whatever
+   * box it started on. `body` is named too because the gesture can start over a
+   * panel whose own scroller is vertical-only — there the delta is unconsumed as
+   * well, and going back mid-edit is the worst answer available. */
+  html,
+  body {
+    overscroll-behavior: none;
+  }
 }
 
 /* A link is live in the two viewing surfaces and inert in the editor, where the

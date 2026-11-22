@@ -24,6 +24,7 @@ import {
   Blocks,
   MessageSquare
 } from "lucide-react";
+import { SectionMark } from "../SectionMark";
 import { t } from "../../i18n";
 import type { NavToolType, ShapeToolType, ToolType } from "../../core/tools";
 import { Button } from "../Button";
@@ -118,7 +119,7 @@ type DockIcon = ComponentType<{ size?: number; strokeWidth?: number }>;
  * whether two menus could be open at once depended on which one you opened
  * second.
  */
-type DockMenu = "nav" | "shape" | "text" | "media" | "resources";
+type DockMenu = "nav" | "frame" | "shape" | "text" | "media" | "resources";
 
 const SHAPE_TOOLS: Array<{ tool: ShapeToolType; Icon: DockIcon; labelKey: string; shortcut?: string }> = [
   { tool: "rect", Icon: Square, labelKey: "toolbar.rect", shortcut: "R" },
@@ -133,6 +134,17 @@ const SHAPE_TOOLS: Array<{ tool: ShapeToolType; Icon: DockIcon; labelKey: string
 const NAV_TOOLS: Array<{ tool: NavToolType; Icon: DockIcon; labelKey: string; shortcut: string }> = [
   { tool: "select", Icon: MousePointer2, labelKey: "toolbar.move", shortcut: "V" },
   { tool: "hand", Icon: Hand, labelKey: "toolbar.hand", shortcut: "H" }
+];
+
+/**
+ * The two page-structure tools. One slot because they answer one question —
+ * "what am I drawing a box around?" — and the difference between them is what
+ * the box MEANS: a screen to export, or a region to name. Figma's dock makes
+ * the same pair share its frame slot.
+ */
+const FRAME_TOOLS: Array<{ tool: ToolType; Icon: DockIcon; labelKey: string; shortcut: string }> = [
+  { tool: "frame", Icon: Frame, labelKey: "toolbar.frame", shortcut: "F" },
+  { tool: "section", Icon: SectionMark, labelKey: "toolbar.section", shortcut: "S" }
 ];
 
 /** `armed` marks the items whose menu row shows which of them is in use. */
@@ -202,6 +214,8 @@ export function BottomToolbar({
 
   const navMenuRef = useRef<HTMLDivElement>(null);
   const navAnchorRef = useRef<HTMLDivElement>(null);
+  const frameMenuRef = useRef<HTMLDivElement>(null);
+  const frameAnchorRef = useRef<HTMLDivElement>(null);
   const shapeMenuRef = useRef<HTMLDivElement>(null);
   const shapeAnchorRef = useRef<HTMLDivElement>(null);
   const textMenuRef = useRef<HTMLDivElement>(null);
@@ -214,6 +228,7 @@ export function BottomToolbar({
   const toggleMenu = (name: DockMenu) => setOpenMenu((prev) => (prev === name ? null : name));
 
   useDismiss(openMenu === "nav", closeMenus, navMenuRef, navAnchorRef);
+  useDismiss(openMenu === "frame", closeMenus, frameMenuRef, frameAnchorRef);
   useDismiss(openMenu === "shape", closeMenus, shapeMenuRef, shapeAnchorRef);
   useDismiss(openMenu === "text", closeMenus, textMenuRef, textAnchorRef);
   useDismiss(openMenu === "media", closeMenus, mediaMenuRef, mediaAnchorRef);
@@ -309,7 +324,8 @@ export function BottomToolbar({
   };
 
   const isNavActive = activeTool === "select" || activeTool === "hand" || activeTool === "scale" || isCanvasPanning;
-  const isFrameActive = activeTool === "frame";
+  const isFrameActive = activeTool === "frame" || activeTool === "section";
+  const ActiveFrameIcon = activeTool === "section" ? SectionMark : Frame;
   const isShapeActive = activeTool === currentShapeTool;
   const isTextActive = activeTool === "text";
   const ShapeIcon = SHAPE_TOOLS.find((s) => s.tool === currentShapeTool)?.Icon;
@@ -399,17 +415,52 @@ export function BottomToolbar({
 
       <div className="w-px h-4 bg-rule-strong mx-1.5" />
 
-      {/* Slot 2: Frame Tool */}
-      <button
-        data-tool="frame"
-        onClick={() => selectTool("frame")}
-        className={`${DOCK_SLOT_CLASS} transition-colors duration-micro ease-snap ${isFrameActive ? "bg-brand text-brand-ink font-medium" : "text-ink-dim hover:text-ink"
-          }`}
-        title={t("toolbar.frame")}
-        aria-label={t("toolbar.frame")}
-      >
-        <Frame size={15} strokeWidth={isFrameActive ? 2.1 : 2} />
-      </button>
+      {/* Slot 2: Frame / Section. One slot, two meanings of "draw a box around
+          these things": a screen (F) or a named region (S). The slot shows the
+          armed one, the way the nav slot shows its tool. */}
+      <div ref={frameAnchorRef} className="relative flex items-center">
+        <button
+          data-tool="frame"
+          onClick={() => selectTool("frame")}
+          className={`${DOCK_SLOT_CLASS} transition-colors duration-micro ease-snap ${isFrameActive ? "bg-brand text-brand-ink font-medium" : "text-ink-dim hover:text-ink"
+            }`}
+          title={activeTool === "section" ? t("toolbar.section") : t("toolbar.frame")}
+          aria-label={activeTool === "section" ? t("toolbar.section") : t("toolbar.frame")}
+        >
+          <ActiveFrameIcon size={15} strokeWidth={isFrameActive ? 2.1 : 2} />
+        </button>
+        <Button
+          size="dock"
+          data-frame-caret="true"
+          onClick={() => toggleMenu("frame")}
+          title={t("toolbar.frameMenu")}
+          aria-label={t("toolbar.frameMenu")}
+        >
+          <ChevronDown size={11} />
+        </Button>
+
+        {openMenu === "frame" && (
+          <div ref={frameMenuRef} data-frame-menu="true" className={`absolute bottom-11 left-0 ${MENU_SURFACE_CLASS}`}>
+            {FRAME_TOOLS.map(({ tool, Icon, labelKey, shortcut }) => (
+              <button
+                key={tool}
+                data-frame-item={tool}
+                onClick={() => {
+                  selectTool(tool);
+                  closeMenus();
+                }}
+                className={`${MENU_ITEM_CLASS} justify-between ${activeTool === tool ? MENU_ITEM_ON_CLASS : ""}`}
+              >
+                <div className={ROW_CLASS}>
+                  <Icon size={13} />
+                  <span>{t(labelKey)}</span>
+                </div>
+                <span className={MENU_SHORTCUT_CLASS}>{shortcut}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="w-px h-4 bg-rule-strong mx-1.5" />
 

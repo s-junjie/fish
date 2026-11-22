@@ -25,6 +25,8 @@ export function isSlideHostType(type: string): boolean {
 }
 
 export function isSlideHost(el: DesignElement): el is SlideHostElement {
+  // A section is a frame, but a region of the page rather than a screen on it.
+  if (el.type === "frame" && el.section === true) return false;
   return isSlideHostType(el.type);
 }
 

@@ -11,7 +11,7 @@ import { BooleanOp } from "../../core/geometry/boolean-ops";
 import type { PenMode } from "../../core/tools";
 import type { FramePreset } from "../../core/frame-presets";
 import { AlignmentType } from "../../core/interactions/alignment";
-import { childrenOf, isContainer } from "../../core/geometry/tree-ops";
+import { childrenOf, isContainer, isSectionElement } from "../../core/geometry/tree-ops";
 import {
   DEFAULT_THEME,
   getDocumentModes,
@@ -632,7 +632,7 @@ function InspectorPanelBase({
                 would still be the stack's first child, so its successor would pick up
                 a `space-y-4` top margin — 16px of dead space. Render it
                 conditionally the day that stops holding. */}
-              {!editingPathElement && (
+              {!editingPathElement && primarySelected && !isSectionElement(primarySelected) && (
                 <div data-inspector-section="component">
                   {primarySelected && isInstanceChild && (
                     <InstanceChildSection
@@ -691,7 +691,7 @@ function InspectorPanelBase({
               )}
 
               {primarySelected?.type === "html" && (
-                <HtmlEmbedSection primarySelected={displaySelected ?? primarySelected} onMutate={onMutate} />
+                <HtmlEmbedSection primarySelected={displaySelected ?? primarySelected} doc={doc} onMutate={onMutate} />
               )}
 
               {/* Edit mode only. A selected-but-unedited path needs nothing here,

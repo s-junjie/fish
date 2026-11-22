@@ -71,6 +71,32 @@ describe("lines", () => {
     ]);
   });
 
+  /**
+   * The indent Tab types, and the rule `pre-line` actually follows for it.
+   *
+   * `\u00a0` is a CHARACTER, not collapsible white space: CSS neither collapses it
+   * nor breaks at it. The layout tested `\s` — which includes it — so a leading
+   * indent was trimmed off the exported line while the canvas painted it, and
+   * "10 000" broke in two in the file and nowhere on screen.
+   */
+  it("keeps a non-breaking indent at the start of a line", () => {
+    const NB = "\u00a0";
+    expect(layoutTextRun(run({ content: NB.repeat(4) + "hello" })).lines).toEqual([NB.repeat(4) + "hello"]);
+    const afterBreak = layoutTextRun(run({ content: "a\n" + NB.repeat(4) + "b" }));
+    expect(afterBreak.lines).toEqual(["a", NB.repeat(4) + "b"]);
+    // …and the indent spends box width, because nothing collapsed it.
+    expect(measureText(NB.repeat(4) + "hello", SPEC).width).toBe(54);
+  });
+
+  it("does not break a line at a non-breaking space", () => {
+    const NB = "\u00a0";
+    // 60px holds ten glyphs: a plain space here would break after `aaaa`.
+    expect(layoutTextRun(run({ content: "aaaa" + NB + "bbbb cccc", width: 60 })).lines).toEqual([
+      "aaaa" + NB + "bbbb ",
+      "cccc"
+    ]);
+  });
+
   it("opens no line box for a trailing newline, as the browser does not", () => {
     // `white-space: pre-line` lays "a\n" out as ONE line box: the trailing
     // newline closes the line instead of opening an empty one. Counting it made

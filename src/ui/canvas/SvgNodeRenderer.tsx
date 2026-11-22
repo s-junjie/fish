@@ -735,7 +735,17 @@ function maskLayerBox(el: DesignElement, ctx: NodeRenderContext): InstanceBox | 
   const inst = el as InstanceElement;
   const master = findMasterComponentFast(ctx.docRef.current, inst.componentId, ctx.registry);
   if (!master) return null;
-  return resolveInstanceBox(inst, master, resolveInstanceContent(inst, master) ?? undefined);
+  // The same resolved pair the node's own `instanceBox` used. A mask read under
+  // the document's active modes drew its corner (and therefore its silhouette)
+  // from a different number mode than the instance standing in for it.
+  const theme = resolveInstanceTheme(inst, master, ctx.theme || getActiveTheme(ctx.docRef.current));
+  const numberMode = resolveInstanceNumberMode(
+    inst,
+    master,
+    ctx.numberMode || getActiveNumberMode(ctx.docRef.current)
+  );
+  const options = { theme, numberMode, tables: styleTables(ctx.docRef.current) };
+  return resolveInstanceBox(inst, master, resolveInstanceContent(inst, master, options), options);
 }
 
 // Emit backdrop-filter hosts outside `<g mask>` so soft masks don't blank backdrop blur in Chromium.

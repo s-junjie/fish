@@ -57,17 +57,23 @@ export interface DesignDocument {
   /** The value table, one id space of its own beside `styles`. */
   tokens?: DesignToken[];
   assets?: AssetRef[];
+  /**
+   * Inline documents keyed by content hash. An html element's `srcdoc` may be a
+   * `fish-html:<key>` reference instead of carrying the whole page, so two
+   * layers showing the same file store it once. A code element edits its own
+   * reference; the table entries themselves are never mutated.
+   */
+  htmlSources?: Record<string, HtmlSource>;
   fonts?: FontSpec[];
   thumbnailNodeId?: string;
   /**
    * Free-form provenance, preserved verbatim including keys this build has never
    * heard of. Nothing reads a key inside it — not the engine, not the CLI.
    *
-   * The design intent is deliberately *not* here. It lives in the files beside
-   * the document (`design.md`, `mood.md`), because that is where it
-   * can be authored, revised, diffed and reviewed as text, and because it
-   * outlives any one document. A key parked in here could be none of those, and
-   * a key that cannot be read is a key that cannot be checked.
+   * The design intent is deliberately *not* here. It is authored, revised,
+   * diffed and reviewed as text beside the document, and it outlives any one
+   * document. A key parked in here could be none of those, and a key that cannot
+   * be read is a key that cannot be checked.
    */
   metadata?: Record<string, unknown>;
   /**
@@ -177,14 +183,10 @@ export interface LiquidGlassEffect {
 }
 
 /**
- * There is one shadow, not two.
- *
- * A `drop-shadow` on a text element paints as a CSS `text-shadow` — the glyphs
- * are the shape it casts — so the old separate `text-shadow` effect type said
- * nothing the renderer did not already decide by looking at the element. It is
- * still ACCEPTED as input (`normalizeEffects` folds it onto `drop-shadow` and
- * reports the fold), but it is not a member here: a second spelling of one
- * effect is a second thing to keep in sync everywhere.
+ * There is one shadow, not two. A `drop-shadow` on a text element paints as a
+ * CSS `text-shadow` — the glyphs are the shape it casts — so a second effect
+ * type would say nothing the renderer does not already decide by looking at the
+ * element, and would be a second vocabulary to keep in sync everywhere.
  */
 export type Effect =
   | DropShadowEffect
@@ -279,19 +281,12 @@ export interface TornFields {
   fiber: number;
 }
 
-/**
- * An edge before it is resolved: every profile-specific field is optional and
- * the profile itself defaults to `torn`, which is what keeps a document written
- * against the old `torn-edge` spelling valid without a migration pass.
- */
+/** An edge before it is resolved: every profile-specific field is optional and defaults to `torn`. */
 export interface TearInput extends TearCommon {
   profile?: EdgeProfile;
   roughness?: number;
   fiber?: number;
 }
-
-/** The pre-rename spelling of `TearInput`. The tear tests still build one this way. */
-export type TornEdge = TearInput;
 
 export type EdgeSide = "top" | "right" | "bottom" | "left";
 
@@ -794,6 +789,21 @@ export interface BaseElement {
 
 export interface FrameElement extends BaseElement, SlideHost, AutoLayoutFields, LayoutGuideFields, OverlapFields {
   type: "frame";
+  /**
+   * Present and true = this frame is a SECTION: a named region of the page, in
+   * the Figma sense. Same box and the same children in the same coordinates as
+   * any frame; what changes is what the box means. Its name is painted INSIDE
+   * the top-left corner rather than above the box, and it is a backdrop to see
+   * through rather than a screen: `layout`, `overflow` and `slide` are not read
+   * on it, so nothing inside is clipped or reflowed by the section itself.
+   *
+   * A flag on `frame` rather than a type of its own because every tree
+   * operation already answers "a box whose children live in its coordinates" —
+   * move, resize, reparent, nest, marquee, align, export. A second type would
+   * have to re-earn all of it, and every one of the `type === "frame"` sites
+   * that forgot it would silently drop sections out of the tree.
+   */
+  section?: boolean;
   children: DesignElement[];
   /** Ordered background paint stack (first layer bottom-most). */
   fills?: PaintStack;
@@ -1811,4 +1821,10 @@ export interface AssetRef {
   duration?: number;
   /** Attribution required by the source's license/API terms. */
   credit?: { name: string; url: string };
+}
+
+export interface HtmlSource {
+  text: string;
+  /** Reserved for a code element: the source language, not the renderer's. */
+  language?: string;
 }

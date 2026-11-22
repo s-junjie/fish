@@ -393,6 +393,20 @@ describe("hand-written schema copies stay in step", () => {
     expect(schema.definitions.Paint.properties.adjust.description).toMatch(/image layer only/i);
   });
 
+  /**
+   * `focalPoint` reads as three buckets (`geometry/image-fit.ts`), so a schema
+   * that offers `0..1` as if it were continuous is the copy that teaches the
+   * wrong thing: an author solves for `0.62`, gets dead centre, and concludes
+   * the engine is off by a third of the overflow. The numbers have to travel with
+   * the claim, because someone reading only the schema cannot see the cut.
+   */
+  it("states that a focal point is three positions, and where the cuts are", () => {
+    const { description } = schema.definitions.Paint.properties.focalPoint;
+    expect(description).toMatch(/three positions/i);
+    expect(description).toContain("0.34");
+    expect(description).toContain("0.66");
+  });
+
   // The claim outlived its subject: "The agent and the critique both honour it"
   // was written in the same commit that added the fields, and the critique was
   // gone five hours later; the sentence shipped to every external author anyway,

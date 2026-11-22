@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { inlineExternalImages } from "../src/core/export-images";
+import { inlineExternalImages, resolveImageAsDataUri } from "../src/core/export-images";
 
 class MockSvgElement {
   tagName: string;
@@ -172,6 +172,23 @@ describe("inlineExternalImages", () => {
     } finally {
       globalThis.fetch = originalFetch;
       globalThis.FileReader = originalFileReader;
+    }
+  });
+
+  it("falls back to null when the environment has a document but no Image", async () => {
+    // The canvas rung is the middle one, and a DOM shim without the constructor
+    // used to throw a ReferenceError out of a function that promises `null` on
+    // every failure — which is how this file went red only under a full run.
+    const originalFetch = globalThis.fetch;
+    const originalDocument = (globalThis as { document?: unknown }).document;
+    globalThis.fetch = vi.fn().mockRejectedValue(new TypeError("no network"));
+    (globalThis as { document?: unknown }).document = {};
+    try {
+      await expect(resolveImageAsDataUri("https://example.com/a.png")).resolves.toBeNull();
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalDocument === undefined) delete (globalThis as { document?: unknown }).document;
+      else (globalThis as { document?: unknown }).document = originalDocument;
     }
   });
 });

@@ -33,3 +33,16 @@ export const DEFAULT_TEXT_INK_ON_DARK = "#FFFFFF";
  * look like a frame bolted around it.
  */
 export const DEFAULT_CANVAS_BACKGROUND = "#101010";
+
+/**
+ * The plate a new section sits on — one step brighter than the page, so a named
+ * region reads as a raised sheet rather than as a second background. Figma's
+ * ratio between its canvas and its section, applied to this tool's obsidian.
+ *
+ * Two values because the page can be either: a file imported from Figma arrives
+ * on white. Which one a new section takes is read from the page it lands on,
+ * the same way a new text layer reads its ink (`geometry/ink-on.ts`).
+ */
+export const DEFAULT_SECTION_FILL_ON_DARK = "#1E1E1E";
+
+export const DEFAULT_SECTION_FILL_ON_LIGHT = "#FFFFFF";

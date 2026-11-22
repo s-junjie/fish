@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
+import { warpProjective } from "../src/core/export-tilt";
 import {
   makeProjector,
   makeInverseProjector,
-  warpProjective,
   type TiltParams
-} from "../src/core/export-tilt";
+} from "../src/core/geometry/projection";
 
 describe("export-tilt projective warp", () => {
   it("inverts makeProjector exactly across tilt angles and perspective distances", () => {

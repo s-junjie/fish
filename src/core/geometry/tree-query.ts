@@ -5,6 +5,20 @@ export function isContainer(el: DesignElement): el is ContainerElement {
   return el.type === "frame" || el.type === "component" || el.type === "componentSet";
 }
 
+/**
+ * A frame that is a SECTION — a named region of the page rather than a screen.
+ * One spelling, because the flag decides the label's corner, whether children
+ * clip and whether layout controls apply, and four readers each spelling
+ * `type === "frame" && section` is four chances to miss one.
+ *
+ * A plain boolean, not a type guard: `el is FrameElement` narrowed the FALSE
+ * branch to "anything but a frame", so the very next `el.type === "frame"` read
+ * as an impossible comparison.
+ */
+export function isSectionElement(el: DesignElement): boolean {
+  return el.type === "frame" && el.section === true;
+}
+
 /** The set node `id` names, when it names one that is actually a set. */
 export function findComponentSetNode(
   elements: DesignElement[],

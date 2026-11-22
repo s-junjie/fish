@@ -2,13 +2,12 @@ import { ComponentChildren } from "preact";
 import { useRef, useState, useEffect } from "preact/hooks";
 import { Tag, X } from "lucide-react";
 import { evaluateMathExpression } from "./math-expression";
+import { formatFieldNumber, roundFieldNumber } from "./field-number";
 import { MIXED_LABEL } from "./inspector/mixed";
 import { TokenTag } from "./TokenTag";
 import { t } from "../i18n";
 
-/**
- * A square button that sits BESIDE a field and therefore has to match its box.
- */
+
 export const FIELD_BUTTON_CLASS =
   "flex-none h-[25px] w-[25px] flex items-center justify-center rounded-swatch border transition-colors cursor-default";
 
@@ -17,29 +16,10 @@ export const TEXT_FIELD_CLASS =
   "min-w-0 w-full h-[25px] px-[7px] bg-inset rounded-swatch text-row text-ink placeholder:text-ink-muted focus:outline-none ring-1 ring-inset ring-transparent focus:ring-brand";
 
 interface ScrubInputProps {
-  /**
-   * Drag-handle content: a short unit label or an icon.
-   *
-   * May be a string OR an element, and the two are interchangeable to every
-   * consumer — `data-scrub-label` is what `isValueEdit` tests to decide a press is
-   * editing a value rather than pressing a button, and gating that attribute on the
-   * label being a string meant every ICON-labelled field silently kept its
-   * selection overlay up while its number was being scrubbed.
-   */
+
   label: ComponentChildren;
   value?: number;
-  /**
-   * `discrete` says whether this frame ENDS an edit rather than continues a
-   * gesture: a pointer-drag frame is `false`, a typed value or an arrow key is
-   * `true`.
-   *
-   * The `onDragStart`/`onDragEnd` bracket is enough only for a caller that
-   * writes every frame WITHOUT recording it. A caller that has to say
-   * "record this" per edit (a paint write, where a click and a drag share one
-   * handler) cannot derive it from the bracket — the bracket also wraps a typed
-   * commit — and a field that answered `true` unconditionally pushed one undo
-   * step per pointermove.
-   */
+
   onChange: (val: number, discrete?: boolean) => void;
   /**
    * The field's unit, when the user may TYPE it rather than pick it from a menu
@@ -56,7 +36,6 @@ interface ScrubInputProps {
   onDragEnd?: () => void;
   min?: number;
   max?: number;
-  /** When true and min/max are provided, dragging past min/max wraps continuously instead of clamping. */
   wrap?: boolean;
   step?: number;
   className?: string;
@@ -64,37 +43,12 @@ interface ScrubInputProps {
   placeholder?: string;
   defaultVal?: number;
   title?: string;
-  /** Rendered after the value: a mode name, a dropdown caret, a unit. */
   trailing?: ComponentChildren;
-  /**
-   * Enter means "apply" rather than "done" — for a field inside a dialog, where
-   * committing the number and leaving the caret behind is only half the action.
-   * Called after the value has been committed; the field still blurs.
-   */
+
   onEnter?: () => void;
-  /**
-   * A field that lives INSIDE a 30px paint card — the alpha well in a fill or
-   * stroke row.
-   *
-   * A 25px well with 2.5px above and below reads as a control crammed into the
-   * card; 20px leaves the card's own padding visible and the row reads as one
-   * object with a number in it. It is a prop rather than a class the caller
-   * appends, because two `h-*` utilities resolve by stylesheet order, not by
-   * class order — the caller's height would win or lose at random.
-   */
+
   compact?: boolean;
-  /**
-   * The selection disagrees, so there is no number to show or to move from.
-   *
-   * The field shows `MIXED_LABEL` and accepts a TYPED value, which lands on every
-   * selected layer — the only edit that means anything when they differ.
-   *
-   * Dragging and the arrow keys are refused rather than guessed. Both start from
-   * the field's current value, and a mixed field has none: starting the first
-   * pixel of a drag from the fallback `0` would move five layers to zero before
-   * the pointer had travelled anywhere, which is the one thing a field saying
-   * "Mixed" must not do.
-   */
+
   mixed?: boolean;
   /** When bound to a number token, the token's display name. */
   tokenName?: string;
@@ -103,8 +57,6 @@ interface ScrubInputProps {
   /** Callback to open the number token picker popover. */
   onOpenTokenPicker?: (anchor: HTMLElement) => void;
 }
-
-const toValStr = (v?: number) => (v != null ? String(v) : "");
 
 /** The default draft parser: a bare arithmetic expression, in the field's unit. */
 const parsePlain = (raw: string, unit: string): { value: number; unit: string } | null => {
@@ -150,14 +102,14 @@ export function ScrubInput({
    * which is how a typed 123 became -354.
    */
   const emitted = useRef<number | null>(null);
-  const [localVal, setLocalVal] = useState<string>(toValStr(value));
+  const [localVal, setLocalVal] = useState<string>(formatFieldNumber(value));
 
   const suppressTagClickRef = useRef(false);
 
   useEffect(() => {
     if (!isDragging.current) {
       emitted.current = null;
-      setLocalVal(mixed ? "" : toValStr(value));
+      setLocalVal(mixed ? "" : formatFieldNumber(value));
     }
   }, [value, mixed]);
 
@@ -187,8 +139,8 @@ export function ScrubInput({
         if (min !== undefined) next = Math.max(min, next);
         if (max !== undefined) next = Math.min(max, next);
       }
-      next = Math.round(next * 100) / 100;
-      setLocalVal(String(next));
+      next = roundFieldNumber(next);
+      setLocalVal(formatFieldNumber(next));
       onChange(next, false);
     };
 
@@ -231,8 +183,8 @@ export function ScrubInput({
           if (min !== undefined) next = Math.max(min, next);
           if (max !== undefined) next = Math.min(max, next);
         }
-        next = Math.round(next * 100) / 100;
-        setLocalVal(String(next));
+        next = roundFieldNumber(next);
+        setLocalVal(formatFieldNumber(next));
         onChange(next, false);
       }
     };
@@ -268,17 +220,21 @@ export function ScrubInput({
     }
     const parsed = parse ? parse(valStr, unit ?? "") : parsePlain(valStr, unit ?? "");
     if (parsed === null) {
-      setLocalVal(toValStr(value));
+      setLocalVal(formatFieldNumber(value));
       return;
     }
     let num = parsed.value;
     if (min !== undefined) num = Math.max(min, num);
     if (max !== undefined) num = Math.min(max, num);
-    setLocalVal(String(num));
+    num = roundFieldNumber(num);
+    setLocalVal(formatFieldNumber(num));
     // A typed UNIT can change the field even when the digits do not (`24` px →
     // `24%`), so the no-op test is the (number, unit) pair, not the number alone.
+    // Compare with the DISPLAYED number: a stored float tail is not an edit, and
+    // blurring an untouched field must not rewrite the document.
     const sameUnit = parsed.unit === (unit ?? "");
-    if (sameUnit && (num === value || emitted.current === num)) return;
+    const shown = value === undefined ? undefined : roundFieldNumber(value);
+    if (sameUnit && (num === shown || emitted.current === num)) return;
     emitted.current = num;
     onDragStart?.();
     onUnit?.(parsed.unit);
@@ -287,19 +243,18 @@ export function ScrubInput({
   };
 
   if (tokenName) {
+    const tokenValue = `${formatFieldNumber(value ?? 0)}${unit ?? ""}`;
     return (
       <div
-        title={title ?? `${tokenName} (${value ?? 0}${unit ?? ""})`}
-        className={`group flex items-center justify-between ${
-          compact ? "h-5" : "h-[25px]"
-        } bg-inset rounded-swatch px-1 text-ui transition-colors ${className}`}
+        title={title ?? `${tokenName} (${tokenValue})`}
+        className={`group flex items-center justify-between ${compact ? "h-5" : "h-[25px]"
+          } bg-inset rounded-swatch px-1 text-ui transition-colors ${className}`}
       >
         {label ? (
           <span
             onPointerDown={onLabelPointerDown}
-            className={`flex-none flex items-center pl-1 pr-1 text-meta select-none text-ink-muted ${
-              disabled || mixed ? "" : "cursor-ew-resize hover:text-ink transition-colors"
-            }`}
+            className={`flex-none flex items-center pl-1 pr-1 text-meta select-none text-ink-muted ${disabled || mixed ? "" : "cursor-ew-resize hover:text-ink transition-colors"
+              }`}
           >
             {label}
           </span>
@@ -307,8 +262,8 @@ export function ScrubInput({
         <div className="flex-1 min-w-0 flex items-center justify-end">
           <TokenTag
             name={tokenName}
-            value={`${value ?? 0}${unit ?? ""}`}
-            title={title ?? `${tokenName} (${value ?? 0}${unit ?? ""})`}
+            value={tokenValue}
+            title={title ?? `${tokenName} (${tokenValue})`}
             onPointerDown={onTagPointerDown}
             onClick={(e) => {
               if (suppressTagClickRef.current) return;
@@ -352,11 +307,9 @@ export function ScrubInput({
              whole layer. The field itself is left alone: typing needs the focus
              this refuses. */
           onMouseDown={(e) => e.preventDefault()}
-          className={`flex-none flex items-center gap-1 ${
-            compact ? "pl-1 pr-0.5" : "pl-[7px] pr-1"
-          } text-meta select-none text-ink-muted transition-colors duration-micro ease-snap ${
-            disabled || mixed ? "opacity-50" : "hover:text-brand cursor-ew-resize"
-          }`}
+          className={`flex-none flex items-center gap-1 ${compact ? "pl-1 pr-0.5" : "pl-[7px] pr-1"
+            } text-meta select-none text-ink-muted transition-colors duration-micro ease-snap ${disabled || mixed ? "opacity-50" : "hover:text-brand cursor-ew-resize"
+            }`}
         >
           {label}
         </span>
@@ -404,9 +357,9 @@ export function ScrubInput({
             if (min !== undefined) next = Math.max(min, next);
             if (max !== undefined) next = Math.min(max, next);
           }
-          next = Math.round(next * 100) / 100;
+          next = roundFieldNumber(next);
           if (next === value) return;
-          setLocalVal(String(next));
+          setLocalVal(formatFieldNumber(next));
           emitted.current = next;
           onDragStart?.();
           onChange(next, true);
@@ -421,11 +374,9 @@ export function ScrubInput({
           emitted.current = null;
           setLocalVal((e.target as HTMLInputElement).value);
         }}
-        className={`min-w-0 w-full bg-transparent ${
-          compact ? "pl-0.5 pr-1" : "pl-1 pr-[7px]"
-        } text-right tabular-nums text-ink placeholder:text-ink-muted focus:outline-none text-row ${
-          disabled ? "opacity-50 cursor-not-allowed" : "cursor-text"
-        }`}
+        className={`min-w-0 w-full bg-transparent ${compact ? "pl-0.5 pr-1" : "pl-1 pr-[7px]"
+          } text-right tabular-nums text-ink placeholder:text-ink-muted focus:outline-none text-row ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-text"
+          }`}
       />
       {onOpenTokenPicker ? (
         <button

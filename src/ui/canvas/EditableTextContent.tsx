@@ -52,6 +52,36 @@ export interface EditableTextContentProps {
 const SPLICE_INPUT_TYPES = /^(insert|delete)/;
 
 /**
+ * What Tab types: a tab stop's worth of NON-BREAKING spaces.
+ *
+ * Not a `\t`. `pre-line` collapses one to a single space when the glyphs are
+ * measured and the SVG export collapses it the same way, so a tab character could
+ * only ever paint one space of indent — and a run of plain spaces collapses just
+ * as hard. `\u00a0` is a CHARACTER rather than collapsible white space: every
+ * reader of the string keeps it, so the paint, the measure, the export and the
+ * saved document all agree on what the indent is.
+ *
+ * Four to a stop, and Tab advances to the NEXT one — a fixed four would leave the
+ * second line of a paragraph indented differently from the first.
+ */
+const TAB_STOP = 4;
+const INDENT_CHAR = "\u00a0";
+
+/** The indent from the caret's own line start to the caret. */
+function indentAt(text: string, caret: number): string {
+  const column = caret - (text.lastIndexOf("\n", caret - 1) + 1);
+  const width = TAB_STOP - (((column % TAB_STOP) + TAB_STOP) % TAB_STOP);
+  return INDENT_CHAR.repeat(width);
+}
+
+/** How much of the line's start is one indent, for Shift+Tab to take back. */
+function leadingIndent(text: string, lineStart: number): number {
+  let n = 0;
+  while (n < TAB_STOP && (text[lineStart + n] === INDENT_CHAR || text[lineStart + n] === " ")) n += 1;
+  return n;
+}
+
+/**
  * The run keys a `TextSpan` can carry, in a FIXED order.
  *
  * `JSON.stringify(style)` would depend on the order the keys were inserted in,
@@ -340,6 +370,42 @@ export function EditableTextContent({
         } else if (e.key === "Escape") {
           e.preventDefault();
           ctx.onCancelCanvasText();
+        } else if (e.key === "Tab") {
+          // Tab indents, and never leaves the text.
+          //
+          // The focus part was the bug: nothing behind this editor wants the key
+          // (the global Tab declines while a contentEditable has focus), so the
+          // browser's default ran and moved focus to the first focusable thing in
+          // the inspector — which blurred the editor and committed the edit, and
+          // the next keystroke landed on a button.
+          //
+          // The character part is `INDENT`: four non-breaking spaces, because a
+          // real tab cannot survive the trip. `pre-line` collapses a `\t` to one
+          // space when the glyphs are measured, the SVG export collapses it the
+          // same way, so the document could only ever paint a single space's worth
+          // of indent. `\u00a0` is a character rather than collapsible white
+          // space: the paint keeps it, the measurer measures it, the export writes
+          // it, and the file holds exactly the bytes that were painted.
+          e.preventDefault();
+          const node = rootRef.current;
+          const sel = node ? getTextSelectionOffsets(node) : null;
+          const cur = ctx.canvasTextDraft ?? el.content ?? "";
+          const from = sel?.start ?? cur.length;
+          const to = sel?.end ?? cur.length;
+          const lineStart = cur.lastIndexOf("\n", from - 1) + 1;
+          if (e.shiftKey) {
+            // Shift+Tab takes one indent back off the LINE, not off the caret: an
+            // author who indented a line and then walked to its end is asking for
+            // the line's indent to go, and a run-of-characters-before-the-caret
+            // rule would answer "nothing" from there.
+            const drop = leadingIndent(cur, lineStart);
+            if (drop === 0) return;
+            applyModelEdit({ start: lineStart, end: lineStart + drop }, "");
+            const caret = Math.max(lineStart, from - drop);
+            saveSel({ start: caret, end: caret });
+            return;
+          }
+          applyModelEdit({ start: from, end: to }, indentAt(cur, from));
         }
       }}
       onPaste={(e) => {

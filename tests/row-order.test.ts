@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { DesignDocument, DesignElement } from "../src/core/dsl/types";
 import type { AutoLayout } from "../src/core/dsl/types";
 import { flattenLayout } from "../src/core/dsl/layout-flat";
-import { orderRowsForPanel, rowOrderOf } from "../src/ui/layers/row-order";
+import { isOutOfFlow, orderRowsForPanel, rowOrderOf } from "../src/ui/layers/row-order";
 
 const rect = (id: string): DesignElement => ({ id, type: "rect", name: id } as DesignElement);
 
@@ -79,5 +79,21 @@ describe("orderRowsForPanel", () => {
     const absolute = { ...rect("abs"), position: "absolute" as const };
     const withAbsolute = [rect("a"), absolute, rect("c")];
     expect(orderRowsForPanel(withAbsolute, "flow").map((r) => r.id)).toEqual(["a", "abs", "c"]);
+  });
+});
+
+describe("isOutOfFlow", () => {
+  const absolute = { ...rect("abs"), position: "absolute" as const };
+
+  it("marks an absolute child of a stack, whose row orders paint only", () => {
+    expect(isOutOfFlow("flow", absolute)).toBe(true);
+  });
+
+  it("does not mark it under a free frame, where there is no flow to leave", () => {
+    expect(isOutOfFlow("z", absolute)).toBe(false);
+  });
+
+  it("does not mark a child the stack does place", () => {
+    expect(isOutOfFlow("flow", rect("a"))).toBe(false);
   });
 });

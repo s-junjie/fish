@@ -1,6 +1,6 @@
 import type { DesignElement } from "../../core/dsl/types";
 import { t } from "../../i18n";
-import { ChevronDown, ChevronRight, Eye, EyeOff, Link2, Globe, Loader2, Lock, LockOpen, AlertTriangle } from "lucide-react";
+import { ChevronDown, ChevronRight, Eye, EyeOff, Link2, Globe, Loader2, Lock, LockOpen, AlertTriangle, Ungroup } from "lucide-react";
 import { getElementIcon } from "./layer-icons";
 import { DARK_RING_CLASS } from "../ring-style";
 import { INLINE_RENAME_INPUT_CLASS } from "../rename-style";
@@ -10,15 +10,6 @@ import { useFontStatusUpdates } from "../hooks/useFontStatusUpdates";
 import { openMissingFonts } from "../missing-fonts";
 
 export const INDENT_PER_LEVEL = 12;
-/**
- * The gutter every left-panel row insets by. This is the ONE number that
- * keeps the file name, the tabs, the page rows and the layer rows on the
- * same left edge — measured at 1600px they were landing on 12 / 10 / 8,
- * which reads as a 4px stagger no one can name but everyone can see. It is
- * 8 rather than 12 because the scroller already adds its own `p-2`: the two
- * stack, and a top-level row was sitting 20px off the rail.
- * `INDENT_PER_LEVEL` stacks on top of this for depth.
- */
 export const BASE_PADDING = 8;
 
 export interface LayerRowProps {
@@ -37,6 +28,8 @@ export interface LayerRowProps {
   renameInputRef: { current: HTMLInputElement | null };
   externalAsset: { assetId: string; title: string; active: boolean } | null;
   isEmbedding: boolean;
+  /** A flow parent does not place this layer, so its row order is paint only. */
+  isOutOfFlow?: boolean;
   themeModeLabel?: string;
   numberModeLabel?: string;
   handlers: {
@@ -78,6 +71,7 @@ export function LayerRow({
   renameInputRef,
   externalAsset,
   isEmbedding,
+  isOutOfFlow,
   themeModeLabel,
   numberModeLabel,
   handlers
@@ -123,6 +117,7 @@ export function LayerRow({
   const actionsPinned =
     Boolean(missingFont) ||
     Boolean(externalAsset) ||
+    Boolean(isOutOfFlow) ||
     Boolean(showRowActions && (el.locked || el.visible === false));
 
   /* The chip lands on the row's right end, which is where the row's own marks
@@ -180,9 +175,8 @@ export function LayerRow({
         /* `text-row`: the reference layout draws the layer list in mono,
          which is most of why it reads as an instrument rather than a
          file browser. `text-row` carries that role's -0.01em tracking. */
-        className={`group relative flex items-center justify-between py-1.5 rounded-ctl text-row transition-colors duration-micro ease-snap cursor-default pr-1.5 ${rowSurface} ${
-          el.visible === false ? "opacity-50" : ""
-        }`}
+        className={`group relative flex items-center justify-between py-1.5 rounded-ctl text-row transition-colors duration-micro ease-snap cursor-default pr-1.5 ${rowSurface} ${el.visible === false ? "opacity-50" : ""
+          }`}
       >
         {/* The selection indicator. `left-1` keeps it clear of the row's 4px
             corner arc; `h-3.5` (14px) centred is the same mark a page row
@@ -241,11 +235,10 @@ export function LayerRow({
                 if (!isDerived) handlers.onStartRename();
               }}
               onMouseEnter={(e) => titleIfElided(e.currentTarget)}
-              className={`truncate flex-1 select-none ${
-                (el.type === "component" || el.type === "instance" || el.type === "componentSet") && !isSelected
+              className={`truncate flex-1 select-none ${(el.type === "component" || el.type === "instance" || el.type === "componentSet") && !isSelected
                   ? "text-component"
                   : ""
-              }`}
+                }`}
             >
               {el.name || el.type}
             </span>
@@ -285,6 +278,21 @@ export function LayerRow({
           </span>
         )}
 
+        {/* The inspector's Free layout mode wears this same glyph: a layer the
+            parent's flow does not place sits as if the parent were free. It lives
+            outside the action cluster so it never wears the strip's fill — it is a
+            fact about the layer, not a control — and stays drawn (see
+            `actionsPinned`) so its sentence is reachable. */}
+        {isOutOfFlow && (
+          <span
+            data-layer-out-of-flow={el.id}
+            title={t("layers.outOfFlowHint")}
+            className="shrink-0 flex items-center p-0.5 ml-1 text-ink-dim"
+          >
+            <Ungroup size={11} />
+          </span>
+        )}
+
         {/* `h-3.5` pins the row to the 14px control `DESIGN.md` specifies: the
             p-0.5-wrapped 12px icons are 16px, and without this the row renders
             28px against the 26px the scroll plan lays out.
@@ -294,11 +302,10 @@ export function LayerRow({
             pointing at is pure label. */}
         {(showRowActions || externalAsset || missingFont) && (
           <div
-            className={`flex h-3.5 items-center pl-1.5 rounded-ctl z-10 ${
-              actionsPinned
+            className={`flex h-3.5 items-center pl-1.5 rounded-ctl z-10 ${actionsPinned
                 ? `relative ml-auto shrink-0 ${actionSurface}`
                 : `absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-micro ease-snap ${actionHoverSurface}`
-            }`}
+              }`}
           >
             {/* The one row mark that says the file will not paint as designed. It is
                 always drawn, never hover-gated like the eye and the lock: a warning
@@ -355,9 +362,8 @@ export function LayerRow({
                     handlers.onToggleLock();
                   }}
                   title={el.locked ? t("layers.unlock") : t("layers.lock")}
-                  className={`flex items-center justify-center p-0.5 rounded-ctl transition-opacity cursor-default hover:text-ink duration-micro ease-snap ${actionSurface} ${
-                    el.locked ? "opacity-100 text-ink-dim" : "opacity-0 group-hover:opacity-100 text-ink-muted"
-                  }`}
+                  className={`flex items-center justify-center p-0.5 rounded-ctl transition-opacity cursor-default hover:text-ink duration-micro ease-snap ${actionSurface} ${el.locked ? "opacity-100 text-ink-dim" : "opacity-0 group-hover:opacity-100 text-ink-muted"
+                    }`}
                 >
                   {el.locked ? <Lock size={12} /> : <LockOpen size={12} />}
                 </button>
@@ -369,9 +375,8 @@ export function LayerRow({
                     handlers.onToggleVisibility();
                   }}
                   title={el.visible === false ? t("layers.show") : t("layers.hide")}
-                  className={`flex items-center justify-center p-0.5 rounded-ctl transition-opacity cursor-default hover:text-ink duration-micro ease-snap ${actionSurface} ${
-                    el.visible === false ? "opacity-100 text-ink-dim" : "opacity-0 group-hover:opacity-100 text-ink-muted"
-                  }`}
+                  className={`flex items-center justify-center p-0.5 rounded-ctl transition-opacity cursor-default hover:text-ink duration-micro ease-snap ${actionSurface} ${el.visible === false ? "opacity-100 text-ink-dim" : "opacity-0 group-hover:opacity-100 text-ink-muted"
+                    }`}
                 >
                   {el.visible === false ? <EyeOff size={12} /> : <Eye size={12} />}
                 </button>

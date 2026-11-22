@@ -5,6 +5,7 @@ import { EXPORT_CHROME_SELECTOR } from "./chrome-markers";
 import { bakeTiltedElements } from "./export-tilt";
 import { injectFontFaces, pruneUnusedDefs } from "./export-defs";
 import { inlineExternalImages } from "./export-images";
+import { bakeHtmlEmbeds } from "./export-html-embed";
 import { restoreSourceUris } from "./assets/render-uri";
 import { wrapLinkedElements } from "./export-links";
 import {
@@ -122,6 +123,10 @@ export async function prepareSvgForExport(
   // Convert HTML foreignObjects to pure SVG elements
   convertForeignObjectsToSvg(clone, doc);
   pruneUnusedDefs(clone);
+
+  // A framed page cannot be carried as markup, so it becomes a bitmap here —
+  // before the tilt pass, which then warps the same pixels a tilted embed shows.
+  await bakeHtmlEmbeds(clone, doc, scale);
 
   // Inlining external http/https image hrefs to data URIs ensures the
   // SVG-as-<img> decode during rasterization (PNG) is not blocked by browser CORS sandbox.

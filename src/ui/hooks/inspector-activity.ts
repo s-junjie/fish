@@ -99,6 +99,19 @@ export function isInspectorActivityTarget(target: EventTarget | null): boolean {
  */
 const COLOR_SURFACES = "[data-rail], [data-sv-area], [data-gradient-bar]";
 
+/**
+ * A stop mark on the ramp: the one press in a colour surface that is a CHOICE,
+ * not an edit.
+ *
+ * Pressing a mark says which stop the fields below edit; the value only starts
+ * moving once the pointer does. Hiding the canvas chrome on that press made
+ * choosing an endpoint look like the drawing disappearing for two seconds — and
+ * the chrome it hid is the gradient grip the user was about to aim with. The
+ * drag that may follow is a `pointermove` and takes the canvas back on its own
+ * (see `onLeavePanel`), so nothing is left suppressed.
+ */
+const STOP_MARK = "[data-stop-index]";
+
 /** A field being edited, as opposed to a control being pressed. */
 function isValueEdit(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
@@ -107,6 +120,7 @@ function isValueEdit(target: EventTarget | null): boolean {
   // edit: without this the overlay would stay up over the numbers being scrubbed,
   // which is the exact thing suppression exists to prevent.
   if (el.closest?.("[data-scrub-label]")) return true;
+  if (el.closest?.(STOP_MARK)) return false;
   if (el.closest?.(COLOR_SURFACES)) return true;
   if (el.isContentEditable) return true;
   if (el.tagName === "TEXTAREA" || el.tagName === "SELECT") return true;

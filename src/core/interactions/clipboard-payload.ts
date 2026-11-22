@@ -5,6 +5,7 @@ import { directTokenRefs } from "../dsl/token-value";
 import { findMasterComponent } from "./component-inventory";
 import { heldMaster } from "./detached-masters";
 import { isContainer, flattenElements } from "../geometry/tree-ops";
+import { expandHtmlSourceRefs } from "./html-embed-loader";
 
 
 export const FISH_CLIPBOARD_TAG = "fish-clipboard@2";
@@ -228,8 +229,8 @@ export function buildClipboardPayload(
   const payload: FishClipboardPayload = {
     tag: FISH_CLIPBOARD_TAG,
     clipId,
-    elements: sources.map((s) => deepClone(s)),
-    masters: masters.map((m) => deepClone(m)),
+    elements: sources.map((s) => deepClone(expandHtmlSourceRefs(doc, s))),
+    masters: masters.map((m) => deepClone(expandHtmlSourceRefs(doc, m))),
     assets: collectReferencedAssets(doc.assets || [], travelling),
     styles: collectReferencedStyles(doc.styles, travelling),
     tokens: collectReferencedTokens(doc.tokens, travelling)

@@ -2608,3 +2608,19 @@ describe("Figma layout grids", () => {
     expect((el as any).layoutGuides).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Sections
+// ---------------------------------------------------------------------------
+
+describe("a Figma section", () => {
+  it("comes across as a section, not as an ordinary frame", () => {
+    const { el } = walkOne({ ...frame("sec-onboarding", [], { name: "Onboarding" }), type: "SECTION" } as FigmaNode);
+    expect(el).toMatchObject({ type: "frame", section: true, name: "Onboarding" });
+  });
+
+  it("leaves a plain frame without the flag", () => {
+    const { el } = walkOne(frame("plain"));
+    expect((el as any).section).toBeUndefined();
+  });
+});

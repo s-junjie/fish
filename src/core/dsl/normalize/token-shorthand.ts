@@ -23,6 +23,7 @@ import {
   writeNumberValue
 } from "../token-bindings";
 import { expandFourSides } from "./auto-layout";
+import { splitTopLevelWhitespace } from "../length-expr";
 import { cornerRadiusInput, parseBorderShorthand, parseRadiusString } from "./stroke";
 import type { Variables } from "./resolve-values";
 import { parseBoxShadows } from "../../import/css-values";
@@ -53,24 +54,6 @@ export {
   type ShorthandModes,
   type TokenRefTable
 };
-
-/** Splits a CSS spacing string on whitespace outside `(...)` (matching `splitCssTokens`). */
-function splitSpacingTokens(input: string): string[] {
-  const parts: string[] = [];
-  let depth = 0;
-  let start = 0;
-  for (let i = 0; i < input.length; i++) {
-    const ch = input[i];
-    if (ch === "(") depth++;
-    else if (ch === ")") depth = Math.max(0, depth - 1);
-    else if (depth === 0 && /\s/.test(ch)) {
-      if (i > start) parts.push(input.slice(start, i));
-      start = i + 1;
-    }
-  }
-  if (start < input.length) parts.push(input.slice(start));
-  return parts;
-}
 
 // ---------------------------------------------------------------------------
 // the slot tables
@@ -457,7 +440,7 @@ function applyToElement(
   } else if (Array.isArray(out.padding) || typeof out.padding === "string") {
     const rawItems = Array.isArray(out.padding)
       ? out.padding
-      : splitSpacingTokens(out.padding.trim());
+      : splitTopLevelWhitespace(out.padding.trim());
     const multi = Array.isArray(out.padding) ? rawItems.length >= 1 && rawItems.length <= 4 : rawItems.length >= 2 && rawItems.length <= 4;
     if (multi && rawItems.some((item) => resolveSlotRef(item, mode.table, mode.vars) !== null)) {
       const draft = edit();

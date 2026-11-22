@@ -123,6 +123,18 @@
         "$ref": "#/definitions/AssetRef"
       }
     },
+    "htmlSources": {
+      "type": "object",
+      "description": "Inline HTML documents keyed by content hash. An html element's srcdoc may be a `fish-html:<key>` reference instead of carrying the whole page, so repeated imports and copies store the text once. Entries are immutable; an edit writes a new key.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["text"],
+        "properties": {
+          "text": { "type": "string" },
+          "language": { "type": "string", "description": "Source language for a future editable code element; defaults to html." }
+        }
+      }
+    },
     "styles": {
       "type": "array",
       "items": {
@@ -612,16 +624,19 @@
         },
         "focalPoint": {
           "type": "object",
+          "description": "Where the bitmap is aimed inside its box, as fractions of the box. THREE positions per axis, not a continuum: each axis resolves to 0 (start), 0.5 (middle) or 1 (end), cut at 0.34 and 0.66, so 0.5, 0.4 and 0.34 are all dead centre and 0.3 is the first value that aims at the start. Coarser than a third of the overflow, in other words. For framing finer than that - a face off to one side of an extreme crop - use `fit: \"crop\"` with `crop`, which is continuous and is the field this cannot express.",
           "properties": {
             "x": {
               "type": "number",
               "minimum": 0,
-              "maximum": 1
+              "maximum": 1,
+              "description": "0 aligns the start of the overflow, 1 the end. Read as three buckets (0 / 0.5 / 1), not as this number."
             },
             "y": {
               "type": "number",
               "minimum": 0,
-              "maximum": 1
+              "maximum": 1,
+              "description": "0 aligns the top of the overflow, 1 the bottom. Read as three buckets."
             }
           }
         },
@@ -1027,56 +1042,64 @@
     },
     "ColorFilter": {
       "type": "object",
+      "description": "Colour adjustment, two families of neutral. `exposure`, `temperature`, `tint`, `highlights`, `shadows`, `hueRotate`, `invert` and `grayscale` are an OFFSET where 0 leaves the pixel alone; `brightness`, `contrast` and `saturation` are a MULTIPLIER where 1 leaves it alone. Nothing here is a percentage: `contrast: 6` is six times the distance from mid-grey, not 6%.",
       "properties": {
         "exposure": {
           "type": "number",
-          "description": "Stops; 2^exposure multiplies every channel. 0 = neutral."
+          "description": "Stops; 2^exposure multiplies every channel. 0 = neutral. Stored value is clamped to -5..5, and a repair names the clamp."
         },
         "brightness": {
           "type": "number",
           "minimum": 0,
-          "description": "A multiplier on every channel, CSS `brightness()`: 1 = 100%. Multiplies with `exposure` into one linear gain, so the two are the same axis stated two ways."
+          "description": "A multiplier on every channel, CSS `brightness()`: 1 = 100%. Multiplies with `exposure` into one linear gain, so the two are the same axis stated two ways. Above 1 is legal and renders; the slider stops at 2."
         },
         "contrast": {
-          "type": "number"
+          "type": "number",
+          "description": "A multiplier around mid-grey, CSS `contrast()`: 1 = neutral, 2 doubles every channel's distance from 0.5, 0 is a flat mid-grey. A percentage is not this unit — 6 is six times, and at that slope everything above 0.58 clips to white and everything below 0.42 to black. The slider stops at 2; past it the value still renders, but the panel cannot get back to it."
         },
         "saturation": {
-          "type": "number"
+          "type": "number",
+          "description": "A multiplier, CSS `saturate()`: 1 = neutral, 0 = grey, 2 = twice the distance from the pixel's own luminance. A percentage is not this unit — 4 pushes every channel past its limit, which is how a photograph comes back as flat primaries. The slider stops at 2."
         },
         "hueRotate": {
-          "type": "number"
+          "type": "number",
+          "description": "Degrees clockwise, read modulo 360, so 360 is 0 and -20 is 340. The slider stops at \u00b1180."
         },
         "temperature": {
           "type": "number",
           "minimum": -1,
           "maximum": 1,
-          "description": "-1 cool .. 1 warm."
+          "description": "-1 cool .. 1 warm, 0 = neutral. An OFFSET, not a multiplier: 2 does not mean 'twice as warm', it is clamped to 1, which is already as warm as the axis goes."
         },
         "tint": {
           "type": "number",
           "minimum": -1,
           "maximum": 1,
-          "description": "-1 magenta .. 1 green."
+          "description": "-1 magenta .. 1 green, 0 = neutral. An offset, like `temperature`."
         },
         "highlights": {
           "type": "number",
           "minimum": -1,
-          "maximum": 1
+          "maximum": 1,
+          "description": "Bends the top half of the tone curve: -1 recovers, 1 lifts. 0 = neutral. Both ends stay pinned, so this is never a gain."
         },
         "shadows": {
           "type": "number",
           "minimum": -1,
-          "maximum": 1
+          "maximum": 1,
+          "description": "Bends the bottom half of the tone curve: -1 deepens, 1 lifts. 0 = neutral."
         },
         "grayscale": {
           "type": "number",
           "minimum": 0,
-          "maximum": 1
+          "maximum": 1,
+          "description": "0 = untouched, 1 = fully grey, CSS `grayscale()`. Multiplies into `saturation` rather than competing with it."
         },
         "invert": {
           "type": "number",
           "minimum": 0,
-          "maximum": 1
+          "maximum": 1,
+          "description": "0 = untouched, 1 = fully inverted, CSS `invert()`."
         }
       }
     },
@@ -2393,6 +2416,10 @@
           "type": "boolean",
           "description": "componentSet only: paint the first variant and hide the rest. The box still fits every variant, so expanding changes nothing but what is drawn."
         },
+        "section": {
+          "type": "boolean",
+          "description": "frame only: this frame is a SECTION \u2014 a named region of the page, as in Figma. Same box and children in the same coordinates; the name is painted inside the top-left corner instead of above the box, and `display`, `overflow`, `scrollX`, `scrollY` and `slide` are dropped with a repair, because a section groups hand-placed layers rather than placing or clipping them."
+        },
         "content": {
           "type": "string",
           "description": "Text only; `text` is an alias."
@@ -2550,7 +2577,7 @@
         },
         "srcdoc": {
           "type": "string",
-          "description": "Html only: a whole HTML document inlined into this file and rendered through the iframe's srcdoc. This is how a local .html is embedded, since a file:// page has no URL that names a sibling file."
+          "description": "Html only: either a whole HTML document (older files) or a `fish-html:<key>` reference into doc.htmlSources, rendered through the iframe's srcdoc. A local .html has to be inlined because a file:// page has no URL that names a sibling file."
         },
         "cachedTitle": {
           "type": "string",

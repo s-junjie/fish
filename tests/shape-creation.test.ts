@@ -12,6 +12,7 @@ describe("shape-creation geometry", () => {
     expect(isCreatableTool("line")).toBe(true);
     expect(isCreatableTool("arrow")).toBe(true);
     expect(isCreatableTool("frame")).toBe(true);
+    expect(isCreatableTool("section")).toBe(true);
     expect(isCreatableTool("polygon")).toBe(true);
     expect(isCreatableTool("text")).toBe(true);
     expect(isCreatableTool("select")).toBe(false);
@@ -211,6 +212,17 @@ describe("shape-creation geometry", () => {
         y2: 60,
         width: 160,
         height: 2
+      });
+
+      // A section is drawn around things that already exist, so its click
+      // default is the size of a group of screens rather than of one.
+      expect(getDefaultShapeBounds("section", { x: 0, y: 0 })).toEqual({
+        kind: "box",
+        tool: "section",
+        x: 0,
+        y: 0,
+        width: 480,
+        height: 320
       });
     });
   });

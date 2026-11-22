@@ -30,7 +30,13 @@ const canon = (s: string) => s.replace(/="(-?\.\d+)"/g, '="0$1"');
 const SITE = join(REPO, "../fish-landing");
 const siteFile = (p: string) => {
   const full = join(SITE, p);
-  return existsSync(full) ? readFileSync(full, "utf8") : null;
+  try {
+    return existsSync(full) ? readFileSync(full, "utf8") : null;
+  } catch {
+    // A sandbox can list a directory it refuses to read. That is the same
+    // answer as a sibling checkout that is not there: nothing to compare to.
+    return null;
+  }
 };
 
 describe("brand assets", () => {

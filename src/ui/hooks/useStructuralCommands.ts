@@ -3,6 +3,7 @@ import { DesignDocument, DesignElement, FrameElement, TextElement } from "../../
 import { getActivePage, updateActivePageElements } from "../../core/dsl/document-ops";
 import { createId } from "../../core/id";
 import { elementAABB } from "../../core/geometry/element-bounds";
+import { newSectionFill } from "../../core/geometry/ink-on";
 import { editableIds, setElementsLocked } from "../../core/geometry/lock";
 import {
   findElementById,
@@ -10,7 +11,8 @@ import {
   flattenElements,
   isContainer,
   mapElements,
-  reparentSelectionIntoFrame
+  reparentSelectionIntoFrame,
+  isSectionElement
 } from "../../core/geometry/tree-ops";
 import { flattenElement } from "../../core/geometry/path-ops";
 import { collectTopMostSelected } from "../../core/interactions/clipboard";
@@ -163,6 +165,50 @@ export function useStructuralCommands({
     },
     [groupableElements, replaceSelectionWithFrame]
   );
+
+  /**
+   * What Create Section wraps: the TOP-LEVEL layers that contain the selection.
+   *
+   * A section only ever lives on the page — a region inside a screen would move
+   * and clip with that screen — so a layer selected inside a frame comes with
+   * the frame that holds it rather than being pulled out of it.
+   */
+  const sectionTargets = useCallback(() => {
+    const elements = getActivePage(docRef.current).children;
+    const ids = live.current.selectedIds;
+    if (ids.size === 0) return [];
+    const contains = (el: DesignElement): boolean =>
+      ids.has(el.id) || (isContainer(el) && (el.children || []).some(contains));
+    // A section is never wrapped BY a section: a nested region has no label
+    // layer and no way out, so selecting one and asking for a section is a
+    // request this command declines rather than half-honours.
+    return elements.filter((el) => !el.locked && !isSectionElement(el) && contains(el));
+  }, [docRef]);
+
+  const groupAsSection = useCallback(() => {
+    const wrapped = sectionTargets();
+    if (wrapped.length === 0) return;
+    const minX = Math.min(...wrapped.map((e) => elementAABB(e).x));
+    const minY = Math.min(...wrapped.map((e) => elementAABB(e).y));
+    const maxX = Math.max(...wrapped.map((e) => elementAABB(e).x + elementAABB(e).width));
+    const maxY = Math.max(...wrapped.map((e) => elementAABB(e).y + elementAABB(e).height));
+
+    const section: FrameElement = {
+      id: createId("frame"),
+      type: "frame",
+      section: true,
+      name: "Section",
+      x: minX,
+      y: minY,
+      width: Math.max(10, maxX - minX),
+      height: Math.max(10, maxY - minY),
+      children: [...wrapped],
+      fills: [{ type: "solid", color: newSectionFill(docRef.current) }],
+      borderRadius: 12
+    };
+
+    replaceSelectionWithFrame(section, wrapped);
+  }, [replaceSelectionWithFrame, sectionTargets]);
 
   const ungroup = useCallback(() => {
     const selection = live.current.selectedElements;
@@ -391,6 +437,10 @@ export function useStructuralCommands({
         run: () => group(true),
         enabled: () => groupableElements().length > 0
       }),
+      registerEditorCommand("groupAsSection", {
+        run: groupAsSection,
+        enabled: () => sectionTargets().length > 0
+      }),
       registerEditorCommand("ungroup", {
         run: ungroup,
         enabled: () => {
@@ -428,10 +478,10 @@ export function useStructuralCommands({
     return () => {
       for (const off of offs) off();
     };
-  }, [group, ungroup, wrap, flatten, outlineText, toggleLock, editPath, docRef, groupableElements, editableSelection, wrapTargets]);
+  }, [group, groupAsSection, ungroup, wrap, flatten, outlineText, toggleLock, editPath, docRef, groupableElements, sectionTargets, editableSelection, wrapTargets]);
 
   return useMemo(
-    () => ({ group, groupAsFrame: () => group(true), ungroup, wrap, flatten, toggleLock, toggleVisibility, editPath, align, boolean }),
-    [group, ungroup, wrap, flatten, toggleLock, toggleVisibility, editPath, align, boolean]
+    () => ({ group, groupAsFrame: () => group(true), groupAsSection, ungroup, wrap, flatten, toggleLock, toggleVisibility, editPath, align, boolean }),
+    [group, groupAsSection, ungroup, wrap, flatten, toggleLock, toggleVisibility, editPath, align, boolean]
   );
 }

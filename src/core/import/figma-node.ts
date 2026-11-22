@@ -536,9 +536,15 @@ export function mapFigmaNode(
   let out: Draft | null = null;
 
   switch (node.type) {
+    case "SECTION":
+      out = mapContainer(node, rect, originX, originY, state, "frame", xform);
+      // Figma's section is the same idea this dialect now carries: a named
+      // region of the page rather than a screen. Without this it imports as an
+      // ordinary frame and the name moves above the box instead of inside it.
+      if (out) out.section = true;
+      break;
     case "FRAME":
     case "GROUP":
-    case "SECTION":
     case "INSTANCE":
     case "BRUSH":
     case "SLICE":

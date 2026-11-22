@@ -4,6 +4,7 @@ import { normalizeDesignDocument } from "./dsl/normalize";
 import type { NormalizationRepair } from "./dsl/normalize/shared";
 import { applyCssSpelling } from "./dsl/css-spelling";
 import { syncDocumentBindings } from "./interactions/style-ops";
+import { HTML_REF_PREFIX, htmlSourceKey, isHtmlSourceRef } from "./interactions/html-embed-loader";
 
 /**
  * Document-level JSON — the ONE place a document becomes text.
@@ -56,7 +57,64 @@ export function documentToPlainObject(
   doc: DesignDocument,
   onRepair?: (repair: NormalizationRepair) => void
 ): Record<string, unknown> {
-  return applyCssSpelling(canonicalDocument(doc, onRepair) as unknown as Record<string, unknown>);
+  const plain = applyCssSpelling(canonicalDocument(doc, onRepair) as unknown as Record<string, unknown>);
+  return foldHtmlSources(plain);
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * The one gate every writer passes through. A literal `srcdoc` can arrive from
+ * an older file, a paste from another document, an AI-authored JSON block or the
+ * CLI; folding it here means all of them converge on one stored copy instead of
+ * needing their own dedup path.
+ */
+export function foldHtmlSources(plain: Record<string, unknown>): Record<string, unknown> {
+  if (!Array.isArray(plain.pages)) return plain;
+  const known: Record<string, unknown> = isRecord(plain.htmlSources) ? plain.htmlSources : {};
+  // Content-addressed rows are only reachable through a `fish-html:` reference,
+  // so the pool is rebuilt from what this document still names: an edit writes a
+  // new key, and the abandoned one would otherwise stay in the file — and in
+  // every `.fish.html` saved after it — for the rest of the document's life.
+  const referenced = new Set<string>();
+  const fresh: Record<string, unknown> = {};
+  let folded = 0;
+  const walk = (nodes: unknown[]): unknown[] =>
+    nodes.map((node) => {
+      if (!isRecord(node)) return node;
+      let out = node;
+      if (node.type === "html" && typeof node.srcdoc === "string" && node.srcdoc) {
+        if (isHtmlSourceRef(node.srcdoc)) {
+          referenced.add(node.srcdoc.slice(HTML_REF_PREFIX.length));
+        } else {
+          const key = htmlSourceKey(node.srcdoc);
+          referenced.add(key);
+          if (!(key in fresh)) fresh[key] = { text: node.srcdoc };
+          out = { ...node, srcdoc: HTML_REF_PREFIX + key };
+          folded += 1;
+        }
+      }
+      if (Array.isArray(out.children)) out = { ...out, children: walk(out.children) };
+      return out;
+    });
+  const pages = plain.pages.map((page) =>
+    isRecord(page) && Array.isArray(page.children)
+      ? { ...page, children: walk(page.children) }
+      : page
+  );
+  const stale = Object.keys(known).some((key) => !referenced.has(key));
+  if (folded === 0 && !stale) return plain;
+  // Known rows keep their place so an edit that only drops one row does not
+  // reorder the rest of the block in the saved file.
+  const sources: Record<string, unknown> = {};
+  for (const key of Object.keys(known)) {
+    if (referenced.has(key)) sources[key] = known[key];
+  }
+  for (const key of referenced) {
+    if (!(key in sources) && key in fresh) sources[key] = fresh[key];
+  }
+  return { ...plain, pages, htmlSources: sources };
 }
 
 /** Layer ② — the only object → text conversion. */

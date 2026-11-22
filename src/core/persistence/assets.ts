@@ -1,15 +1,64 @@
-import type { AssetRef, DesignDocument } from "../dsl/types";
+import type { AssetRef, DesignDocument, DesignElement, HtmlEmbedElement, HtmlSource, Page } from "../dsl/types";
+import { flattenElements, mapElements } from "../geometry/tree-edit";
+import { HTML_REF_PREFIX } from "../interactions/html-embed-loader";
 import type { KVBackend } from "./backend";
 import { objectHash } from "./hash";
 
 /**
- * A document as it is stored in a snapshot: the inline bitmaps are replaced by
- * their content hashes. Spelled out rather than cast, because a cast here means
- * `assets` looks like `AssetRef[]` while actually holding strings — and anything
- * that runs such a document through normalization would drop every asset
- * without a word.
+ * A document as it is stored in a snapshot: inline bitmaps are replaced by their
+ * content hashes, and an html embed's `srcdoc` by a locator to its own row.
+ * Spelled out rather than cast, because a cast here means `assets` looks like
+ * `AssetRef[]` while actually holding strings — and anything that runs such a
+ * document through normalization would drop every asset without a word.
+ *
+ * `pages` is restated because `DesignDocument` has an index signature: `Omit`
+ * over `keyof` = `string` erases every named member, leaving only `unknown`.
  */
-export type SnapshotDoc = Omit<DesignDocument, "assets"> & { assets?: string[] };
+export type SnapshotDoc = Omit<DesignDocument, "assets"> & { assets?: string[]; pages: Page[] };
+
+/** Distinguishes a stored reference from a legacy snapshot's literal HTML. */
+export const SRCDOC_REF_PREFIX = "fish-srcdoc:";
+
+type WithPages = { pages: Page[] };
+
+// A recovery record can predate `pages`; normalization runs after rehydration,
+// so neither traversal may assume the shape is current.
+function htmlEmbeds(doc: WithPages): HtmlEmbedElement[] {
+  if (!Array.isArray(doc.pages)) return [];
+  return doc.pages.flatMap((page) =>
+    flattenElements(Array.isArray(page?.children) ? page.children : []).filter(
+      (el): el is HtmlEmbedElement => el.type === "html"
+    )
+  );
+}
+
+function mapSrcdocs<T extends WithPages>(doc: T, fn: (html: string) => string): T {
+  if (!Array.isArray(doc.pages)) return doc;
+  let changed = false;
+  const pages = doc.pages.map((page) => {
+    if (!Array.isArray(page?.children)) return page;
+    const children = mapElements(page.children, (el: DesignElement) => {
+      if (el.type !== "html") return el;
+      const html = (el as HtmlEmbedElement).srcdoc;
+      if (typeof html !== "string" || !html) return el;
+      const next = fn(html);
+      if (next === html) return el;
+      changed = true;
+      return { ...el, srcdoc: next } as DesignElement;
+    });
+    return children === page.children ? page : { ...page, children };
+  });
+  return changed ? { ...doc, pages } : doc;
+}
+
+/**
+ * A stable ref shape keeps `sameStoredRef` true across embeds and across saves:
+ * two layers carrying the same page must resolve to one row, not rewrite 8 MB
+ * under an id that changes with the layer.
+ */
+function srcdocRef(html: string): AssetRef {
+  return { id: "srcdoc", name: "HTML embed", uri: html };
+}
 
 export interface AssetStore {
   put(ref: AssetRef): Promise<string>;
@@ -181,42 +230,142 @@ export function createAssetStore(backend: KVBackend): AssetStore {
   return new KVAssetStore(backend);
 }
 /**
- * Replace a document's inline `assets` (which embed the full base64 URI) with a
- * list of content hashes. The actual asset bytes are stored once in the asset
- * store, so repeated snapshots of an unchanged document cost almost nothing.
- * `put` is idempotent and does NOT claim ownership — callers that persist a
- * snapshot must `acquire` the returned hashes and `release` them on discard.
+ * Replace a document's inline bitmaps and `srcdoc` documents with content
+ * hashes. Both are bulky strings that a snapshot would otherwise copy verbatim
+ * for every version; here they live once in the asset store. `put` is idempotent
+ * and does NOT claim ownership — callers that persist a snapshot must `acquire`
+ * the returned hashes and `release` them on discard.
  */
 export async function toSnapshotAssets(
   doc: DesignDocument,
   assets: AssetStore
 ): Promise<{ doc: SnapshotDoc; hashes: string[] }> {
-  const refs = doc.assets ?? [];
-  const hashes: string[] = [];
-  for (const ref of refs) {
-    hashes.push(await assets.put(ref));
+  const bitmapHashes: string[] = [];
+  for (const ref of doc.assets ?? []) bitmapHashes.push(await assets.put(ref));
+
+  const docs = new Map<string, string>();
+  const srcdocHashes: string[] = [];
+  for (const el of htmlEmbeds(doc)) {
+    const html = el.srcdoc;
+    if (!html || html.startsWith(HTML_REF_PREFIX)) continue;
+    // A locator already on the live document is an unresolved restore: claim its
+    // row so the next rehydrate can still find the page behind it.
+    if (html.startsWith(SRCDOC_REF_PREFIX)) {
+      srcdocHashes.push(html.slice(SRCDOC_REF_PREFIX.length));
+      continue;
+    }
+    let hash = docs.get(html);
+    if (!hash) {
+      hash = await assets.put(srcdocRef(html));
+      docs.set(html, hash);
+    }
+    srcdocHashes.push(hash);
   }
-  return { doc: { ...doc, assets: hashes }, hashes };
+
+  const sourceTable: Record<string, HtmlSource> = {};
+  const sourceHashes: string[] = [];
+  for (const [key, source] of Object.entries(doc.htmlSources ?? {})) {
+    const text = source?.text;
+    if (typeof text !== "string" || !text) {
+      sourceTable[key] = source;
+      continue;
+    }
+    if (text.startsWith(SRCDOC_REF_PREFIX)) {
+      sourceHashes.push(text.slice(SRCDOC_REF_PREFIX.length));
+      sourceTable[key] = source;
+      continue;
+    }
+    let hash = docs.get(text);
+    if (!hash) {
+      hash = await assets.put(srcdocRef(text));
+      docs.set(text, hash);
+    }
+    sourceHashes.push(hash);
+    sourceTable[key] = { ...source, text: SRCDOC_REF_PREFIX + hash };
+  }
+
+  const stripped = mapSrcdocs(doc, (html) => {
+    const hash = docs.get(html);
+    return hash ? SRCDOC_REF_PREFIX + hash : html;
+  });
+  const hashes = [...bitmapHashes, ...srcdocHashes, ...sourceHashes];
+  return {
+    doc: {
+      ...stripped,
+      assets: bitmapHashes,
+      ...(Object.keys(sourceTable).length > 0 ? { htmlSources: sourceTable } : {})
+    },
+    hashes
+  };
 }
 
-/** Inverse of {@link toSnapshotAssets}: rehydrate hashes back into asset refs. */
+/**
+ * Inverse of {@link toSnapshotAssets}. A legacy snapshot whose `srcdoc` is
+ * literal HTML has no locator and is passed through untouched, so histories
+ * written before this change still restore.
+ */
 export async function fromSnapshotAssets(
   doc: SnapshotDoc,
   assets: AssetStore
 ): Promise<DesignDocument> {
-  const refs = await assets.getMany(doc.assets ?? []);
-  const restored: AssetRef[] = refs.map(
-    (r, i) => r ?? { id: `missing_${i}`, name: "Missing asset", uri: "" }
+  const bitmapHashes = doc.assets ?? [];
+  const sourceEntries = Object.entries(doc.htmlSources ?? {});
+  const locatorHashes = [
+    ...new Set(
+      [
+        ...htmlEmbeds(doc).map((el) => el.srcdoc),
+        ...sourceEntries.map(([, source]) => source?.text)
+      ]
+        .filter((s): s is string => typeof s === "string" && s.startsWith(SRCDOC_REF_PREFIX))
+        .map((s) => s.slice(SRCDOC_REF_PREFIX.length))
+    )
+  ];
+  const resolved = await assets.getMany([...bitmapHashes, ...locatorHashes]);
+  const restored: AssetRef[] = resolved
+    .slice(0, bitmapHashes.length)
+    .map((r, i) => r ?? { id: `missing_${i}`, name: "Missing asset", uri: "" });
+
+  const docs = new Map<string, string>();
+  locatorHashes.forEach((hash, i) => {
+    const uri = resolved[bitmapHashes.length + i]?.uri;
+    if (uri !== undefined) docs.set(hash, uri);
+  });
+  // An unresolved locator is kept rather than turned into an empty page, so the
+  // missing-resource guard below can refuse the restore instead of saving a
+  // reference string back into the document as if it were HTML.
+  const withDocs = mapSrcdocs(doc, (html) =>
+    html.startsWith(SRCDOC_REF_PREFIX)
+      ? (docs.get(html.slice(SRCDOC_REF_PREFIX.length)) ?? html)
+      : html
   );
+  const htmlSources = sourceEntries.length
+    ? Object.fromEntries(
+        sourceEntries.map(([key, source]) => {
+          const text = source?.text;
+          const value =
+            typeof text === "string" && text.startsWith(SRCDOC_REF_PREFIX)
+              ? (docs.get(text.slice(SRCDOC_REF_PREFIX.length)) ?? text)
+              : text;
+          return [key, { ...source, text: value ?? "" }];
+        })
+      )
+    : undefined;
   // The cast is the Omit in `SnapshotDoc` losing the rest of the shape on spread.
-  return { ...doc, assets: restored } as DesignDocument;
+  return {
+    ...withDocs,
+    assets: restored,
+    ...(htmlSources ? { htmlSources } : {})
+  } as unknown as DesignDocument;
 }
 
 /**
- * True when a rehydrated snapshot still carries placeholder refs, i.e. its
- * bitmaps are no longer in the asset store. An asset without a URI cannot be
- * painted, so such a document renders every image layer blank.
+ * True when a rehydrated snapshot still carries placeholder refs or unresolved
+ * `srcdoc` locators, i.e. rows the asset store no longer holds. Such a document
+ * would paint blank images or an empty frame, so history refuses to preview or
+ * restore it.
  */
 export function hasMissingAssets(doc: DesignDocument): boolean {
-  return (doc.assets ?? []).some((a) => !a.uri);
+  if ((doc.assets ?? []).some((a) => !a.uri)) return true;
+  if (Object.values(doc.htmlSources ?? {}).some((s) => s?.text?.startsWith(SRCDOC_REF_PREFIX))) return true;
+  return htmlEmbeds(doc).some((el) => el.srcdoc?.startsWith(SRCDOC_REF_PREFIX));
 }

@@ -9,6 +9,8 @@ export type ToolType =
    *  `select` for picking and marquee; only the resize differs. */
   | "scale"
   | "frame"
+  /** Draws a SECTION: a named region of the page (see `FrameElement.section`). */
+  | "section"
   | "rect"
   | "ellipse"
   | "line"

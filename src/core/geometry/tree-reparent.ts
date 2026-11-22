@@ -168,7 +168,26 @@ export function preserveCanvasPositionsAfterReparent(
 /** Why the tree refused a reparent. Named here because the tree decides it. */
 export type ReparentRefusal =  | "instance-in-own-master"
   | "component-in-component"
-  | "variant-out-of-set";
+  | "variant-out-of-set"
+  | "section-in-frame";
+
+/**
+ * True when a SECTION would be dropped anywhere but the page itself.
+ *
+ * A section is a region OF THE PAGE: its label is painted at the top level, and
+ * a region inside a screen would move and clip with that screen. Nesting one is
+ * therefore refused with a sentence rather than accepted into a state the canvas
+ * can only draw as an ordinary frame.
+ */
+export function nestsSectionInFrame(
+  elements: DesignElement[],
+  sourceId: string,
+  parentId: string | null | undefined
+): boolean {
+  if (!parentId) return false;
+  const source = findElementById(elements, sourceId);
+  return source?.type === "frame" && source.section === true;
+}
 
 /**
  * True when placing `sourceId` under `parentId` would put an instance inside the
@@ -235,6 +254,7 @@ export function reparentRefusal(
   if (nestsInstanceInOwnMaster(elements, sourceId, parentId)) return "instance-in-own-master";
   if (nestsComponentInComponent(elements, sourceId, parentId)) return "component-in-component";
   if (escapesItsVariantSet(elements, sourceId, parentId)) return "variant-out-of-set";
+  if (nestsSectionInFrame(elements, sourceId, parentId)) return "section-in-frame";
   return null;
 }
 

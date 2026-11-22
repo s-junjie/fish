@@ -31,11 +31,11 @@ FISH packages the entire application runtime, stylesheets, icons, and document d
 3. **Identity**: `getFileId()` reads `<meta name="fish:fileId">` from the DOM to key recovery snapshots and version history independently of `docId`.
 4. **Save**: `serializeSelf(doc)` normalizes the document, extracts bitmap assets to `#fish-assets`, and updates container blocks. `writeFileSafely()` handles atomic disk writes with backup, falling back to a blob download when File System Access API is unavailable.
 
-### 1.2 Format Versioning & Migration
+### 1.2 Format Versioning & Compatibility
 - **Dialect Version**: `DesignDocument.version` represents the document dialect, single-sourced from `src/core/dsl/versions.json`.
-- **Pre-Release Invariant**: Pre-release dialect (`0.1`) is edited in place; all readers, writers, and schemas update in sync without migration overhead.
-- **Post-Release Migration**: No migration scaffold exists while the dialect is pre-release. When a second dialect ships, add explicit version steps at that point. Unrecognized dialect versions preserve their raw label while reading through the latest schema.
-- **The kit does not read forward** (`src/core/cli/doc-source.ts`): the app may open a document it does not know, because the person in front of it can see that it painted differently. `tools/fish` has no such observer — `check` would grade it against a schema it does not speak and `apply` would write it back — so a dialect mismatch is refused, in both directions, before the document is parsed. Nothing is a warning here: a dialect does not migrate, so there is no reading of it that is merely approximate.
+- **Published, Single Dialect**: FISH is publicly released; `0.1` files sit on users' disks and a self-updating file pours its document into a newer shell. There is one dialect and no version-migration scaffold. `normalize` is what reads a released file: every value such a file can carry is folded into the canonical form the engine uses. The contract covers only what a released build could have written — pre-rename spellings that never shipped were removed, not carried.
+- **Changes Need Human Sign-off**: `0.1` files outlive the build that wrote them, so editing the published contract — what a stored value means, a spelling a released file may carry, or the shape of a stored field — changes documents the user already has. An agent stops and reports the need instead of deciding; a human confirms the edit, and with it any version bump, second dialect and migration steps. No migration scaffold exists until that happens, and every reader, writer and the schema switch in the same change. Unrecognized dialect versions preserve their raw label while reading through the latest schema.
+- **The kit does not read forward** (`src/core/cli/doc-source.ts`): the app may open a document it does not know, because the person in front of it can see that it painted differently. `tools/fish` has no such observer — `check` would grade it against a schema it does not speak and `apply` would write it back — so a dialect mismatch is refused, in both directions, before the document is parsed. Nothing is a warning here: the version label is the only signal, and this dialect has no migration step, so there is no reading of it that is merely approximate.
 - **The kit checks that it is one release** (`src/core/cli/kit-identity.ts`): an installed skill is never refreshed by the app it drives — not by an update, not by `reshell` — so `tools/fish` compares `SKILL.md`'s frontmatter with its own build before running, and refuses when two releases share a directory. Both numbers are rendered by `npm run build` from `package.json` and `versions.json`; never type them into prose.
 - **The kit asks its origin once a day** (`src/core/cli/kit-update.ts`): the CLI's only network call, cached in the temp directory — a negative answer included, so an offline machine pays one timeout a day rather than one per command — and off entirely for a build with no origin or with `FISH_NO_UPDATE_CHECK`. It reads a version out of `stable/manifest.json` without verifying the signature, which is why the result can only ever be a warning; the bytes that get installed are pinned by the digest on the HTTPS page. `fish --version --check` is the manual form.
 
@@ -49,7 +49,7 @@ The codebase enforces strict separation between pure logic and UI rendering:
 fish/
 ├── src/
 │   ├── core/                      # Pure business logic (Zero UI/DOM/React coupling)
-│   │   ├── dsl/                   # Schema types, validators, additive normalization
+│   │   ├── dsl/                   # Schema types, validators, canonicalization
 │   │   ├── geometry/              # Matrix2D affine transforms, bounds, hit-testing, paths
 │   │   ├── interactions/          # Pure operators: alignment, distribution, z-order, scaling
 │   │   ├── compile.ts             # Auto-layout engine, drop-slot geometry, path converters

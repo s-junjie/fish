@@ -132,7 +132,7 @@ export const en = {
     beforeRestore: "Before restore",
     restored: "Restored",
     restoreDone: "Version restored",
-    missingImages: "Version is missing its images",
+    missingAssets: "Version is missing its assets",
     moreMenu: "Version actions"
   },
   view: {
@@ -205,6 +205,8 @@ export const en = {
   toolbar: {
     hand: "Hand tool",
     frame: "Frame",
+    section: "Section",
+    frameMenu: "Frame tools",
     rect: "Rectangle",
     ellipse: "Ellipse",
     line: "Line",
@@ -389,6 +391,7 @@ export const en = {
     collapseAll: "Collapse all layers",
     expandAll: "Expand all layers",
     selectParent: "Select parent layer (Esc)",
+    outOfFlowHint: "Ignore auto layout: the parent's stack does not place this layer. In a stack the list reads back-to-front, so the top row is the furthest back.",
     embedImage: "Convert to embedded image",
     embedAction: "Embed Image",
     embeddingImage: "Embedding image...",
@@ -557,6 +560,8 @@ export const en = {
     tiltX: "Perspective tilt about the X axis",
     tiltY: "Perspective tilt about the Y axis",
     perspectiveDistance: "Perspective viewing distance (smaller is stronger)",
+    more: "More",
+    transformSettings: "Transform settings",
     independentCorners: "Independent Corners",
     cornerTopLeft: "Top Left Corner Radius",
     cornerTopRight: "Top Right Corner Radius",
@@ -1128,6 +1133,7 @@ export const en = {
     pasteStyle: "Paste properties",
     group: "Group Selection",
     ungroup: "Ungroup",
+    createSection: "Create Section",
     flatten: "Flatten Selection",
     outlineText: "Outline Text",
     outlineTextUnavailable: "Could not read this text's font",
@@ -1166,6 +1172,9 @@ export const en = {
     copyImageDone: "PNG copied to clipboard",
     copyImageFailed: "Couldn't copy the image to the clipboard",
     copyImageUnsupported: "Copy as PNG isn't supported in this browser"
+  },
+  section: {
+    intoFrame: "A section lives on the page — it cannot go inside a frame"
   },
   frame: {
     resizeToFit: "Resize to fit",

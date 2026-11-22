@@ -199,7 +199,7 @@ export function normalizePaint(
   const opacity = normalizePaintOpacity(raw.opacity ?? raw.alpha);
   if (opacity !== undefined) (paint as Paint).opacity = opacity;
   if (typeof raw.enabled === "boolean") (paint as Paint).enabled = raw.enabled;
-  const adjustment = normalizeColorFilter(raw.adjust ?? raw.filter);
+  const adjustment = normalizeColorFilter(raw.adjust, path ? `${path}/adjust` : undefined, repairs, "paint");
   // Read on an image layer and nowhere else — the renderer emits a
   // `paintfilter_*` def for an image fill alone, so anywhere else it would be
   // kept, saved, and silently never applied. Refused out loud for the same

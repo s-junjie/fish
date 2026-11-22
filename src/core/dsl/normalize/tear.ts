@@ -26,10 +26,6 @@ import { asBoolean, asNumber } from "./shared";
  * form that is not showing are kept. An edge keeps its `inset` and a loop keeps
  * its `side`/`at`, so flipping between them in the inspector is lossless. The
  * panel is what hides the fields that do not apply.
- *
- * The retired spellings are read as aliases, not refused: `type: "edge"` is the
- * same effect under its old name, `hole: "cut"` is `form: "hole"`, and
- * `hole: "scrap"` is `form: "scrap"`.
  */
 export function normalizeTear(raw: unknown): TearEffect | undefined {
   if (!raw || typeof raw !== "object") return undefined;
@@ -160,18 +156,11 @@ function parseInset(raw: unknown): number | EdgeInsets | undefined {
   return one === undefined ? undefined : clamp(one, 0, 100);
 }
 
-/**
- * Which form this tear is, reading the retired spellings.
- *
- * `form` wins when it is one of the three; otherwise `hole: true` / `hole: "cut"`
- * are the loop form and `hole: "scrap"` is the scrap. Anything else is the edge
- * form, which is what a tear was before the other two existed.
- */
+/** An absent or unknown `form` is the edge form, the one a tear started as. */
 function parseForm(r: Record<string, unknown>): TearForm | undefined {
-  if (typeof r.form === "string" && TEAR_FORMS.includes(r.form as TearForm)) return r.form as TearForm;
-  if (r.hole === true || r.hole === "cut" || r.hole === "hole") return "hole";
-  if (r.hole === "scrap") return "scrap";
-  return undefined;
+  return typeof r.form === "string" && TEAR_FORMS.includes(r.form as TearForm)
+    ? (r.form as TearForm)
+    : undefined;
 }
 
 /**

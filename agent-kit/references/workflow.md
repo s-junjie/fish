@@ -2,24 +2,28 @@
 
 The DSL itself is in `dsl.md`. This file is how to move: adopt the right posture, get a document open, edit it, source what it needs, and verify the result.
 
-**If `./tools/fish` exits without running, read the reason before anything else.** A refusal that names two versions, or a document dialect this kit does not speak, means the kit and the file are from different releases: re-install (`SKILL.md` § "Get the kit"). Never retry past it, and never translate the document by hand.
+**If `./tools/fish` exits without running, read the reason before anything else.** A refusal that names two versions, or a document dialect this kit does not speak, means the kit and the file are not one FISH: re-install (`SKILL.md` § "Get the kit"). Never retry past it, and never translate the document by hand.
 
 ---
 
-## 0. Working posture: draft first, polish on demand
+## 0. Working posture: intent, then draft, then depth
 
-Every task uses the same document and CLI, scaling depth to what the moment needs:
+Two independent settings, not one mode: **what you know before you draw**, and **how far you take the result**.
 
-- **Default (draft-first)**: Skip upfront questions. Draft the skeleton with a minimal token table, labelled image placeholders, and reusable components; run only the structure check (`./tools/fish check <doc>`); state assumptions and refine on feedback.
-- **High-stakes / production-ready**: When the user asks for flagship work, a final picture, or to polish a draft, gate on a short blueprint first (if starting fresh) and finish with the full polish pass and browser-backed verification (`--strict --geometry --audit` + `shot.sh`).
+Order matters more than either setting: **ask, then read, then draw.** The intake round is the task's first turn; the references describe how to build, and none of them can say who the document is for. Reading them first also guesses wrong about the format — a deck needs none of the poster guidance, a 24×24 icon needs none of the deck's slides — so the answer decides what was worth opening.
+
+- **Intake — mandatory for a new design the request does not fully specify** (`intake.md` §1 is the test). One round of at most three questions with defaults, then `intent.md`, then the first element. Skipping it saves a turn and spends it later, on 400 elements the user has to review one at a time. It is not a phase for edits: an existing document already carries its brief, so a local change asks nothing.
+- **Depth — draft by default, polish on demand.** Draft the skeleton with a minimal token table, labelled placeholders and `component` + `instance` for anything repeated; run the structure check only; state assumptions and refine on feedback. When the user asks for flagship work, a final picture, or a polish pass, gate on the short blueprint (§6.1) and finish with full verification (`--strict --geometry --audit` + `shot.sh`).
+- **What both share:** every assumption that would otherwise stay invisible goes into `intent.md`, and the handover names it.
 
 Do not make the user learn internal mode names; map their intent directly onto these steps (§6).
 
 ---
 
-## 1. Inspect before asking
+## 1. Inspect the project, not the kit
 
 ```bash
+./tools/fish brief                       # no document yet: the intent record and the material already in the directory
 ./tools/fish brief existing.fish.html    # tokens, styles (with binding counts), components, assets, fonts
 ./tools/fish inspect <elementId> existing.fish.html   # ONE node: the box it got, its effective style, its parents, its overridable slots
 ./tools/fish compact existing.fish.html  # the document as compact JSON
@@ -32,9 +36,9 @@ use (`--all` lists every slot, `--json` for a machine). An override that names a
 outside the master, or a property the node cannot carry, is skipped at paint time;
 `check` reports it, `inspect` shows why.
 
-Reuse what the document already carries. Ask only what neither the document nor the user's prompt can answer.
+Reuse what the document already carries. Ask only what neither the document nor the user's prompt can answer. `references/` is not part of this recon — nothing in the kit describes this project, so opening it is never a substitute for asking, and never a reason to ask later.
 
-The one answer no document can give you is what the user already has: a moodboard, a brand kit, product screenshots, the real logo, photography. Ask for that before you search for a substitute (§4).
+The one answer neither the document nor the directory can give you is what the user has elsewhere: a moodboard on their desktop, a brand kit in a wiki, the logo in last quarter's deck. That is the intake's material question — asked once, before any search (`intake.md` §5; §4 below).
 
 Project categories guide the DSL choices:
 
@@ -140,14 +144,15 @@ That page is a page like any other, and it is honest about that: it appears in t
 
 ## 4. Source real assets
 
-Never approximate a photo, portrait or logo with hand-coded paths. But the first question is not *which source* — it is whether the user already has the material.
+Never approximate a photo, portrait or logo with hand-coded paths. But the first question is not *which source* — it is whether the user already has the material, and that question belongs to the intake (`intake.md` §5), not to a search.
 
-**Ask before you search.** A moodboard, brand kit, product screenshots, the real logo, licensed photography or a chosen typeface all outrank anything a stock source can return, and no search can guess them. Ask once, early, in the same message as your other questions: *“Do you have reference images or a moodboard for the direction, and any assets I should use — logo, product shots, fonts?”*
+**Ask once, at intake.** A moodboard, brand manual, product screenshot, the real logo, licensed photography or a chosen typeface all outrank anything a stock source can return, and no search can guess them. If this run had an intake, the answer is already in `intent.md`'s material table; read it instead of asking a second time.
 
-- **Yes** → `./tools/fish assets import` each file and place it. Their material sets the direction; do not search for a lookalike beside it.
-- **No, or “you pick”** → search the sources below, then say what you picked and why.
+- **They have it** → `./tools/fish assets import` each file and place it. Their material sets the direction; do not search for a lookalike beside it. A brand manual is read first — its palette and families become tokens and `fonts[]`.
+- **They named a source instead of a file** → import the URL with `--credit-name` / `--credit-url` (`assets.md` §2 “Bring a URL you already chose”). A link they chose outranks a search result, so do not look for a lookalike beside it.
+- **They have none, or said “you pick”** → search the sources below, then say what you picked and why.
 
-Never substitute stock imagery for material the user might already have without saying so, and do not spend a search round before that answer. In draft-first runs (§6.2), do not block on it: draft with a labelled placeholder and ask in the handover block instead.
+Never substitute stock imagery for material the user might already have without saying so, and never spend a search round before the material answer. When there was nobody to ask, place a labelled placeholder and say so at handover; the search then belongs to the polish pass.
 
 The full source table, credentials, licences and link-vs-embed rules are in `assets.md`. The short version:
 
@@ -179,7 +184,7 @@ Use `--strict` to fail on warnings, `--strict-assets` before delivery, and `--al
 **Two renderers, one protocol.** `shot.sh` and `fish export` both drive `chrome --headless`, and neither computes the window size or the crop origin — the page reports them, both callers only pass them through. Choose by what the machine has and what you need back:
 
 - **`shot.sh`** needs bash, coreutils and a browser, and nothing else — it is the path that still works where Node is not installed. It writes `out.report.json` beside the PNG: the normalize repairs, the validate diagnostics, the coordinates auto-layout ignored (when the file states any), and the box the element actually occupies. On Windows the same tool is `powershell -File ./tools/shot.ps1`; when neither `-Element` nor `-Page` is passed it skips the report pass and writes a canvas-size stub instead, so pass `-Element` or `-Page` when you need `out.report.json`.
-- **`fish export`** is already in the CLI, exports the document (or `--page <id>`) as PNG alone (`[--scale N] [--element ID]`), and answers with an exit code instead of a report. `--pages page_cover,page_feature --out-dir shots/` writes one file per page, named `<doc>--<pageId>[@Nx].png` — ids not names, because a page name changes and can collide; `--exclude page_kit` leaves the components page out. Use `shot.sh` / `shot.ps1` when you need `out.report.json` beside the PNG (or where Node is not installed).
+- **`fish export`** is already in the CLI, exports the document (or `--page <id>`) as PNG alone (`[--scale N] [--element ID]`), and answers with an exit code instead of a report. `--pages page_cover,page_feature --out-dir shots/` writes one file per page, named `<doc>--<pageId>[@Nx].png`. Every page selector here takes a page id **or its name**; the filename uses the id, because a name changes and can collide. `--exclude page_kit` leaves the components page out. Use `shot.sh` / `shot.ps1` when you need `out.report.json` beside the PNG (or where Node is not installed).
 
 Prefer `shot.sh` when you want the diagnostics; prefer `export` when you only want the picture.
 
@@ -201,19 +206,19 @@ When starting flagship / presentation-grade work from scratch — or when the us
 
 1. **Aesthetic direction** — a concrete posture (e.g. “precision dark instrumentation on #101010 with an amber signal”) and 5–7 colour roles.
 2. **Spatial and type hierarchy** — canvas, macro layout, type scale with ≥2.5× display-to-body contrast.
-3. **Asset manifest** — what the user supplies (`[by: user]`) and what comes from a source (`[by: ai]`). Ask the user for their material before proposing this list; whatever they do not have becomes `[by: ai]` and is searched after approval. Never draw fake photos or logos.
+3. **Asset manifest** — what the user supplies (`[by: user]`) and what comes from a source (`[by: ai]`), carried over from the material table in `intent.md`. Whatever they do not have becomes `[by: ai]` and is searched after approval. Never draw fake photos or logos.
 4. **Component architecture** — the reusable masters and sets.
 
-### 6.2 Draft-first pass (default)
+### 6.2 Draft-first pass (default, after intake)
 
 Reach a viewable document quickly without spending time on browser-backed verification while placeholders are still in place:
 
-1. **Zero upfront questions.** Skip §6.1.
-2. **Draft the skeleton first.** Canvas plus the key sections and labelled image placeholders (`hero image — yours or sourced?`), enough that the user can open it and react.
+1. **Do not ask again.** Intake (§0) is settled — it ran, or the request already answered it. §6.1 stays closed unless the work is flagship; if nobody was there to answer, `intent.md` holds the bets instead.
+2. **Draft the skeleton first.** Canvas plus the key sections and labelled image placeholders (`hero image — yours or sourced?`), enough that the user can open it and react. The skeleton tests the layout; `intent.md` already fixed the goal, format and material.
 3. **Create the value layer in the same pass.** Reuse existing tokens, styles, and components if present. Otherwise declare a minimal token table — 5–7 colour roles (background, surface, ink, muted ink, accent, border, scrim), a spacing scale, radii, and the type sizes actually used — and bind elements via `fills[].tokenId` / `tokenBindings`. Defer `styles[]`, `modes[]`, and `numberModes[]` until the polish pass; keep repeated cards/buttons as `component` + `instance`.
 4. **State every default as an assumption.** An 8px rhythm or derived palette is a fallback, never presented as the project's final choice.
 5. **One cheap gate, structure only:** run `./tools/fish check <doc>` (Node, no browser, <100ms) so the file is guaranteed to open. Leave `--geometry`, `--audit`, `shot.sh`, and `--strict` until the layout and assets are real.
-6. **Hand over as a draft, with a way forward.** Note that it is a first pass, list assumptions, ask for any moodboard or assets (logo, product shots, fonts), and offer three ways to continue: point at a layer or leave a comment to change just that; name a dimension (spacing, type scale, palette, imagery, density) to steer it; or ask to polish / make it production-ready (§6.3).
+6. **Hand over as a draft, with a way forward.** Say it is a first pass, name the bets no answer has closed (the ones in `intent.md`), and offer three ways to continue: point at a layer or leave a comment to change just that; name a dimension (spacing, type scale, palette, imagery, density) to steer it; or ask to polish / make it production-ready (§6.3).
 7. **Iterate** through the comment/`apply` loop (§7), resolving comments with the smallest `patch`/`replace` while keeping bindings on the token table.
 
 ### 6.3 Polish and full verification
@@ -277,6 +282,7 @@ Rules that matter more than the sequence:
 
 **Every document**
 
+- [ ] The intent is recorded beside the document — `intent.md`, or the request itself when it already stated goal, format and material — and every assumption the artifact still rests on is named in it (or in the handover, when nobody was there to ask).
 - [ ] Any element used more than once is a component master + instances, not duplicate frames — and the masters share one dedicated page that `check` was given via `--skip-page`.
 - [ ] Every `instance.componentId` points at a `component`, not a `frame`.
 - [ ] A wrapping text run declares a width; its height is measured (`sizing.height: "fit-content"` is what an omitted height becomes), so `height` is pinned only when the box is meant to clip.

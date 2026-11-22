@@ -614,7 +614,7 @@ export class AutosaveController {
     // Same hazard as `checkRecovery`: applying a version whose bitmaps are gone
     // would blank the live document's image layers and then re-save them.
     if (hasMissingAssets(restored)) {
-      this.emit({ kind: "error", message: t("history.missingImages") });
+      this.emit({ kind: "error", message: t("history.missingAssets") });
       return false;
     }
     // Snapshot the current state first so the restore is itself reversible. It
@@ -643,7 +643,7 @@ export class AutosaveController {
     // Same guard as `restoreVersion`: a version whose bitmaps are gone would
     // paint blank layers, and a *view* has no undo to recover with.
     if (hasMissingAssets(doc)) {
-      this.emit({ kind: "error", message: t("history.missingImages") });
+      this.emit({ kind: "error", message: t("history.missingAssets") });
       return null;
     }
     return doc;

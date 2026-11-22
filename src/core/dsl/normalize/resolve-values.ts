@@ -29,7 +29,7 @@
  */
 
 import { canonicalKey, isPlainObject } from "./shared";
-import { evalConstantPx, simplifyLengthExpr } from "../length-expr";
+import { evalConstantPx, simplifyLengthExpr, splitTopLevelWhitespace } from "../length-expr";
 
 /** CSS's default root font size; the dialect has no field to change it. */
 const ROOT_FONT_SIZE = 16;
@@ -237,7 +237,7 @@ function rewriteLengthString(input: string, root: number): string {
   const whole = rewriteLengthToken(input, root);
   if (whole !== undefined) return whole;
 
-  const parts = splitTopLevel(input.trim());
+  const parts = splitTopLevelWhitespace(input.trim());
   if (parts.length < 2) return input;
   const rewritten = parts.map((p) => (p === "/" ? "/" : rewriteLengthToken(p, root)));
   if (rewritten.some((p) => p === undefined)) return input;
@@ -282,28 +282,9 @@ function rewriteTrackToken(token: string, root: number): string {
 }
 
 function rewriteTrackList(input: string, root: number): string {
-  const parts = splitTopLevel(input.trim());
+  const parts = splitTopLevelWhitespace(input.trim());
   if (parts.length === 0) return input;
   return parts.map((part) => rewriteTrackToken(part, root)).join(" ");
-}
-
-/** Split on whitespace that is not inside parentheses, so `max(8px, 4px) 1rem`
- * stays two tokens rather than three fragments. */
-function splitTopLevel(input: string): string[] {
-  const parts: string[] = [];
-  let depth = 0;
-  let start = 0;
-  for (let i = 0; i < input.length; i++) {
-    const ch = input[i];
-    if (ch === "(") depth++;
-    else if (ch === ")") depth--;
-    else if (depth === 0 && /\s/.test(ch)) {
-      if (i > start) parts.push(input.slice(start, i));
-      start = i + 1;
-    }
-  }
-  if (start < input.length) parts.push(input.slice(start));
-  return parts.filter(Boolean);
 }
 
 export interface UnresolvedVar {

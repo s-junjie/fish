@@ -264,6 +264,68 @@ if (inspector) {
   check("exit: the inspector is on screen", false, "no [data-ui-panel=right]");
 }
 
+// -------------------------------------------------------- Tab indents, in place
+//
+// Tab is a FOCUS key. The editor's own Tab (collapse the UI) stands down while a
+// contentEditable has the focus, so before this the browser's default ran instead:
+// focus left for the first focusable thing in the inspector, which blurred the
+// editor and committed the edit, and the next keystroke landed on a button.
+//
+// The indent it types is four NON-BREAKING spaces, not a `\t`: `pre-line`
+// collapses a tab to one space in the measure and in the export, so a tab
+// character could never paint an indent. Read off the live editor and then off the
+// committed document, because the whole point is that the same bytes reach both.
+const NB = "\u00a0";
+await deselect();
+await dbl(freeBox);
+const caretInside = () =>
+  page.evaluate(() => {
+    const editor = document.querySelector('[contenteditable="true"]');
+    return !!editor && document.activeElement === editor;
+  });
+const liveText = () =>
+  page.evaluate(() => document.querySelector('[contenteditable="true"]')?.textContent ?? null);
+check("tab: the canvas text is being edited", (await state()).editing === true);
+// Opening the editor selects the whole run; collapse to the start, then indent.
+await page.keyboard.press("ArrowLeft");
+await page.keyboard.press("Tab");
+await page.waitForTimeout(200);
+s = await state();
+check("tab: Tab keeps the caret in the text", s.editing === true && (await caretInside()), JSON.stringify(s));
+check(
+  "tab: and types a four-space indent at the caret",
+  (await liveText()) === NB.repeat(4) + "Free text",
+  JSON.stringify(await liveText())
+);
+await page.keyboard.press("Shift+Tab");
+await page.waitForTimeout(200);
+check(
+  "tab: Shift+Tab takes the indent back",
+  (await liveText()) === "Free text" && (await caretInside()),
+  JSON.stringify(await liveText())
+);
+// …from the END of the line too: it is the LINE's indent that goes, not a run of
+// characters the caret happens to sit after.
+await page.keyboard.press("Tab");
+await page.keyboard.press("End");
+await page.keyboard.press("Shift+Tab");
+await page.waitForTimeout(200);
+check(
+  "tab: and does so with the caret at the end of the line",
+  (await liveText()) === "Free text",
+  JSON.stringify(await liveText())
+);
+await page.keyboard.press("Tab");
+await page.waitForTimeout(150);
+await page.keyboard.press("Meta+Enter");
+await page.waitForTimeout(300);
+const tabbed = await content("free");
+check(
+  "tab: the indent is what the document keeps",
+  tabbed === NB.repeat(4) + "Free text" && !String(tabbed).includes("\t"),
+  JSON.stringify(tabbed)
+);
+
 await browser.close();
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} passed`);

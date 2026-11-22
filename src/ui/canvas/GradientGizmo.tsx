@@ -20,6 +20,16 @@ interface KnobSpec {
   fill: string;
   cursor: string;
   title: string;
+  /**
+   * The stop this grip is the colour OF, when it is one.
+   *
+   * An axis end is a colour: everything before the first stop paints that stop
+   * and everything past the last paints the last one, so the grip at an end is
+   * showing a stop's colour. Grabbing it therefore has to move the panel onto
+   * that stop — otherwise the hex field kept editing whichever stop the ramp was
+   * last on, two steps away from the handle under the pointer.
+   */
+  stop?: number;
 }
 
 export interface BuildGradientGizmoArgs {
@@ -90,6 +100,7 @@ export function buildGradientGizmo({
   const radius = 5 / zoom;
   const hitRadius = 12 / zoom;
   const axis = stopAxisOf(el, grad, { x: originX, y: originY });
+  const lastStop = Math.max(0, stops.length - 1);
   const drag = (which: GradientHandle) => (e: PointerEvent) => onPointerDown(e, el, paintIndex, which, stack);
 
   const knob = (spec: KnobSpec) => (
@@ -105,7 +116,10 @@ export function buildGradientGizmo({
       strokeWidth={strokeW}
       cursor={spec.cursor}
       title={spec.title}
-      onPointerDown={drag(spec.handle)}
+      onPointerDown={(e) => {
+        if (spec.stop !== undefined) onSelectStop(spec.stop);
+        onPointerDown(e, el, paintIndex, spec.handle, stack);
+      }}
     />
   );
 
@@ -224,7 +238,8 @@ export function buildGradientGizmo({
           shape: "circle",
           fill: CANVAS_ON_SELECT,
           cursor: "grab",
-          title: t("paint.lever.start")
+          title: t("paint.lever.start"),
+          stop: 0
         })}
         {knob({
           handle: "end",
@@ -233,7 +248,8 @@ export function buildGradientGizmo({
           shape: "square",
           fill: CANVAS_ON_SELECT,
           cursor: "grab",
-          title: t("paint.lever.end")
+          title: t("paint.lever.end"),
+          stop: lastStop
         })}
       </g>
     );
@@ -286,7 +302,11 @@ export function buildGradientGizmo({
           shape: "circle",
           fill: CANVAS_ON_SELECT,
           cursor: "grab",
-          title: t("paint.lever.sweep")
+          title: t("paint.lever.sweep"),
+          // A sweep's ramp starts where the tick does, so the grip that aims it
+          // is the first stop's colour. The centre dot names no stop: every angle
+          // meets there, so no single stop is what the middle paints.
+          stop: 0
         })}
       </g>
     );
@@ -340,7 +360,10 @@ export function buildGradientGizmo({
           shape: "circle",
           fill: CANVAS_ON_SELECT,
           cursor: "grab",
-          title: t("paint.lever.center")
+          title: t("paint.lever.center"),
+          // Offset 0 sits at the centre of a diamond and on its first axis' rim
+          // at offset 1, so the two grips that name those ends select those stops.
+          stop: 0
         })}
         {knob({
           handle: "rimX",
@@ -349,7 +372,8 @@ export function buildGradientGizmo({
           shape: "square",
           fill: CANVAS_ON_SELECT,
           cursor: "grab",
-          title: t("paint.lever.axis")
+          title: t("paint.lever.axis"),
+          stop: lastStop
         })}
         {knob({
           handle: "rimY",
@@ -413,7 +437,10 @@ export function buildGradientGizmo({
         shape: "circle",
         fill: CANVAS_ON_SELECT,
         cursor: "grab",
-        title: t("paint.lever.center")
+        title: t("paint.lever.center"),
+        // A radial's ramp starts at the centre and ends on the ellipse's first
+        // rim, so those two grips select its first and last colour.
+        stop: 0
       })}
       {knob({
         handle: "rimX",
@@ -422,7 +449,8 @@ export function buildGradientGizmo({
         shape: "square",
         fill: CANVAS_ON_SELECT,
         cursor: "grab",
-        title: t("paint.lever.axis")
+        title: t("paint.lever.axis"),
+        stop: lastStop
       })}
       {knob({
         handle: "rimY",

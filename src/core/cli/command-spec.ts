@@ -74,8 +74,8 @@ export const COMMANDS: CommandSpec[] = [
   },
   {
     name: "brief",
-    desc: "report the tokens, styles, components, assets and fonts the document already carries.",
-    forms: [{ head: `brief ${DOC}`, flags: [on("--json")] }]
+    desc: "report the tokens, styles and assets the document carries — or, with no document yet, the intent record and material in the directory.",
+    forms: [{ head: `brief [${DOC}]`, flags: [on("--json")] }]
   },
   {
     name: "inspect",
@@ -95,7 +95,7 @@ export const COMMANDS: CommandSpec[] = [
   },
   {
     name: "assets",
-    desc: "inspect doc.assets[] with the size each one costs; search, import, convert SVG icons or embed.",
+    desc: "inspect doc.assets[] with the size each one costs; search, import, convert SVG icons, embed or prune.",
     forms: [
       { head: `assets ${DOC}`, flags: [on("--json")] },
       {
@@ -125,15 +125,27 @@ export const COMMANDS: CommandSpec[] = [
         ]
       },
       {
-        head: "assets import <file...> <doc.fish.html>",
+        head: "assets import <file|url...> <doc.fish.html>",
         verbs: ["import"],
-        flags: [of("--name", "--name N"), of("--to", "--to <elementId>"), on("--replace"), on("--json")]
+        flags: [
+          of("--name", "--name N"),
+          of("--credit-name", "--credit-name N"),
+          of("--credit-url", "--credit-url <url>"),
+          of("--to", "--to <elementId>"),
+          on("--replace"),
+          on("--json")
+        ]
       },
       {
         head: "assets embed <doc.fish.html>",
         verbs: ["embed"],
         flags: [of("--id", "--id <assetId>"), on("--all"), on("--json")],
         syntax: "assets embed <doc.fish.html> (--id <assetId> | --all) [--json]"
+      },
+      {
+        head: "assets prune <doc.fish.html>",
+        verbs: ["prune"],
+        flags: [on("--json")]
       }
     ]
   },

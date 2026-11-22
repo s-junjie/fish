@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import { tornEdgeGeometry, TORN_EDGE_DEFAULT } from "../src/core/geometry/torn-edge";
 import { edgeFor } from "../src/core/geometry/edge";
 import { normalizeEffects } from "../src/core/dsl/normalize/effects";
-import type { TornEdge } from "../src/core/dsl/types";
+import type { TearInput } from "../src/core/dsl/types";
 
 const box = { w: 320, h: 460 };
-const base = (over: Partial<TornEdge> = {}): TornEdge => ({
+const base = (over: Partial<TearInput> = {}): TearInput => ({
   ...TORN_EDGE_DEFAULT,
   seed: 7,
   ...over
@@ -224,30 +224,30 @@ describe("tilted break", () => {
   });
 });
 
-describe("torn edge normalization", () => {
+describe("tear normalization", () => {
   const effects = (raw: unknown[]) => normalizeEffects(raw);
 
   it("keeps a declared break and clamps the sliders into range", () => {
-    const [ef] = effects([{ type: "torn-edge", side: "bottom", scale: 9999, roughness: 4, fiber: -2, seed: 3.7 }]);
+    const [ef] = effects([{ type: "tear", side: "bottom", scale: 9999, roughness: 4, fiber: -2, seed: 3.7 }]);
     expect(ef).toMatchObject({ type: "tear", profile: "torn", side: "bottom", scale: 900, roughness: 1, fiber: 0, seed: 4 });
     expect(ef.enabled).toBe(true);
   });
 
   it("refuses a side it does not know rather than guessing one", () => {
-    expect(effects([{ type: "torn-edge", side: "diagonal" }])).toEqual([]);
-    expect(effects([{ type: "torn-edge" }])).toEqual([]);
-    expect(effects([{ type: "torn-edge", side: "right" }]).length).toBe(1);
+    expect(effects([{ type: "tear", side: "diagonal" }])).toEqual([]);
+    expect(effects([{ type: "tear" }])).toEqual([]);
+    expect(effects([{ type: "tear", side: "right" }]).length).toBe(1);
   });
 
   it("defaults the rest of a break declared only by side", () => {
-    const [ef] = effects([{ type: "torn-edge", side: "left" }]);
+    const [ef] = effects([{ type: "tear", side: "left" }]);
     expect(ef).toMatchObject({ side: "left", scale: 150, roughness: 0.6, fiber: 0, seed: 1 });
   });
 
   it("carries `at` through, and defaults it by absence", () => {
-    const [mid] = effects([{ type: "torn-edge", side: "top", at: 0.4 }]);
+    const [mid] = effects([{ type: "tear", side: "top", at: 0.4 }]);
     expect(mid).toMatchObject({ at: 0.4 });
-    const [def] = effects([{ type: "torn-edge", side: "top" }]);
+    const [def] = effects([{ type: "tear", side: "top" }]);
     expect("at" in def).toBe(false);
   });
 
@@ -267,13 +267,13 @@ describe("torn edge normalization", () => {
     expect("at" in bad).toBe(false);
   });
 
-  it("reads the retired spellings as the same tear", () => {
-    const [old] = effects([{ type: "edge", side: "top" }]);
-    expect(old).toMatchObject({ type: "tear", side: "top" });
-    const [cut] = effects([{ type: "tear", hole: "cut" }]);
-    expect(cut).toMatchObject({ type: "tear", form: "hole" });
-    const [scrap] = effects([{ type: "tear", hole: "scrap" }]);
-    expect(scrap).toMatchObject({ type: "tear", form: "scrap" });
+  it("refuses the retired type and form spellings", () => {
+    expect(effects([{ type: "edge", side: "top" }])).toEqual([]);
+    expect(effects([{ type: "torn-edge", side: "top" }])).toEqual([]);
+    const [cut] = effects([{ type: "tear", side: "right", hole: "cut" }]);
+    expect("form" in (cut ?? {})).toBe(false);
+    const [scrap] = effects([{ type: "tear", side: "right", hole: "scrap" }]);
+    expect("form" in (scrap ?? {})).toBe(false);
   });
 
   it("keeps `inset` on either form, as a percentage", () => {
@@ -289,15 +289,15 @@ describe("torn edge normalization", () => {
 
   it("is a normal effect for the stack: enabled flips, two compose", () => {
     const both = effects([
-      { type: "torn-edge", side: "right", enabled: false },
-      { type: "torn-edge", side: "bottom" }
+      { type: "tear", side: "right", enabled: false },
+      { type: "tear", side: "bottom" }
     ]);
     expect(both).toHaveLength(2);
     expect(both[0].enabled).toBe(false);
   });
 
   it("does not roll dice: the same file normalizes to the same seed", () => {
-    const raw = [{ type: "torn-edge", side: "right" }];
+    const raw = [{ type: "tear", side: "right" }];
     expect(normalizeEffects(raw)).toEqual(normalizeEffects(raw));
   });
 });

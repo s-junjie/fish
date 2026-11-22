@@ -48,7 +48,13 @@ const round2 = (n: number): number => {
   return Object.is(r, -0) ? 0 : r;
 };
 
-/** Split whitespace-separated CSS tokens while keeping `calc(...)` intact. */
+/**
+ * Split whitespace-separated CSS tokens while keeping `calc(...)` intact.
+ *
+ * The one implementation: `border` shorthands, `border-radius`, spacing
+ * shorthands, track lists and `var()` rewriting all read a CSS value this way,
+ * and five copies of it meant five answers to `rgba(1, 2, 3)`.
+ */
 export function splitTopLevelWhitespace(input: string): string[] {
   const out: string[] = [];
   let depth = 0;
@@ -59,7 +65,9 @@ export function splitTopLevelWhitespace(input: string): string[] {
       depth++;
       if (start === -1) start = i;
     } else if (ch === ")") {
-      depth--;
+      // Clamped: a stray `)` in a value the author typed must not stop every
+      // following space from splitting.
+      depth = Math.max(0, depth - 1);
       if (start === -1) start = i;
     } else if (depth === 0 && /\s/.test(ch)) {
       if (start !== -1) {

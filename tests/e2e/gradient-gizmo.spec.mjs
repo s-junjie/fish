@@ -887,6 +887,47 @@ check(
 );
 await closePanel();
 
+// ---- 15. a grip picks the colour it is showing ---------------------------------
+//
+// An axis end IS a stop's colour — everything before the first stop paints that
+// stop and everything past the last paints the last one — so grabbing an end has
+// to move the panel's fields onto it. The panel used to stay on whichever stop the
+// ramp was last on, so the hex field edited a colour two steps from the grip.
+await openFillPanel("gg_lin");
+const panelStop = () =>
+  page.evaluate(() => {
+    const n = document.querySelector("[data-gradient-stop-bar] [data-stop-token-bind]");
+    return n ? Number(n.getAttribute("data-stop-token-bind")) : null;
+  });
+const panelHex = () =>
+  page.evaluate(() => document.querySelector('[data-hex-input="1"]')?.value ?? "");
+check("the fill panel opens on the ramp's first stop", (await panelStop()) === 0, `stop=${await panelStop()}`);
+await page.click('[data-gradient-handle="end"]');
+await page.waitForTimeout(250);
+check(
+  "pressing the END grip moves the panel onto the last stop",
+  (await panelStop()) === 1 && /ffffff/i.test(await panelHex()),
+  `stop=${await panelStop()} hex=${await panelHex()}`
+);
+await page.click('[data-gradient-handle="start"]');
+await page.waitForTimeout(250);
+check(
+  "and the START grip back onto the first",
+  (await panelStop()) === 0 && /000000/i.test(await panelHex()),
+  `stop=${await panelStop()} hex=${await panelHex()}`
+);
+// Choosing a stop on the ramp is a CHOICE, not an edit: the canvas chrome must
+// stay up. Suppressing it there made picking which endpoint to recolour look like
+// the drawing vanishing for two seconds — and it hid the very grip being aimed at.
+await page.click('[data-gradient-bar] [data-stop-index="1"]');
+await page.waitForTimeout(120);
+check(
+  "picking a stop on the ramp leaves the canvas chrome up",
+  (await handleCount("[data-gradient-gizmo]")) === 1,
+  `gizmo=${await handleCount("[data-gradient-gizmo]")}`
+);
+await closePanel();
+
 await browser.close();
 const failed = results.filter((r) => !r).length;
 console.log(`\n${results.length - failed}/${results.length} checks passed`);

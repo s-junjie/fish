@@ -7,7 +7,7 @@ import { isDerivedNode } from "../../core/interactions/component-inventory";
 import { resolveInstanceSelection } from "../../core/interactions/instance-resolve";
 import { layerRangeSelection, visibleLayerRowIds } from "./range-select";
 import { derivedRowPath, hasRows, layerRowsOf } from "./instance-rows";
-import { rowOrderOf } from "./row-order";
+import { isOutOfFlow, rowOrderOf } from "./row-order";
 import {
   collapsedRunHeight,
   LAYER_LIST_PADDING,
@@ -424,6 +424,7 @@ export function LayerTree({
           derivedCanOverride={derivedCanOverride}
           isCollapsed={isRowCollapsed(el)}
           hasChildren={hasChildren}
+          isOutOfFlow={isOutOfFlow(row.order, el)}
           showRowActions={!isDerived || derivedCanOverride}
           dropPosition={dragOverInfo?.id === el.id ? dragOverInfo.position : null}
           renameDraft={renameDraft}

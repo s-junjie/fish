@@ -17,6 +17,7 @@ import {
   Video as VideoIcon,
   Code
 } from "lucide-react";
+import { SectionMark } from "../SectionMark";
 
 /**
  * The glyph that names what KIND of layer this is.
@@ -47,6 +48,9 @@ export function getElementIcon(el: DesignElement, size = 13, tone: "kind" | "neu
   const kind = el.type;
   switch (kind) {
     case "frame": {
+      // A section is a frame that names a region, so it reads as a bracket ring
+      // rather than as a container: same column, different statement.
+      if (el.section === true) return <SectionMark size={size} className={ink} />;
       const frameEl = el as FrameElement;
       const flat = layoutOf(frameEl);
       if (flat) {

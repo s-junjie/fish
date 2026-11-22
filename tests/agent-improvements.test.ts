@@ -271,13 +271,10 @@ describe("textTransform reaches the glyphs", () => {
 });
 
 /**
- * `text-shadow` was a second effect type for the same paint: a drop shadow on a
- * text element already renders through the glyphs (a CSS `text-shadow`), so the
- * type said nothing the renderer did not decide for itself. It is now an ALIAS —
- * accepted on the way in, folded onto `drop-shadow` and reported, so a document
- * that asked for a text shadow can read what happened to it.
+ * `text-shadow` was a pre-release effect type for a paint `drop-shadow` already
+ * covers. No published FISH ever wrote it, so it is refused rather than folded.
  */
-describe("text-shadow is an alias for drop-shadow", () => {
+describe("the retired text-shadow effect type", () => {
   const doc = (effects: unknown[]) =>
     normalizeDesignDocument({
       version: "0.1",
@@ -293,41 +290,10 @@ describe("text-shadow is an alias for drop-shadow", () => {
       ]
     } as never);
 
-  it("folds a text shadow into a drop shadow", () => {
+  it("is not read as a drop shadow", () => {
     const { document } = doc([{ type: "text-shadow", color: "#0008", offset: { x: 0, y: 4 }, blur: 8 }]);
-    const el = getActivePage(document).children?.[0] as { effects?: Array<{ type: string; blur: number }> };
-    expect(el?.effects?.[0]?.type).toBe("drop-shadow");
-    expect(el?.effects?.[0]?.blur).toBe(8);
-  });
-
-  it("leaves one spelling when a document carries both", () => {
-    const { document } = doc([
-      { type: "text-shadow", color: "#0008", offset: { x: 0, y: 4 }, blur: 8 },
-      { type: "drop-shadow", color: "#000c", offset: { x: 2, y: 2 }, blur: 2 }
-    ]);
     const el = getActivePage(document).children?.[0] as { effects?: Array<{ type: string }> };
-    expect(el?.effects?.map((e) => e.type)).toEqual(["drop-shadow", "drop-shadow"]);
-  });
-
-  it("reports the fold, so the rewrite is not silent", () => {
-    const { repairs } = doc([{ type: "text-shadow", color: "#0008", offset: { x: 0, y: 4 }, blur: 8 }]);
-    const folds = repairs.filter((r) => /text-shadow/i.test(r.message));
-    expect(folds).toHaveLength(1);
-    expect(folds[0].message).toContain("drop-shadow");
-  });
-
-  it("drops a spread the alias cannot paint", () => {
-    const { document } = doc([
-      { type: "text-shadow", color: "#0008", offset: { x: 0, y: 4 }, blur: 8, spread: 6 }
-    ]);
-    const el = getActivePage(document).children?.[0] as { effects?: Array<{ spread?: number }> };
-    expect(el?.effects?.[0]?.spread).toBeUndefined();
-  });
-
-  it("round-trips the author's own offset spellings, as a drop shadow does", () => {
-    const { document } = doc([{ type: "text-shadow", color: "#0008", offsetX: 3, offsetY: 5, blur: 1 }]);
-    const el = getActivePage(document).children?.[0] as { effects?: Array<{ offset?: { x: number; y: number } }> };
-    expect(el?.effects?.[0]?.offset).toEqual({ x: 3, y: 5 });
+    expect(el?.effects).toBeUndefined();
   });
 
   it("is no longer published as its own type", () => {
@@ -381,7 +347,7 @@ describe("text-shadow is an alias for drop-shadow", () => {
 
 /**
  * Effect type spellings are canonical: the CSS-derived `backdrop-blur` is read
- * verbatim, and the pre-release `background-blur` spelling is not.
+ * verbatim, and the retired spellings are not read at all.
  */
 describe("effect type spellings", () => {
   const doc = (type: string) =>
@@ -393,8 +359,8 @@ describe("effect type spellings", () => {
       ]
     } as never);
 
-  it("drops the pre-rename background-blur spellings", () => {
-    for (const legacy of ["background-blur", "backgroundBlur"]) {
+  it("drops the retired effect type spellings", () => {
+    for (const legacy of ["background-blur", "backgroundBlur", "text-shadow", "edge", "torn-edge"]) {
       const el = getActivePage(doc(legacy).document).children?.[0] as { effects?: Array<{ type: string }> };
       expect(el?.effects, `${legacy} was still absorbed`).toBeUndefined();
     }

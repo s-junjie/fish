@@ -94,7 +94,15 @@ export function useDismiss(
   anchor?: { current: HTMLElement | null },
   keepInside?: readonly string[],
   /** A picker this one opened is on top of it right now. */
-  pickerAbove?: () => boolean
+  pickerAbove?: () => boolean,
+  /**
+   * A press that must not dismiss, however far outside the panel it lands.
+   *
+   * The one case is a canvas PAN: space or the hand tool make every press on the
+   * page a camera move, which changes nothing the panel describes and leaves the
+   * panel it is anchored to exactly where it was (see `canvas-navigation`).
+   */
+  ignorePress?: () => boolean
 ): void {
   /**
    * The listeners are registered ONCE per open and read the caller's closures
@@ -106,8 +114,8 @@ export function useDismiss(
    * whose handler now ran first, had closed itself and left the stack, so the
    * host read "nothing above me" and closed with it: one press, both panels.
    */
-  const live = useRef({ close, anchor, keepInside, pickerAbove });
-  live.current = { close, anchor, keepInside, pickerAbove };
+  const live = useRef({ close, anchor, keepInside, pickerAbove, ignorePress });
+  live.current = { close, anchor, keepInside, pickerAbove, ignorePress };
 
   useEffect(() => {
     if (!open) return;
@@ -119,6 +127,7 @@ export function useDismiss(
     const standsDown = () => !!live.current.pickerAbove?.();
 
     const onPointerDown = (e: PointerEvent) => {
+      if (live.current.ignorePress?.()) return;
       const target = e.target as Element | null;
       if (!target) return;
       const mine = panel.current;
